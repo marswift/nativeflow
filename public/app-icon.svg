@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="_レイヤー_1" data-name="レイヤー 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #fff;
+      }
+
+      .cls-2 {
+        fill: url(#_名称未設定グラデーション_183);
+      }
+    </style>
+    <linearGradient id="_名称未設定グラデーション_183" data-name="名称未設定グラデーション 183" x1="0" y1="512" x2="1024" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ed874b"/>
+      <stop offset=".99" stop-color="#efba5b"/>
+    </linearGradient>
+  </defs>
+  <rect class="cls-2" x="0" y="0" width="1024" height="1024" rx="130" ry="130"/>
+  <rect class="cls-1" x="138.52" y="379.62" width="97.6" height="216.9" rx="30" ry="30"/>
+  <rect class="cls-1" x="787.88" y="440.41" width="97.6" height="138.79" rx="30" ry="30"/>
+  <rect class="cls-1" x="274.56" y="231.26" width="97.6" height="517.86" rx="30" ry="30"/>
+  <rect class="cls-1" x="402.89" y="323.45" width="97.6" height="323.24" rx="30" ry="30"/>
+  <rect class="cls-1" x="669.14" y="304.86" width="97.6" height="350.11" rx="30" ry="30"/>
+  <rect class="cls-1" x="531.22" y="178.5" width="97.6" height="609.28" rx="30" ry="30"/>
+  <circle class="cls-1" cx="486.22" cy="847.11" r="47.15"/>
+</svg>

@@ -1,0 +1,5 @@
+{
+  "terminal.integrated.env.osx": {
+    "PATH": "/Users/marswift/.nvm/versions/node/v20.20.1/bin:${env:PATH}"
+  }
+}
