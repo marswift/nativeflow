@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ONBOARDING_COPY_JA } from '../../../lib/onboarding-copy'
-import type { PartialUserProfileRow } from '../../../lib/types'
 import {
   TARGET_LANGUAGE_OPTIONS,
   COUNTRY_BY_LANGUAGE,
@@ -13,14 +12,32 @@ import {
   type TargetLanguageCode,
 } from '../../../lib/constants'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
+
 const supabase = getSupabaseBrowserClient()
 
 const MAIN_LOADING_CLASS = 'min-h-screen bg-[#faf8f5] flex items-center justify-center'
 const MAIN_CONTENT_CLASS = 'min-h-screen bg-[#faf8f5] px-6 py-12'
 const CONTAINER_CLASS = 'mx-auto max-w-md'
 const CARD_CLASS = 'rounded-lg border border-[#e8e4df] bg-white px-4 py-4'
-const INPUT_CLASS = 'mt-2 w-full rounded-lg border border-[#e8e4df] bg-white px-4 py-3 text-[#2c2c2c] placeholder:text-[#9c9c9c] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400'
-const SELECT_CLASS = 'mt-2 w-full rounded-lg border border-[#e8e4df] bg-white px-4 py-3 text-[#2c2c2c] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400'
+const INPUT_CLASS =
+  'mt-2 w-full rounded-lg border border-[#e8e4df] bg-white px-4 py-3 text-[#2c2c2c] placeholder:text-[#9c9c9c] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400'
+const SELECT_CLASS =
+  'mt-2 w-full rounded-lg border border-[#e8e4df] bg-white px-4 py-3 text-[#2c2c2c] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400'
+
+type UserProfileRow = {
+  id: string
+  ui_language_code?: string | null
+  current_learning_language?: string | null
+}
+
+type UserLearningProfileRow = {
+  language_code?: string | null
+  target_region_slug?: string | null
+  current_level?: CurrentLevel | null
+  speak_by_deadline_text?: string | null
+  target_outcome_text?: string | null
+  daily_study_minutes_goal?: number | null
+}
 
 export default function LearningSettingsPage() {
   const router = useRouter()
@@ -42,42 +59,80 @@ export default function LearningSettingsPage() {
   useEffect(() => {
     let isActive = true
 
-    function applyProfile(profile: PartialUserProfileRow & { id: string }) {
+    function applyProfile(profile: UserProfileRow, learning: UserLearningProfileRow | null) {
       setUserId(profile.id)
-      if (profile.ui_language_code != null) setUiLanguageCode(profile.ui_language_code)
-      if (profile.target_language_code != null) setTargetLanguageCode(profile.target_language_code)
-      if (profile.target_country_code != null) setTargetCountryCode(profile.target_country_code)
-      if (profile.target_region_slug != null) setTargetRegionSlug(profile.target_region_slug)
-      if (profile.current_level != null) setCurrentLevel(profile.current_level)
-      if (profile.speak_by_deadline_text != null) setSpeakByDeadlineText(profile.speak_by_deadline_text)
-      if (profile.target_outcome_text != null) setTargetOutcomeText(profile.target_outcome_text)
-      if (profile.daily_study_minutes_goal != null) setDailyStudyMinutesGoal(String(profile.daily_study_minutes_goal))
+
+      if (profile.ui_language_code != null) {
+        setUiLanguageCode(profile.ui_language_code)
+      }
+
+      const activeLanguageCode =
+        learning?.language_code ?? profile.current_learning_language ?? 'en'
+      setTargetLanguageCode(activeLanguageCode)
+
+      if (learning?.target_region_slug != null) {
+        setTargetRegionSlug(learning.target_region_slug)
+      }
+      if (learning?.current_level != null) {
+        setCurrentLevel(learning.current_level)
+      }
+      if (learning?.speak_by_deadline_text != null) {
+        setSpeakByDeadlineText(learning.speak_by_deadline_text)
+      }
+      if (learning?.target_outcome_text != null) {
+        setTargetOutcomeText(learning.target_outcome_text)
+      }
+      if (learning?.daily_study_minutes_goal != null) {
+        setDailyStudyMinutesGoal(String(learning.daily_study_minutes_goal))
+      }
     }
 
     async function loadProfile() {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+
         if (sessionError || !session?.user) {
           if (isActive) router.replace('/login')
           return
         }
-        const { data: row, error: fetchError } = await supabase
+
+        const { data: profileRow, error: profileError } = await supabase
           .from('user_profiles')
-          .select(
-            'id, ui_language_code, target_language_code, target_country_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
-          )
+          .select('id, ui_language_code, current_learning_language')
           .eq('id', session.user.id)
           .maybeSingle()
-        if (fetchError) {
-          if (isActive) setError(fetchError.message)
+
+        if (profileError) {
+          if (isActive) setError(profileError.message)
           return
         }
-        if (!row && isActive) {
-          router.replace('/onboarding')
+
+        if (!profileRow) {
+          if (isActive) router.replace('/onboarding')
           return
         }
-        if (row && isActive) {
-          applyProfile(row as PartialUserProfileRow & { id: string })
+
+        const activeLanguageCode = profileRow.current_learning_language ?? 'en'
+
+        const { data: learningRow, error: learningError } = await supabase
+          .from('user_learning_profiles')
+          .select(
+            'language_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
+          )
+          .eq('user_id', session.user.id)
+          .eq('language_code', activeLanguageCode)
+          .maybeSingle()
+
+        if (learningError) {
+          if (isActive) setError(learningError.message)
+          return
+        }
+
+        if (isActive) {
+          applyProfile(profileRow as UserProfileRow, (learningRow as UserLearningProfileRow | null) ?? null)
         }
       } catch (err) {
         console.error(err)
@@ -97,34 +152,48 @@ export default function LearningSettingsPage() {
     e.preventDefault()
     setError('')
     setInfoMessage('')
+
     if (!userId) {
       setError('プロフィールを読み込めませんでした')
       return
     }
+
     const targetLanguage = targetLanguageCode || null
     const targetCountry = targetCountryCode || null
     const level = currentLevel || null
+
     if (!targetLanguage || !targetCountry || !level) {
       setError(copy.errors.validationRequired)
       return
     }
+
     setSubmitting(true)
+
     try {
-      const payload = {
+      const profilePayload = {
         ui_language_code: uiLanguageCode || null,
-        target_language_code: targetLanguage,
         current_learning_language: targetLanguage,
+        target_language_code: targetLanguage,
         target_country_code: targetCountry,
+      }
+
+      const learningPayload = {
+        user_id: userId,
+        language_code: targetLanguage,
         target_region_slug: targetRegionSlug.trim() || null,
         current_level: level,
         speak_by_deadline_text: speakByDeadlineText.trim() || null,
         target_outcome_text: targetOutcomeText.trim() || null,
-        daily_study_minutes_goal: dailyStudyMinutesGoal.trim() ? Math.max(0, parseInt(dailyStudyMinutesGoal, 10) || 0) : null,
+        daily_study_minutes_goal: dailyStudyMinutesGoal.trim()
+          ? Math.max(0, parseInt(dailyStudyMinutesGoal, 10) || 0)
+          : null,
       }
+
       const { error: updateError } = await supabase
         .from('user_profiles')
-        .update(payload)
+        .update(profilePayload)
         .eq('id', userId)
+
       if (updateError) {
         setError(updateError.message || copy.errors.saveFailed)
         return
@@ -132,18 +201,7 @@ export default function LearningSettingsPage() {
 
       const { error: learningProfileError } = await supabase
         .from('user_learning_profiles')
-        .upsert(
-          {
-            user_id: userId,
-            language_code: targetLanguage,
-            target_region_slug: payload.target_region_slug,
-            current_level: payload.current_level,
-            speak_by_deadline_text: payload.speak_by_deadline_text,
-            target_outcome_text: payload.target_outcome_text,
-            daily_study_minutes_goal: payload.daily_study_minutes_goal,
-          },
-          { onConflict: 'user_id,language_code' }
-        )
+        .upsert(learningPayload, { onConflict: 'user_id,language_code' })
 
       if (learningProfileError) {
         setError(learningProfileError.message || '学習プロフィールの保存に失敗しました')
@@ -267,8 +325,8 @@ export default function LearningSettingsPage() {
               value={currentLevel}
               onChange={(e) => {
                 const raw = e.target.value || ''
-                const level = CURRENT_LEVEL_OPTIONS.find((o) => o.value === raw)?.value
-                setCurrentLevel(level ?? '')
+                const levelOption = CURRENT_LEVEL_OPTIONS.find((o) => o.value === raw)?.value
+                setCurrentLevel(levelOption ?? '')
               }}
               className={SELECT_CLASS}
               disabled={submitting}
