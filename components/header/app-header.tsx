@@ -31,7 +31,7 @@ export default function AppHeader({
             <select
               value={currentLanguage}
               onChange={(e) => onChangeLanguage(e.target.value)}
-              className="cursor-not-allowed rounded-md border border-[#ede9e2] bg-[#f8f6f2] px-2 py-1 text-sm text-[#7a7a7a]" disabled
+              className="cursor-pointer rounded-md border border-[#ede9e2] bg-[#f8f6f2] px-2 py-1 text-sm text-[#7a7a7a]"
             >
               {TARGET_LANGUAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
