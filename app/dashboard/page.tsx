@@ -12,6 +12,7 @@ import { getTodayStatDate } from '../../lib/daily-stats-service'
 import type { DailyStatRow } from '../../lib/lesson-run-types'
 import type { UserProfileRow } from '../../lib/types'
 import { getFlowPointsToNextRank } from '../../lib/progression-utils'
+import type { TargetLanguageCode } from '../../lib/constants'
 import DashboardCard from './_components/dashboard-card'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
@@ -36,6 +37,7 @@ type DashboardProfileRow = UserProfileRow & {
 
 type DashboardLearningProfileRow = {
   language_code: string
+  target_region_slug?: string | null
   current_level: string | null
   speak_by_deadline_text: string | null
   target_outcome_text: string | null
@@ -201,17 +203,19 @@ function DashboardLoadingState({
   loadingMessage,
   onLogout,
   currentLanguage,
+  onChangeLanguage,
 }: {
   loadingMessage: string
   onLogout: () => void
   currentLanguage: string
+  onChangeLanguage: (lang: string) => void
 }) {
   return (
     <div
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-    <AppHeader onLogout={onLogout} currentLanguage={currentLanguage} onChangeLanguage={() => {}} />
+    <AppHeader onLogout={onLogout} currentLanguage={currentLanguage} onChangeLanguage={onChangeLanguage} />
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className={`w-full max-w-md ${CARD_CLASS} px-6 py-8 text-center`}>
           <p className="text-[#4a4a6a]" aria-live="polite">
@@ -228,17 +232,19 @@ function DashboardErrorState({
   message,
   onLogout,
   currentLanguage,
+  onChangeLanguage,
 }: {
   message: string
   onLogout: () => void
   currentLanguage: string
+  onChangeLanguage: (lang: string) => void
 }) {
   return (
     <div
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-     <AppHeader onLogout={onLogout} currentLanguage={currentLanguage} onChangeLanguage={() => {}} />
+     <AppHeader onLogout={onLogout} currentLanguage={currentLanguage} onChangeLanguage={onChangeLanguage} />
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className={`w-full max-w-md ${CARD_CLASS} px-6 py-8 text-center`}>
           <h2 className="text-lg font-semibold text-[#1a1a2e]">
@@ -279,6 +285,90 @@ export default function DashboardPage() {
   const [pageError, setPageError] = useState('')
   const [streakDays, setStreakDays] = useState(0)
   const [nowMs, setNowMs] = useState<number | null>(null)
+
+  async function handleChangeLanguage(lang: string) {
+    const nextLanguage = lang as TargetLanguageCode
+    if (!profile || !nextLanguage || nextLanguage === (profile.current_learning_language ?? 'en')) {
+      return
+    }
+
+    try {
+      const nextLearningProfile: DashboardLearningProfileRow = {
+        language_code: nextLanguage,
+        target_region_slug: null,
+        current_level: null,
+        speak_by_deadline_text: null,
+        target_outcome_text: null,
+        daily_study_minutes_goal: null,
+      }
+
+      const { error: updateProfileError } = await supabase
+        .from('user_profiles')
+        .update({
+          current_learning_language: nextLanguage,
+          target_language_code: nextLanguage,
+        })
+        .eq('id', profile.id)
+
+      if (updateProfileError) {
+        setPageError(USER_FACING_ERROR)
+        return
+      }
+
+      const { data: existingLearningProfile, error: fetchLearningError } = await supabase
+        .from('user_learning_profiles')
+        .select(
+          'language_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
+        )
+        .eq('user_id', profile.id)
+        .eq('language_code', nextLanguage)
+        .maybeSingle()
+
+      if (fetchLearningError) {
+        setPageError(USER_FACING_ERROR)
+        return
+      }
+
+      if (existingLearningProfile) {
+        nextLearningProfile.language_code = existingLearningProfile.language_code
+        nextLearningProfile.target_region_slug = existingLearningProfile.target_region_slug ?? null
+        nextLearningProfile.current_level = existingLearningProfile.current_level ?? null
+        nextLearningProfile.speak_by_deadline_text = existingLearningProfile.speak_by_deadline_text ?? null
+        nextLearningProfile.target_outcome_text = existingLearningProfile.target_outcome_text ?? null
+        nextLearningProfile.daily_study_minutes_goal = existingLearningProfile.daily_study_minutes_goal ?? null
+      } else {
+        const { error: createLearningError } = await supabase
+          .from('user_learning_profiles')
+          .upsert(
+            {
+              user_id: profile.id,
+              language_code: nextLanguage,
+            },
+            { onConflict: 'user_id,language_code' }
+          )
+
+        if (createLearningError) {
+          setPageError(USER_FACING_ERROR)
+          return
+        }
+      }
+
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_learning_language: nextLanguage,
+              target_language_code: nextLanguage,
+            }
+          : prev
+      )
+      setLearningProfile(nextLearningProfile)
+      router.refresh()
+    } catch (error) {
+      console.error(error)
+      setPageError(USER_FACING_ERROR)
+    }
+  }
 
   const copy = DASHBOARD_COPY_JA
 
@@ -342,10 +432,13 @@ export default function DashboardPage() {
         const { data: learningProfileRow, error: learningProfileError } = await supabase
           .from('user_learning_profiles')
           .select(
-            'language_code, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
+            'language_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
           )
           .eq('user_id', userId)
-          .eq('language_code', typedProfile.current_learning_language ?? typedProfile.target_language_code ?? 'en')
+          .eq(
+            'language_code',
+            typedProfile.current_learning_language ?? 'en'
+          )
           .maybeSingle()
 
         if (learningProfileError) {
@@ -419,7 +512,8 @@ export default function DashboardPage() {
       <DashboardLoadingState
         loadingMessage="読み込み中です..."
         onLogout={handleLogout}
-        currentLanguage={profile?.target_language_code ?? 'en'}
+        currentLanguage={profile?.current_learning_language ?? 'en'}
+        onChangeLanguage={handleChangeLanguage}
       />
     )
   }
@@ -429,7 +523,8 @@ export default function DashboardPage() {
       <DashboardErrorState
         message="データの読み込みに失敗しました"
         onLogout={handleLogout}
-        currentLanguage={profile?.target_language_code ?? 'en'}
+        currentLanguage={profile?.current_learning_language ?? 'en'}
+        onChangeLanguage={handleChangeLanguage}
       />
     )
   }
@@ -453,7 +548,7 @@ export default function DashboardPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={profile?.current_learning_language ?? 'en'} onChangeLanguage={handleChangeLanguage} />
       <main className="flex-1">
         <div className="mx-auto w-full max-w-6xl px-6 pt-8 pb-10 sm:px-8 sm:pt-10 lg:px-10">
         <section className="relative overflow-hidden rounded-[24px] border border-[#E8E4DF] bg-[linear-gradient(135deg,#FFF9EC_0%,#FFFFFF_55%,#FFFDF8_100%)] px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:px-7 sm:py-7">
