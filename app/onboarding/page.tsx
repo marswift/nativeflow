@@ -352,6 +352,34 @@ export default function OnboardingPage() {
         setFormError(getSaveErrorMessage(upsertError, copy.errors.saveFailed))
         return
       }
+
+      const { error: learningProfileError } = await supabase
+        .from('user_learning_profiles')
+        .upsert(
+          {
+            user_id: user.id,
+            language_code: targetLanguageCode,
+            target_region_slug: targetRegionSlug,
+            current_level: currentLevel as CurrentLevel,
+            speak_by_deadline_text: speakByDeadlineText.trim(),
+            target_outcome_text: targetOutcomeText.trim(),
+            daily_study_minutes_goal: studyPlan.recommendedDailyMinutes,
+          },
+          { onConflict: 'user_id,language_code' }
+        )
+
+      if (learningProfileError) {
+        console.warn('Onboarding learning profile upsert handled error', {
+          message: learningProfileError.message,
+          code: (learningProfileError as { code?: string }).code,
+          details: (learningProfileError as { details?: string }).details,
+          hint: (learningProfileError as { hint?: string }).hint,
+          full: learningProfileError,
+        })
+        setFormError(getSaveErrorMessage(learningProfileError, copy.errors.saveFailed))
+        return
+      }
+
       setLoading(false)
 
       const {
