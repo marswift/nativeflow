@@ -17,7 +17,7 @@ export type LoadLessonPageResult =
   | { data: { pageData: LessonPageData; userId: string } }
 
 const PROFILE_SELECT =
-  'id, ui_language_code, target_language_code, target_country_code, target_region_slug, current_level, target_outcome_text, speak_by_deadline_text, daily_study_minutes_goal'
+  'id, ui_language_code, target_language_code, current_learning_language, target_country_code, target_region_slug, current_level, target_outcome_text, speak_by_deadline_text, daily_study_minutes_goal'
 
 function toUserProfileRow(row: unknown): UserProfileRow {
   return row as UserProfileRow
