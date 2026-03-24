@@ -110,16 +110,16 @@ export function LessonOverviewCard({
   const rawSceneLabel =
     typeof overview.overviewSceneLabel === 'string' && overview.overviewSceneLabel.trim().length > 0
       ? overview.overviewSceneLabel
-      : '日常の短いやり取り'
+      : uiText.defaultSceneLabel
 
   // 要件2: 英語スラッグ形式の sceneLabel を自然な日本語にフォールバック
-  const sceneLabel = sanitizeSceneLabel(rawSceneLabel, '日常の短いやり取り')
+  const sceneLabel = sanitizeSceneLabel(rawSceneLabel, uiText.defaultSceneLabel)
 
   const sceneDescription =
     typeof overview.overviewSceneDescription === 'string' &&
     overview.overviewSceneDescription.trim().length > 0
       ? overview.overviewSceneDescription
-      : '今日は実践を通して、聞く・話す・入力する・会話で使う流れを体験します。'
+      : uiText.defaultSceneDescription
 
   const overviewCharacterName =
     typeof overview.overviewCharacterName === 'string' &&

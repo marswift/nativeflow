@@ -165,7 +165,6 @@ export type LessonCopy = {
     lessonStartDescription: string
     startButton: string
     stageSectionTitle: string
-    sceneSectionTitle: string
     guideText: string
     lessonTimeLabel: string
     practiceSummary: string
@@ -337,7 +336,6 @@ export const LESSON_COPY_JA: LessonCopy = {
       '聞く・リピート・AIへの返答・タイピング・会話まで、順番に進めながら定着させます。',
     startButton: 'レッスンを開始する',
     stageSectionTitle: 'レッスン構成',
-    sceneSectionTitle: '今日の会話シーン',
     guideText: '今日のレッスンをナビゲートします',
     lessonTimeLabel: 'このレッスンの目安時間',
     practiceSummary:
@@ -506,7 +504,6 @@ export const LESSON_COPY_EN: LessonCopy = {
       'You will build it step by step through listening, repeating, answering the AI, typing, and conversation.',
     startButton: 'Start lesson',
     stageSectionTitle: 'Lesson structure',
-    sceneSectionTitle: 'Today’s conversation scene',
     guideText: 'We will guide you through today’s lesson',
     lessonTimeLabel: 'Estimated time',
     practiceSummary:
