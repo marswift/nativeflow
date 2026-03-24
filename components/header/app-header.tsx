@@ -25,14 +25,17 @@ export default function AppHeader({
         </Link>
 
         <div className="flex items-center gap-5">
-          <select
-            value={currentLanguage}
-            onChange={(e) => onChangeLanguage(e.target.value)}
-            className="cursor-pointer rounded-md border border-[#ede9e2] bg-white px-2 py-1 text-sm"
-          >
-            <option value="en">英語</option>
-            <option value="ko">韓国語</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-[#5c5c5c]">学習中の言語</span>
+            <select
+              value={currentLanguage}
+              onChange={(e) => onChangeLanguage(e.target.value)}
+              className="cursor-pointer rounded-md border border-[#ede9e2] bg-white px-2 py-1 text-sm"
+            >
+              <option value="en">英語</option>
+              <option value="ko">韓国語</option>
+            </select>
+          </div>
 
           <Link
             href="/dashboard"
