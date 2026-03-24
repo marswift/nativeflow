@@ -31,7 +31,7 @@ function BillingRow({ label, value }: { label: string; value: string }) {
 }
 
 type BillingProfile = Pick<UserProfileRow,
-  'planned_plan_code' | 'subscription_status' | 'current_period_end' | 'cancel_at_period_end'
+  'planned_plan_code' | 'subscription_status' | 'current_period_end' | 'cancel_at_period_end' | 'target_language_code'
 > & { next_plan_code?: string | null }
 
 function formatPlanLabel(plan: BillingProfile['planned_plan_code']): string {
@@ -183,7 +183,7 @@ export default function BillingSettingsPage() {
         
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
-          .select('planned_plan_code, subscription_status, current_period_end, cancel_at_period_end, next_plan_code')
+          .select('planned_plan_code, subscription_status, current_period_end, cancel_at_period_end, next_plan_code, target_language_code')
           .eq('id', user.id)
           .maybeSingle()
   
@@ -223,7 +223,7 @@ export default function BillingSettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -242,7 +242,7 @@ export default function BillingSettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-sm text-red-600">{pageError}</p>
@@ -268,7 +268,7 @@ export default function BillingSettingsPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
