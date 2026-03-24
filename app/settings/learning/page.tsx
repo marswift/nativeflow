@@ -29,6 +29,7 @@ export default function LearningSettingsPage() {
   const [error, setError] = useState('')
   const [infoMessage, setInfoMessage] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
+  const [uiLanguageCode, setUiLanguageCode] = useState('')
   const [targetLanguageCode, setTargetLanguageCode] = useState('')
   const [targetCountryCode, setTargetCountryCode] = useState('')
   const [targetRegionSlug, setTargetRegionSlug] = useState('')
@@ -42,6 +43,7 @@ export default function LearningSettingsPage() {
 
     function applyProfile(profile: PartialUserProfileRow & { id: string }) {
       setUserId(profile.id)
+      if (profile.ui_language_code != null) setUiLanguageCode(profile.ui_language_code)
       if (profile.target_language_code != null) setTargetLanguageCode(profile.target_language_code)
       if (profile.target_country_code != null) setTargetCountryCode(profile.target_country_code)
       if (profile.target_region_slug != null) setTargetRegionSlug(profile.target_region_slug)
@@ -61,7 +63,7 @@ export default function LearningSettingsPage() {
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
           .select(
-            'id, target_language_code, target_country_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
+            'id, ui_language_code, target_language_code, target_country_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
           )
           .eq('id', session.user.id)
           .maybeSingle()
@@ -108,6 +110,7 @@ export default function LearningSettingsPage() {
     setSubmitting(true)
     try {
       const payload = {
+        ui_language_code: uiLanguageCode || null,
         target_language_code: targetLanguage,
         target_country_code: targetCountry,
         target_region_slug: targetRegionSlug.trim() || null,
@@ -161,6 +164,23 @@ export default function LearningSettingsPage() {
           )}
 
           <div>
+            <label htmlFor="ui_language_code" className="block text-sm font-medium text-[#2c2c2c]">
+              表示言語
+            </label>
+            <select
+              id="ui_language_code"
+              value={uiLanguageCode}
+              onChange={(e) => setUiLanguageCode(e.target.value)}
+              className={SELECT_CLASS}
+              disabled={submitting}
+            >
+              <option value="">選択してください</option>
+              <option value="ja">日本語</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
+          <div className="mt-4">
             <label htmlFor="target_language_code" className="block text-sm font-medium text-[#2c2c2c]">
               {copy.labels.targetLanguage}
             </label>
