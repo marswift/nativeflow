@@ -200,7 +200,7 @@ function DashboardLoadingState({
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={onLogout} />
+      <AppHeader onLogout={onLogout} currentLanguage="en" onChangeLanguage={() => {}} />
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className={`w-full max-w-md ${CARD_CLASS} px-6 py-8 text-center`}>
           <p className="text-[#4a4a6a]" aria-live="polite">
@@ -225,7 +225,7 @@ function DashboardErrorState({
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={onLogout} />
+      <AppHeader onLogout={onLogout} currentLanguage="en" onChangeLanguage={() => {}} />
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className={`w-full max-w-md ${CARD_CLASS} px-6 py-8 text-center`}>
           <h2 className="text-lg font-semibold text-[#1a1a2e]">
@@ -417,7 +417,7 @@ export default function DashboardPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} />
+      <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
       <main className="flex-1">
         <div className="mx-auto w-full max-w-6xl px-6 pt-8 pb-10 sm:px-8 sm:pt-10 lg:px-10">
         <section className="relative overflow-hidden rounded-[24px] border border-[#E8E4DF] bg-[linear-gradient(135deg,#FFF9EC_0%,#FFFFFF_55%,#FFFDF8_100%)] px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:px-7 sm:py-7">
