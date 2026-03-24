@@ -44,3 +44,21 @@ textarea:focus {
   outline: none !important;
   box-shadow: none !important;
 }
+
+button,
+a {
+  cursor: pointer;
+}
+
+/* クリック可能UIも統一 */
+[data-clickable='true'] {
+  cursor: pointer;
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button:active {
+  transform: scale(0.98);
+}

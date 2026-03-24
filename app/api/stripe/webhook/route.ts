@@ -1,294 +1,320 @@
-import type { NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
-import type Stripe from 'stripe'
-import { stripe, normalizePlanCode, type BillingPlanCode } from '@/lib/stripe'
-import { supabaseServer } from '@/lib/supabase-server'
+import { NextRequest, NextResponse } from 'next/server'
+import Stripe from 'stripe'
+import { createClient } from '@supabase/supabase-js'
+import { getStripe } from '@/lib/stripe'
 
-/** Webhook secret; must be set in env. Not exported from lib/stripe to keep route-scoped. */
-function getWebhookSecret(): string {
-  const v = process.env.STRIPE_WEBHOOK_SECRET
-  const trimmed = typeof v === 'string' ? v.trim() : ''
-  if (!trimmed) throw new Error('STRIPE_WEBHOOK_SECRET is not set')
-  return trimmed
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // ← 必須
+)
 
-/** Metadata keys aligned with app/api/stripe/checkout/route.ts (session + subscription_data.metadata). */
-const META_USER_ID = 'user_id'
-const META_PLAN = 'plan'
+async function resolveUserIdForSubscription(
+  subscription: Stripe.Subscription
+): Promise<string | null> {
+  const metadataUserId = subscription.metadata?.user_id?.trim()
+  if (metadataUserId) return metadataUserId
 
-function getMetadataUserId(meta: Record<string, string> | null | undefined): string | null {
-  if (!meta || typeof meta[META_USER_ID] !== 'string') return null
-  const id = (meta[META_USER_ID] as string).trim()
-  return id.length > 0 ? id : null
-}
+  const subscriptionId =
+    typeof subscription.id === 'string' ? subscription.id.trim() : ''
+  if (!subscriptionId) return null
 
-function getMetadataPlan(meta: Record<string, string> | null | undefined): BillingPlanCode | null {
-  if (!meta || typeof meta[META_PLAN] !== 'string') return null
-  return normalizePlanCode(meta[META_PLAN])
-}
+  const { data: profileRow, error } = await supabase
+    .from('user_profiles')
+    .select('id')
+    .eq('stripe_subscription_id', subscriptionId)
+    .maybeSingle()
 
-/** Returns { userId, plan } from metadata; plan only when monthly/yearly. */
-function getUserIdAndPlanFromMetadata(meta: Record<string, string> | null | undefined): {
-  userId: string | null
-  plan: BillingPlanCode | null
-} {
-  return {
-    userId: getMetadataUserId(meta),
-    plan: getMetadataPlan(meta),
-  }
-}
-
-/** Extract Stripe customer id from session/subscription customer field (string or expanded object). */
-function getCustomerIdFromUnknownCustomer(
-  customer: string | Stripe.Customer | Stripe.DeletedCustomer | null | undefined
-): string | null {
-  if (customer == null) return null
-  if (typeof customer === 'string') return customer.trim() || null
-  if (typeof customer === 'object' && customer !== null && 'id' in customer && typeof (customer as { id?: string }).id === 'string') {
-    return (customer as { id: string }).id
-  }
-  return null
-}
-
-/** Unix seconds → ISO string for timestamptz. Returns null if value missing or invalid. */
-function toIsoFromUnixSeconds(value: number | null | undefined): string | null {
-  if (value == null || typeof value !== 'number' || !Number.isFinite(value)) return null
-  try {
-    return new Date(value * 1000).toISOString()
-  } catch {
+  if (error) {
+    console.error('Failed to resolve user by stripe_subscription_id', {
+      subscriptionId,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    })
     return null
   }
-}
 
-function logMissingUserId(eventType: string, source: string): void {
-  console.warn('Stripe webhook user_id missing', {
-    eventType,
-    source,
-    reason: 'user_id missing in metadata',
-  })
-}
-
-function logSyncFailure(eventType: string, userId: string, error: unknown): void {
-  console.error('Stripe webhook sync failed', {
-    eventType,
-    userId,
-    error,
-  })
-}
-
-/** Billing fields written to user_profiles; all optional so we only set what we have. */
-type BillingProfilePatch = {
-  planned_plan_code?: string | null
-  stripe_customer_id?: string | null
-  stripe_subscription_id?: string | null
-  subscription_status?: string | null
-  current_period_end?: string | null
-  cancel_at_period_end?: boolean | null
-}
-
-/** Build patch from Stripe subscription and optional plan. planned_plan_code only set when plan is monthly/yearly. */
-function buildSubscriptionProfilePatch(
-  subscription: Stripe.Subscription,
-  plan: BillingPlanCode | null
-): BillingProfilePatch {
-  const customerId = getCustomerIdFromUnknownCustomer(subscription.customer)
-  const status =
-    subscription.status != null && String(subscription.status).trim().length > 0
-      ? String(subscription.status)
-      : null
-      const trialEnd = (subscription as { trial_end?: number }).trial_end
-      const periodEnd = (subscription as { current_period_end?: number }).current_period_end
-      
-      let effectivePeriodEnd: number | null | undefined
-      
-      if (subscription.status === 'trialing') {
-        effectivePeriodEnd = trialEnd ?? periodEnd
-      } else {
-        effectivePeriodEnd = periodEnd ?? trialEnd
-      }
-      const iso = toIsoFromUnixSeconds(effectivePeriodEnd)
-
-      const patch: BillingProfilePatch = {
-        stripe_customer_id: customerId ?? undefined,
-        stripe_subscription_id: subscription.id ?? undefined,
-        subscription_status: status ?? undefined,
-        current_period_end: iso ?? undefined,
-        cancel_at_period_end:
-          typeof subscription.cancel_at_period_end === 'boolean'
-            ? subscription.cancel_at_period_end
-            : undefined,
-      }
-  if (plan === 'monthly' || plan === 'yearly') {
-    patch.planned_plan_code = plan
-  }
-  return patch
-}
-
-/** Idempotent: update user_profiles billing columns. Only includes keys that are defined on patch. */
-async function syncUserProfileBilling(
-  userId: string,
-  patch: BillingProfilePatch
-): Promise<{ error: unknown } | null> {
-  const payload: Record<string, unknown> = {}
-  if (patch.planned_plan_code !== undefined) payload.planned_plan_code = patch.planned_plan_code
-  if (patch.stripe_customer_id !== undefined) payload.stripe_customer_id = patch.stripe_customer_id
-  if (patch.stripe_subscription_id !== undefined)
-    payload.stripe_subscription_id = patch.stripe_subscription_id
-  if (patch.subscription_status !== undefined) payload.subscription_status = patch.subscription_status
-  if (patch.current_period_end !== undefined) payload.current_period_end = patch.current_period_end
-  if (patch.cancel_at_period_end !== undefined)
-    payload.cancel_at_period_end = patch.cancel_at_period_end
-  if (Object.keys(payload).length === 0) return null
-  const { error } = await supabaseServer
-    .from('user_profiles')
-    .update(payload)
-    .eq('id', userId)
-  if (error) return { error }
-  return null
+  return typeof profileRow?.id === 'string' ? profileRow.id : null
 }
 
 export async function POST(req: NextRequest) {
-  let body: string
-  try {
-    body = await req.text()
-  } catch {
-    return NextResponse.json({ message: 'Invalid request body' }, { status: 400 })
-  }
+  const stripe = getStripe()
 
-  const signature = req.headers.get('stripe-signature')
-  if (!signature?.trim()) {
-    return NextResponse.json({ message: 'Missing stripe-signature' }, { status: 400 })
-  }
-
-  let secret: string
-  try {
-    secret = getWebhookSecret()
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Webhook secret not configured'
-    return NextResponse.json({ message: msg }, { status: 500 })
-  }
+  const body = await req.text()
+  const sig = req.headers.get('stripe-signature')!
 
   let event: Stripe.Event
+
   try {
-    event = stripe.webhooks.constructEvent(body, signature, secret)
+    event = stripe.webhooks.constructEvent(
+      body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    )
   } catch (err) {
-    return NextResponse.json({ message: 'Invalid signature' }, { status: 400 })
+    console.error('Webhook signature error', err)
+    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
-  const type = event.type
-
   try {
-    if (type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session
-      const sessionMeta = session.metadata as Record<string, string> | null
-      const sessionMetaInfo = getUserIdAndPlanFromMetadata(sessionMeta)
-      let userId = sessionMetaInfo.userId
-      let plan = sessionMetaInfo.plan
+    console.log('WEBHOOK EVENT TYPE:', event.type)
 
-      let subscription: Stripe.Subscription | null = null
-      const subId =
-        typeof session.subscription === 'string'
-          ? session.subscription
-          : (session.subscription as Stripe.Subscription)?.id ?? null
-      if (subId) {
-        try {
-          subscription = await stripe.subscriptions.retrieve(subId, {
-            expand: ['default_payment_method']
-          })
-          if (userId == null || plan == null) {
-            const subMeta = subscription.metadata as Record<string, string> | null
-            const subMetaInfo = getUserIdAndPlanFromMetadata(subMeta)
-            if (userId == null) userId = subMetaInfo.userId
-            if (plan == null) plan = subMetaInfo.plan
-          }
-        } catch (retrieveErr) {
-          console.error('Stripe webhook subscription retrieve failed', {
-            eventType: type,
-            subId,
-            userId,
-            plan,
-            error: retrieveErr,
-          })
-          subscription = null
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session
+
+        const userId =
+          typeof session.metadata?.user_id === 'string'
+            ? session.metadata.user_id.trim()
+            : ''
+
+        const subscriptionId =
+          typeof session.subscription === 'string'
+            ? session.subscription.trim()
+            : null
+
+        const customerId =
+          typeof session.customer === 'string'
+            ? session.customer.trim()
+            : null
+
+        console.log('WEBHOOK CHECKOUT SESSION:', {
+          sessionId: session.id,
+          userId,
+          clientReferenceId: session.client_reference_id,
+          customer: session.customer,
+          subscriptionId,
+          metadata: session.metadata,
+        })
+
+        if (!userId) {
+          throw new Error('checkout.session.completed missing userId')
         }
-      }
 
-      const sessionCustomerId = getCustomerIdFromUnknownCustomer(session.customer)
-      if (userId == null) {
-        logMissingUserId(type, 'checkout.session.completed session/subscription metadata')
-        return NextResponse.json({ received: true })
-      }
+        let subscriptionStatus: string | null = 'trialing'
+        let subscriptionCurrentPeriodEnd: string | null = null
+        let subscriptionCancelAtPeriodEnd = false
 
-      const planForPatch = plan === 'monthly' || plan === 'yearly' ? plan : null
-      let patch: BillingProfilePatch
-      if (subscription) {
-        patch = buildSubscriptionProfilePatch(subscription, planForPatch)
-        if ((patch.stripe_customer_id == null || patch.stripe_customer_id === '') && sessionCustomerId != null) {
-          patch.stripe_customer_id = sessionCustomerId
+        if (subscriptionId) {
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId)
+
+          console.log('RETRIEVED SUBSCRIPTION FROM STRIPE:', {
+            id: subscription.id,
+            status: subscription.status,
+            current_period_end: subscription.items?.data[0]?.current_period_end ?? null,
+            cancel_at_period_end: subscription.cancel_at_period_end,
+            trial_end: subscription.trial_end,
+            cancel_at: subscription.cancel_at,
+            canceled_at: subscription.canceled_at,
+            metadata: subscription.metadata,
+          })
+
+          subscriptionStatus = subscription.status
+          const periodEndTs = subscription.trial_end ?? subscription.items.data[0]?.current_period_end ?? null
+          subscriptionCurrentPeriodEnd =
+            typeof periodEndTs === 'number'
+              ? new Date(periodEndTs * 1000).toISOString()
+              : null
+          subscriptionCancelAtPeriodEnd =
+            subscription.cancel_at_period_end === true
         }
-      } else {
-        patch = {}
-        if (sessionCustomerId != null) patch.stripe_customer_id = sessionCustomerId
-        if (planForPatch != null) patch.planned_plan_code = planForPatch
+
+        console.log('ABOUT TO UPDATE USER PROFILE FROM CHECKOUT SESSION:', {
+          userId,
+          customerId,
+          subscriptionId,
+          subscriptionStatus,
+          subscriptionCurrentPeriodEnd,
+          subscriptionCancelAtPeriodEnd,
+        })
+
+        const { data: updatedRows, error: updateError } = await supabase
+          .from('user_profiles')
+          .update({
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscriptionId,
+            subscription_status: subscriptionStatus,
+            current_period_end: subscriptionCurrentPeriodEnd,
+            cancel_at_period_end: subscriptionCancelAtPeriodEnd,
+          })
+          .eq('id', userId)
+          .select('id, stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end')
+
+        if (updateError) {
+          throw new Error(
+            `FAILED TO UPDATE USER PROFILE FROM CHECKOUT SESSION: ${updateError.message}`
+          )
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            `No user_profiles row updated from checkout.session.completed. userId=${userId}`
+          )
+        }
+
+        console.log('UPDATED USER PROFILE FROM CHECKOUT SESSION:', updatedRows)
+        break
       }
 
-      const syncErr = await syncUserProfileBilling(userId, patch)
-      if (syncErr) {
-        logSyncFailure(type, userId, syncErr.error)
-        return NextResponse.json({ message: 'Sync failed' }, { status: 500 })
-      }
-      return NextResponse.json({ received: true })
-    }
+      case 'customer.subscription.created':
+      case 'customer.subscription.updated': {
+        const sub = event.data.object as Stripe.Subscription
 
-    if (type === 'customer.subscription.created' || type === 'customer.subscription.updated') {
-      const subscription = event.data.object as Stripe.Subscription
-      const meta = subscription.metadata as Record<string, string> | null
-      const { userId, plan } = getUserIdAndPlanFromMetadata(meta)
-      if (userId == null) {
-        logMissingUserId(type, 'customer.subscription metadata')
-        return NextResponse.json({ received: true })
-      }
-      const patch = buildSubscriptionProfilePatch(subscription, plan ?? null)
-      const syncErr = await syncUserProfileBilling(userId, patch)
-      if (syncErr) {
-        logSyncFailure(type, userId, syncErr.error)
-        return NextResponse.json({ message: 'Sync failed' }, { status: 500 })
-      }
-      return NextResponse.json({ received: true })
-    }
+        const userId = await resolveUserIdForSubscription(sub)
+        const customerId =
+          typeof sub.customer === 'string' ? sub.customer.trim() : null
 
-    if (type === 'customer.subscription.deleted') {
-      const subscription = event.data.object as Stripe.Subscription
-      const meta = subscription.metadata as Record<string, string> | null
-      const { userId, plan } = getUserIdAndPlanFromMetadata(meta)
-      if (userId == null) {
-        logMissingUserId(type, 'customer.subscription metadata')
-        return NextResponse.json({ received: true })
+        console.log('WEBHOOK SUBSCRIPTION EVENT:', {
+          subscriptionId: sub.id,
+          status: sub.status,
+          userId,
+          customer: sub.customer,
+          metadata: sub.metadata,
+          current_period_end: sub.items?.data[0]?.current_period_end ?? null,
+          cancel_at_period_end: sub.cancel_at_period_end,
+        })
+
+        if (!userId) {
+          throw new Error(
+            `Could not resolve user for subscription event. type=${event.type}, subscriptionId=${sub.id}`
+          )
+        }
+
+        const planCode = sub.metadata?.plan === 'yearly' ? 'yearly' : 
+                 sub.metadata?.plan === 'monthly' ? 'monthly' : null
+
+        const { data: updatedRows, error: updateError } = await supabase
+          .from('user_profiles')
+          .update({
+            stripe_customer_id: customerId,
+            stripe_subscription_id: sub.id,
+            subscription_status: sub.status,
+            current_period_end: (() => {
+              const ts = sub.trial_end ?? sub.items.data[0]?.current_period_end ?? null
+              return typeof ts === 'number' ? new Date(ts * 1000).toISOString() : null
+            })(),
+            cancel_at_period_end: sub.cancel_at_period_end === true,
+            ...(planCode !== null && { planned_plan_code: planCode }),
+          })
+          .eq('id', userId)
+          .select(
+            'id, stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end'
+          )
+
+        if (updateError) {
+          throw new Error(
+            `FAILED TO UPDATE USER PROFILE FROM SUBSCRIPTION EVENT: ${updateError.message}`
+          )
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            `No user_profiles row updated from subscription event. userId=${userId}, subscriptionId=${sub.id}`
+          )
+        }
+
+        console.log('UPDATED USER PROFILE FROM SUBSCRIPTION EVENT:', updatedRows)
+        break
       }
-      const customerId = getCustomerIdFromUnknownCustomer(subscription.customer)
-      const periodEnd = (subscription as { current_period_end?: number }).current_period_end
-      const patch: BillingProfilePatch = {
-        subscription_status: subscription.status ?? 'canceled',
-        cancel_at_period_end: false,
-        current_period_end: toIsoFromUnixSeconds(periodEnd) ?? undefined,
-        stripe_customer_id: customerId ?? undefined,
-        stripe_subscription_id: subscription.id ?? undefined,
+
+      case 'customer.subscription.deleted': {
+        const sub = event.data.object as Stripe.Subscription
+
+        const userId = await resolveUserIdForSubscription(sub)
+        const customerId =
+          typeof sub.customer === 'string' ? sub.customer.trim() : null
+
+        console.log('WEBHOOK SUBSCRIPTION DELETED:', {
+          subscriptionId: sub.id,
+          status: sub.status,
+          userId,
+          customer: sub.customer,
+          metadata: sub.metadata,
+        })
+
+        if (!userId) {
+          throw new Error(
+            `Could not resolve user for subscription delete event. subscriptionId=${sub.id}`
+          )
+        }
+
+        const { data: updatedRows, error: updateError } = await supabase
+          .from('user_profiles')
+          .update({
+            stripe_customer_id: customerId,
+            stripe_subscription_id: sub.id,
+            subscription_status: 'canceled',
+            cancel_at_period_end: true,
+          })
+          .eq('id', userId)
+          .select(
+            'id, stripe_customer_id, stripe_subscription_id, subscription_status, cancel_at_period_end'
+          )
+
+        if (updateError) {
+          throw new Error(
+            `FAILED TO UPDATE USER PROFILE FROM SUBSCRIPTION DELETE: ${updateError.message}`
+          )
+        }
+
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error(
+            `No user_profiles row updated from subscription delete. userId=${userId}, subscriptionId=${sub.id}`
+          )
+        }
+
+        console.log('UPDATED USER PROFILE FROM SUBSCRIPTION DELETE:', updatedRows)
+        break
       }
-      if (plan === 'monthly' || plan === 'yearly') {
-        patch.planned_plan_code = plan
+
+      case 'subscription_schedule.updated': {
+        const schedule = event.data.object as Stripe.SubscriptionSchedule
+      
+        const subscription = schedule.subscription
+        if (typeof subscription !== 'string') break
+      
+        const { data: profileRow } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('stripe_subscription_id', subscription)
+          .maybeSingle()
+      
+        if (!profileRow?.id) break
+      
+        const currentPhaseEnd = schedule.current_phase?.end_date
+        const phases = schedule.phases ?? []
+        const nextPhase = phases.find((p) => 
+          typeof currentPhaseEnd === 'number' && p.start_date === currentPhaseEnd
+        )
+      
+        if (!nextPhase) break
+      
+        const nextPriceId = nextPhase.items?.[0]?.price
+        const monthlyPriceId = process.env.STRIPE_MONTHLY_PRICE_ID
+        const yearlyPriceId = process.env.STRIPE_YEARLY_PRICE_ID
+      
+        const nextPlanCode =
+          nextPriceId === yearlyPriceId ? 'yearly' :
+          nextPriceId === monthlyPriceId ? 'monthly' : null
+      
+        if (!nextPlanCode) break
+      
+        await supabase
+          .from('user_profiles')
+          .update({ next_plan_code: nextPlanCode })
+          .eq('id', profileRow.id)
+      
+        break
       }
-      const syncErr = await syncUserProfileBilling(userId, patch)
-      if (syncErr) {
-        logSyncFailure(type, userId, syncErr.error)
-        return NextResponse.json({ message: 'Sync failed' }, { status: 500 })
-      }
-      return NextResponse.json({ received: true })
+
+      default:
+        break
     }
 
     return NextResponse.json({ received: true })
   } catch (err) {
-    console.error('Webhook handler error', { eventType: type, error: err })
-    const message = err instanceof Error ? err.message : 'Webhook processing failed'
-    return NextResponse.json({ message }, { status: 500 })
+    console.error('Webhook handler error', err)
+    return NextResponse.json({ error: 'Webhook error' }, { status: 500 })
   }
 }

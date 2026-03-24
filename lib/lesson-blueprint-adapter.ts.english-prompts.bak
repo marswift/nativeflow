@@ -1,0 +1,125 @@
+/**
+ * Temporary adapter: converts the Hybrid-C lesson blueprint into a draft shape
+ * that the current mock lesson system can consume.
+ * Pure logic only; no React, Supabase, or OpenAI.
+ */
+
+import type { LessonBlueprint, LessonBlueprintBlock, LessonBlueprintBlockType } from './lesson-blueprint-service'
+
+export type LessonBlueprintDraftItem = {
+  prompt: string
+  answer: string | null
+}
+
+export type LessonBlueprintDraftBlock = {
+  type: LessonBlueprintBlockType
+  title: string
+  description: string
+  estimatedMinutes: number
+  items: LessonBlueprintDraftItem[]
+}
+
+export type LessonBlueprintDraft = {
+  theme: string
+  blocks: LessonBlueprintDraftBlock[]
+}
+
+function normalizeGoal(goal: string): string {
+  return goal || 'このトピック'
+}
+
+function createDraftItem(
+  prompt: string,
+  answer: string | null
+): LessonBlueprintDraftItem {
+  return { prompt, answer }
+}
+
+function mapBlockToDraft(block: LessonBlueprintBlock): LessonBlueprintDraftBlock {
+  const goal = normalizeGoal(block.goal)
+
+  // goalはすでに「起床」などの純粋なシーンなのでそのまま使う
+  const scene = goal
+
+  switch (block.type) {
+    case 'conversation':
+      return {
+        type: 'conversation',
+        title: block.title,
+        description: scene,
+        estimatedMinutes: 5,
+        items: [
+          createDraftItem(
+            `${scene}の英語を聞いて理解してみましょう`,
+            null
+          ),
+        ],
+      }
+
+    case 'typing':
+      return {
+        type: 'typing',
+        title: block.title,
+        description: scene,
+        estimatedMinutes: 4,
+        items: [
+          createDraftItem(
+            `${scene}で使う表現を入力してみましょう`,
+            `I wake up at 7 a.m.`
+          ),
+        ],
+      }
+
+    case 'review':
+      return {
+        type: 'review',
+        title: block.title,
+        description: scene,
+        estimatedMinutes: 3,
+        items: [
+          createDraftItem(
+            `${scene}の表現を復習しましょう`,
+            null
+          ),
+        ],
+      }
+
+    case 'ai_conversation':
+      return {
+        type: 'ai_conversation',
+        title: block.title,
+        description: scene,
+        estimatedMinutes: 6,
+        items: [
+          createDraftItem(
+            `${scene}について英語で話してみましょう`,
+            null
+          ),
+        ],
+      }
+
+    default: {
+      const _: never = block.type
+      return {
+        type: block.type,
+        title: block.title,
+        description: scene,
+        estimatedMinutes: 3,
+        items: [createDraftItem(scene, null)],
+      }
+    }
+  }
+}
+
+/**
+ * Builds a lesson draft from a Hybrid-C blueprint.
+ * Preserves block order; one draft block per blueprint block.
+ */
+export function createLessonBlueprintDraft(
+  blueprint: LessonBlueprint
+): LessonBlueprintDraft {
+  return {
+    theme: blueprint.theme,
+    blocks: blueprint.blocks.map(mapBlockToDraft),
+  }
+}

@@ -3,8 +3,8 @@
  * DB access only; no business logic. Returns typed rows only; no mapping to history types.
  */
 import type { PostgrestError } from '@supabase/supabase-js'
-import { supabase } from './supabase'
 import type { LessonRunRow, DailyStatRow } from './lesson-run-types'
+import { supabase } from './supabase'
 
 export type HistoryRepositoryResult<T> = {
   data: T[] | null

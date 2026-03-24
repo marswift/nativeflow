@@ -16,7 +16,7 @@ export function SettingsPageHeader({ onLogout }: { onLogout: () => void }) {
           aria-label="レッスンホーム"
         >
           <Image
-            src="/header_logo.svg"
+            src="/images/branding/header_logo.svg"
             alt="NativeFlow"
             width={200}
             height={48}
@@ -28,9 +28,13 @@ export function SettingsPageHeader({ onLogout }: { onLogout: () => void }) {
           <Link href="/dashboard" className={HEADER_LINK_CLASS}>
             レッスンホーム
           </Link>
+          <Link href="/settings/billing" className={HEADER_LINK_CLASS}>
+            お支払い・契約管理
+          </Link>
           <button
             type="button"
             onClick={onLogout}
+            aria-label="ログアウトする"
             className={HEADER_LINK_CLASS + ' cursor-pointer border-0 bg-transparent'}
           >
             ログアウト

@@ -75,6 +75,7 @@ export type BuildAITurnFromCurrentStepInput = {
 }
 
 export type BuildAITurnFromCurrentStepResult = {
+  state: LessonRuntimeControllerState
   turn: AIConversationTurnResult | null
 }
 
@@ -160,7 +161,11 @@ export function buildAITurnFromCurrentStep(
     promptAssemblyResult: input.promptAssemblyResult,
     learnerUtterance: input.learnerUtterance,
   })
-  if (promptResult === null) return { turn: null }
+
+  if (promptResult === null) {
+    return { state: input.state, turn: null }
+  }
+
   const turn = buildAIConversationTurnResult({
     stepPromptResult: promptResult,
     assistantText: input.assistantText,
@@ -169,15 +174,21 @@ export function buildAITurnFromCurrentStep(
     learnerUtterance: input.learnerUtterance,
     expectedAnswer: input.expectedAnswer,
   })
+
   const stepId = input.state.currentStep?.id
-  if (stepId != null) {
-    input.state.steps = setLessonStepAssistantText({
-      steps: input.state.steps,
-      stepId,
-      assistantText: input.assistantText,
-    })
-  }
-  return { turn }
+  const nextState =
+    stepId == null
+      ? input.state
+      : {
+          ...input.state,
+          steps: setLessonStepAssistantText({
+            steps: input.state.steps,
+            stepId,
+            assistantText: input.assistantText,
+          }),
+        }
+
+  return { state: nextState, turn }
 }
 
 export function completeLessonRuntime(

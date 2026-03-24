@@ -1,35 +1,104 @@
 'use client'
 
-import Link from 'next/link'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 import { isFinalItem, type LessonProgressState } from '../../lib/lesson-progress'
 import {
   getInitialRunState,
   checkTypingAnswer,
   getStats,
   getCompletionSummary,
+  createLessonRuntimeStateFromSession,
+  getCurrentLessonRuntimeBlock,
+  submitLessonStageAnswer,
+  advanceLessonStage,
+  canAdvanceLessonStage,
+  type LessonRuntimeEngineState,
+  type LessonStageId,
 } from '../../lib/lesson-runtime'
-import { LESSON_COPY_JA, type LessonCopy } from '../../lib/lesson-copy'
+import { getLessonCopy, type LessonCopy } from '../../lib/lesson-copy'
 import { startLessonRun } from '../../lib/lesson-run-service'
-import { incrementDailyStats } from '../../lib/daily-stats-service'
 import { loadLessonPage } from '../../lib/lesson-page-loader'
 import { runLessonCompletionEffect } from '../../lib/lesson-run-effects'
 import { executeNextStep } from '../../lib/lesson-run-next-step'
 import type { LessonPageData } from '../../lib/lesson-page-data'
-import { CURRENT_LEVEL_OPTIONS, type CurrentLevel } from '../../lib/constants'
+import {
+  CURRENT_LEVEL_OPTIONS,
+  TARGET_LANGUAGE_FIXED,
+  TARGET_LANGUAGE_OPTIONS,
+  type CurrentLevel,
+} from '../../lib/constants'
 import { LessonDebugPanels } from './_components/lesson-debug-panels'
 import { LessonOverviewCard } from './_components/lesson-overview-card'
-import { LessonBlockList } from './_components/lesson-block-list'
 import { LessonActiveCard } from './_components/lesson-active-card'
 import { LessonCompletionCard } from './_components/lesson-completion-card'
+import { getUserFlowPoints, awardLessonFlowPoints } from '../../lib/flow-point-service'
+import AppHeader from '@/components/header/app-header'
+import AppFooter from '@/components/footer/app-footer'
+import { getUserRankProgress } from '../../lib/rank-service'
+import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
+
+
 
 const SHOW_DEBUG_PANELS = process.env.NEXT_PUBLIC_LESSON_DEBUG === 'true'
+const LESSON_RUNTIME_STORAGE_KEY = 'nativeflow:lesson-runtime-state'
 
 const PAGE_SHELL_CLASS = 'min-h-screen flex flex-col bg-[#f7f4ef]'
-const CONTAINER_CLASS = 'mx-auto max-w-md px-6 py-10 sm:py-12'
+const CONTAINER_CLASS = 'mx-auto w-full max-w-[1040px] px-6 py-10 sm:px-8 sm:py-12'
 const CARD_CLASS = 'rounded-2xl border border-[#ede9e2] bg-white px-6 py-6 shadow-sm sm:px-8 sm:py-7'
+
+type PersistedLessonState = {
+  userId: string
+  lessonId: string
+  started: boolean
+  progress: LessonProgressState
+  inputValue: string
+  correctTypingCount: number
+  runtimeState: LessonRuntimeEngineState | null
+  lessonRunId: string | null
+  earnedFlowPoints: number
+  hasFinalizedLessonRun: boolean
+  awardedStageKeys: string[]
+}
+
+function getLessonStorageLessonId(lesson: LessonPageData['lesson'] | null): string {
+  if (!lesson) return ''
+  return lesson.sessionId
+}
+
+function readPersistedLessonState(): PersistedLessonState | null {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const raw = window.sessionStorage.getItem(LESSON_RUNTIME_STORAGE_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as PersistedLessonState
+  } catch (error) {
+    console.error('Failed to read persisted lesson state', error)
+    return null
+  }
+}
+
+function clearPersistedLessonState() {
+  if (typeof window === 'undefined') return
+  window.sessionStorage.removeItem(LESSON_RUNTIME_STORAGE_KEY)
+}
+
+function writePersistedLessonState(value: PersistedLessonState) {
+  if (typeof window === 'undefined') return
+  window.sessionStorage.setItem(LESSON_RUNTIME_STORAGE_KEY, JSON.stringify(value))
+}
 
 function getLevelLabel(level: CurrentLevel): string {
   return CURRENT_LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level
@@ -70,148 +139,204 @@ function getPageErrorMessage(resultError: string | null, copy: LessonCopy): stri
   return copy.pageErrors.default
 }
 
-function BackToDashboardLink({
-  copy,
-  compact = false,
-}: {
-  copy: LessonCopy
-  compact?: boolean
-}) {
+const STAGE_FLOW_POINT_MAP: Record<Exclude<LessonStageId, 'listen'>, number> = {
+  repeat: 5,
+  ai_question: 10,
+  typing: 15,
+  ai_conversation: 20,
+}
+
+function isRuntimeFinalStage(state: LessonRuntimeEngineState): boolean {
   return (
-    <p className={compact ? 'mt-4 text-center' : 'mt-8 text-center'}>
-      <Link
-        href="/dashboard"
-        className="text-sm font-medium text-amber-600 hover:text-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded"
-      >
-        {copy.buttons.backToDashboard}
-      </Link>
-    </p>
+    !state.isCompleted &&
+    state.currentBlockIndex === state.blocks.length - 1 &&
+    state.currentStageId === 'ai_conversation'
   )
 }
 
-type LessonProgressHeaderProps = {
-  currentBlockIndex: number
-  totalBlocks: number
-  stats: {
-    progressPercent: number
-    completedItems: number
-    totalItems: number
-    totalTypingItems: number
-    correctTypingItems: number
+function getCurrentRuntimeStageAnswer(state: LessonRuntimeEngineState) {
+  const currentBlockId = state.blocks[state.currentBlockIndex]?.id
+  if (!currentBlockId) return null
+
+  const matched = state.answers.filter(
+    (answer) => answer.blockId === currentBlockId && answer.stageId === state.currentStageId
+  )
+
+  return matched.length > 0 ? matched[matched.length - 1] : null
+}
+
+function createUiProgressFromRuntime(
+  prev: LessonProgressState,
+  state: LessonRuntimeEngineState
+): LessonProgressState {
+  const latestStageAnswer = getCurrentRuntimeStageAnswer(state)
+
+  return {
+    ...prev,
+    currentBlockIndex: state.currentBlockIndex,
+    currentItemIndex: 0, // 固定でOK（stageでUIを切り替えるため）
+    checked: latestStageAnswer != null,
+    isCorrect: latestStageAnswer?.isCorrect ?? false,
+    completed: state.isCompleted,
   }
-  copy: LessonCopy
 }
 
-function LessonProgressHeader({
-  currentBlockIndex,
-  totalBlocks,
-  stats,
-  copy,
-}: LessonProgressHeaderProps) {
-  return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[#4a4a6a]">
-      <span className="font-medium text-[#1a1a2e]">
-        {currentBlockIndex + 1} / {totalBlocks}
-      </span>
-      <span>
-        {copy.progress.progressPercent} {stats.progressPercent}% · {copy.progress.completed}{' '}
-        {stats.completedItems}/{stats.totalItems}
-        {stats.totalTypingItems > 0 && (
-          <> · {copy.progress.typing} {stats.correctTypingItems}/{stats.totalTypingItems}</>
-        )}
-      </span>
-    </div>
-  )
+function buildRuntimeStageSubmissionValue(input: {
+  stageId: Exclude<LessonStageId, 'listen'>
+  inputValue: string
+  fallbackAnswer?: string | null
+}): string {
+  const trimmed = input.inputValue.trim()
+
+  if (trimmed) return trimmed
+
+  if (input.stageId === 'repeat') {
+    return '[repeat-completed]'
+  }
+
+  if (input.stageId === 'ai_question') {
+    return input.fallbackAnswer?.trim() || '[ai-question-completed]'
+  }
+
+  if (input.stageId === 'typing') {
+    return input.fallbackAnswer?.trim() || ''
+  }
+
+  return '[ai-conversation-completed]'
 }
 
-function LessonSiteHeader() {
+function shouldShowStandaloneNextButton(input: {
+  runtimeState: LessonRuntimeEngineState | null
+  item: LessonPageData['lesson'] extends { blocks: Array<infer B> }
+    ? B extends { items: Array<infer I> }
+      ? I | null
+      : null
+    : null
+  showCompleted: boolean
+}): boolean {
+  if (input.showCompleted) {
+    return false
+  }
+
+  if (input.runtimeState != null) {
+    if (input.runtimeState.currentStageId === 'typing') {
+      return false
+    }
+
+    return true
+  }
+
+  if (input.item == null) {
+    return false
+  }
+
+  return true
+}
+
+function getRuntimeStageAwardKey(
+  state: LessonRuntimeEngineState,
+  stageId: Exclude<LessonStageId, 'listen'>
+): string | null {
+  const blockId = state.blocks[state.currentBlockIndex]?.id
+  if (!blockId) return null
+  return `${blockId}:${stageId}`
+}
+
+function formatScoreChartDate(value: string): string {
+  const date = new Date(value)
+  const month = date.getMonth() + 1
+  const day = date.getDate()
+  return `${month}/${day}`
+}
+
+type ScoreHistoryItem = {
+  id: string
+  total_score: number
+  created_at: string
+}
+
+function LessonScoreChart({ items }: { items: ScoreHistoryItem[] }) {
+  const chartData = items
+    .slice()
+    .reverse()
+    .map((item) => ({
+      date: formatScoreChartDate(item.created_at),
+      score: item.total_score,
+    }))
+
   return (
-    <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-      <div className="mx-auto flex h-16 max-w-[960px] items-center justify-between px-6 sm:px-10">
-        <Link
-          href="/"
-          className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg"
-          aria-label="NativeFlow トップへ"
+    <div className="mt-4 h-[220px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart
+          data={chartData}
+          margin={{ top: 8, right: 12, left: -20, bottom: 0 }}
         >
-          <Image
-            src="/header_logo.svg"
-            alt="NativeFlow"
-            width={200}
-            height={48}
-            className="h-9 w-auto object-contain sm:h-10"
-            priority
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis
+            dataKey="date"
+            tickLine={false}
+            axisLine={false}
+            fontSize={12}
           />
-        </Link>
-      </div>
-    </header>
-  )
-}
-
-function LessonFooter() {
-  return (
-    <footer className="border-t border-[#ede9e2] bg-white px-6 py-10 sm:px-10 sm:py-10">
-      <div className="mx-auto grid max-w-[1140px] gap-10 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
-        <div>
-          <Link
-            href="/"
-            className="mb-3.5 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded"
-          >
-            <Image
-              src="/footer_logo.svg"
-              alt="NativeFlow"
-              width={200}
-              height={40}
-              className="h-10 w-auto object-contain"
-            />
-          </Link>
-          <p className="max-w-[240px] text-[13px] leading-relaxed text-[#aaa]">
-            Speak with AI. Learn like a native.
-          </p>
-        </div>
-        <div>
-          <p className="mb-3.5 text-sm font-extrabold text-[#1a1a2e]">プロダクト</p>
-          <Link href="/#features" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">特徴</Link>
-          <Link href="/#scenes" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">学習方法</Link>
-          <Link href="/#pricing" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">料金プラン</Link>
-          <Link href="/#faq" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">よくある質問</Link>
-        </div>
-        <div>
-          <p className="mb-3.5 text-sm font-extrabold text-[#1a1a2e]">法的情報</p>
-          <Link href="/legal/privacy" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">プライバシーポリシー</Link>
-          <Link href="/legal/terms" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">利用規約</Link>
-          <Link href="/legal/tokusho" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">特定商取引法に基づく表記</Link>
-          <Link href="/legal/company" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">会社情報</Link>
-        </div>
-        <div>
-          <p className="mb-3.5 text-sm font-extrabold text-[#1a1a2e]">サポート</p>
-          <Link href="/contact" className="mb-2 block text-[13px] font-semibold text-[#888] hover:text-[#1a1a2e] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">お問い合わせ</Link>
-        </div>
-      </div>
-      <div className="mx-auto mt-7 max-w-[1140px] border-t border-[#ede9e2] pt-6 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-        <p className="text-[13px] text-[#bbb]">© 2026 NativeFlow. All rights reserved.</p>
-        <p className="text-xs text-[#bbb]">Speak with AI. Learn like a native.</p>
-      </div>
-    </footer>
+          <YAxis
+            domain={[0, 100]}
+            tickCount={6}
+            tickLine={false}
+            axisLine={false}
+            fontSize={12}
+          />
+          <Tooltip
+            formatter={(value: number) => [`${value}点`, 'スコア']}
+            labelFormatter={(label) => `日付: ${label}`}
+          />
+          <Line
+            type="monotone"
+            dataKey="score"
+            strokeWidth={3}
+            dot={{ r: 4 }}
+            activeDot={{ r: 6 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   )
 }
 
 export default function LessonPage() {
   const router = useRouter()
+
   const [pageData, setPageData] = useState<LessonPageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState<string | null>(null)
   const [started, setStarted] = useState(false)
-  const [progress, setProgress] = useState<LessonProgressState>(
-    () => getInitialRunState().progress
-  )
+  const [progress, setProgress] = useState<LessonProgressState>(() => getInitialRunState().progress)
   const [inputValue, setInputValue] = useState(() => getInitialRunState().inputValue)
   const [correctTypingCount, setCorrectTypingCount] = useState(
     () => getInitialRunState().correctTypingCount
   )
+  const [runtimeState, setRuntimeState] = useState<LessonRuntimeEngineState | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [lessonRunId, setLessonRunId] = useState<string | null>(null)
+  const [totalFlowPoints, setTotalFlowPoints] = useState(0)
+  const [rankCode, setRankCode] = useState<string>('starter')
+  const [flowPointsToNextRank, setFlowPointsToNextRank] = useState(0)
+  const [startErrorMessage, setStartErrorMessage] = useState<string | null>(null)
+  const [startBlockedReason, setStartBlockedReason] = useState<string | null>(null)
+  const [earnedFlowPoints, setEarnedFlowPoints] = useState(0)
+  const [hasFinalizedLessonRun, setHasFinalizedLessonRun] = useState(false)
+  const [scoreHistory, setScoreHistory] = useState<ScoreHistoryItem[]>([])
+  const [repeatAutoStartNonce, setRepeatAutoStartNonce] = useState(0)
+  const [showListenRepeatComplete, setShowListenRepeatComplete] = useState(false)
+  const [listenResetNonce, setListenResetNonce] = useState(0)
 
-  const copy = LESSON_COPY_JA
+  const isStartingLessonRef = useRef(false)
+  const latestTotalFlowPointsRef = useRef(0)
+  const awardedStageKeysRef = useRef<Set<string>>(new Set())
+
+  const copy: LessonCopy = getLessonCopy(pageData?.uiLanguageCode)
+
+  const targetLanguageLabel =
+    TARGET_LANGUAGE_OPTIONS.find((option) => option.value === TARGET_LANGUAGE_FIXED)?.label ?? '英語'
 
   const {
     lesson,
@@ -224,8 +349,69 @@ export default function LessonPage() {
     lessonAIMessages,
   } = getPageDataParts(pageData)
 
-  const { totalBlocks, block, item } = getCurrentLessonPosition(lesson, progress)
-  const showCompleted = started && (progress.completed || block == null || item == null)
+  const { block, item } = getCurrentLessonPosition(lesson, progress)
+
+  const showCompleted =
+  started &&
+  (runtimeState?.isCompleted === true ||
+   progress.completed === true)
+
+  const scoreSummary = useMemo(() => {
+    if (scoreHistory.length === 0) {
+      return null
+    }
+
+    const scores = scoreHistory.map((item) => item.total_score)
+    const latest = scores[0]
+    const max = Math.max(...scores)
+    const avg = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
+
+    return { latest, max, avg }
+  }, [scoreHistory])
+
+  const refreshRankProgress = useCallback(async (userId: string) => {
+    const rankProgressResult = await getUserRankProgress(userId)
+
+    if (!rankProgressResult.error && rankProgressResult.data) {
+      setRankCode(rankProgressResult.data.rankCode)
+      setFlowPointsToNextRank(rankProgressResult.data.flowPointsToNextRank)
+    }
+  }, [])
+
+  function resetRunState() {
+    clearPersistedLessonState()
+
+    const initial = getInitialRunState()
+
+    setStarted(false)
+    setProgress(initial.progress)
+    setInputValue(initial.inputValue)
+    setCorrectTypingCount(initial.correctTypingCount)
+    setRuntimeState(null)
+    setLessonRunId(null)
+    setEarnedFlowPoints(0)
+    setHasFinalizedLessonRun(false)
+    awardedStageKeysRef.current = new Set()
+    setStartErrorMessage(null)
+    setStartBlockedReason(null)
+  }
+
+  async function handleLogout() {
+    resetRunState()
+    await supabase.auth.signOut()
+    router.replace('/login')
+    router.refresh()
+  }
+
+  const handleLogoutRef = useRef(handleLogout)
+
+  useEffect(() => {
+    handleLogoutRef.current = handleLogout
+  }, [handleLogout])
+
+  useEffect(() => {
+    latestTotalFlowPointsRef.current = totalFlowPoints
+  }, [totalFlowPoints])
 
   useEffect(() => {
     let isActive = true
@@ -249,13 +435,54 @@ export default function LessonPage() {
         }
 
         if (isActive) {
-          setPageData(result.data.pageData)
-          setUserId(result.data.userId)
-          setCorrectTypingCount(0)
+          const nextPageData = result.data.pageData
+          const nextUserId = result.data.userId
+
+          setPageData(nextPageData)
+          setUserId(nextUserId)
+
+          const flowPointResult = await getUserFlowPoints(nextUserId)
+          if (!isActive) return
+
+          if (!flowPointResult.error) {
+            setTotalFlowPoints(flowPointResult.data?.total_flow_points ?? 0)
+          }
+
+          await refreshRankProgress(nextUserId)
+          if (!isActive) return
+
+          const persisted = readPersistedLessonState()
+          const currentLessonId = getLessonStorageLessonId(nextPageData.lesson)
+          
+          // 🔥 URLに resume フラグがある場合のみ復元
+          const shouldResume =
+            typeof window !== 'undefined' &&
+            new URLSearchParams(window.location.search).get('resume') === 'true'
+          
+          if (
+            persisted &&
+            persisted.userId === nextUserId &&
+            persisted.lessonId === currentLessonId &&
+            persisted.started &&
+            shouldResume
+          ) {
+            setProgress(persisted.progress)
+            setInputValue(persisted.inputValue)
+            setCorrectTypingCount(persisted.correctTypingCount)
+            setRuntimeState(persisted.runtimeState)
+            setLessonRunId(persisted.lessonRunId)
+            setEarnedFlowPoints(persisted.earnedFlowPoints)
+            setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
+            awardedStageKeysRef.current = new Set(persisted.awardedStageKeys)
+            setStarted(true)
+          } else {
+            resetRunState()
+          }
+
           setPageError(null)
         }
-      } catch (err) {
-        console.error(err)
+      } catch (error) {
+        console.error(error)
         if (isActive) setPageError('load_failed')
       } finally {
         if (isActive) setLoading(false)
@@ -263,41 +490,208 @@ export default function LessonPage() {
     }
 
     load()
+
     return () => {
       isActive = false
     }
-  }, [router])
+  }, [router, refreshRankProgress])
 
   useEffect(() => {
-    if (!showCompleted || lessonRunId == null) return
+    if (!userId) return
+  
+    let isActive = true
+  
+    async function fetchScoreHistory() {
+      const { data, error } = await supabase
+        .from('pronunciation_scores')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(5)
+  
+      if (!isActive) return
+  
+      if (error) {
+        console.error('Failed to fetch score history', error)
+        return
+      }
+  
+      setScoreHistory(data ?? [])
+    }
+  
+    fetchScoreHistory()
+  
+    return () => {
+      isActive = false
+    }
+  }, [userId])
+  
+  useEffect(() => {
+    if (!lesson || !userId) return
+  
+    if (runtimeState != null) {
+      writePersistedLessonState({
+        userId,
+        lessonId: getLessonStorageLessonId(lesson),
+        started: true,
+        progress,
+        inputValue,
+        correctTypingCount,
+        runtimeState,
+        lessonRunId,
+        earnedFlowPoints,
+        hasFinalizedLessonRun,
+        awardedStageKeys: Array.from(awardedStageKeysRef.current),
+      })
+    }
+  
+    if (showCompleted && hasFinalizedLessonRun) {
+      clearPersistedLessonState()
+    }
+  }, [
+    lesson,
+    userId,
+    runtimeState,
+    showCompleted,
+    progress,
+    inputValue,
+    correctTypingCount,
+    lessonRunId,
+    earnedFlowPoints,
+    hasFinalizedLessonRun,
+  ])
+
+  useEffect(() => {
+    if (!showCompleted || lessonRunId == null || userId == null || hasFinalizedLessonRun) return
+
     const runId = lessonRunId
     const uid = userId
-    setLessonRunId(null)
-    runLessonCompletionEffect(runId, uid).catch(() => {})
-  }, [showCompleted, lessonRunId, userId])
 
-  function resetRunState() {
-    const initial = getInitialRunState()
-    setProgress(initial.progress)
-    setInputValue(initial.inputValue)
-    setCorrectTypingCount(initial.correctTypingCount)
+    setHasFinalizedLessonRun(true)
+
+    runLessonCompletionEffect(supabase, runId, uid)
+      .then(async () => {
+        if (typeof window !== 'undefined') {
+        }
+
+        clearPersistedLessonState()
+        setLessonRunId(null)
+        await refreshRankProgress(uid)
+      })
+      .catch((error) => {
+        console.error('Lesson completion effect failed', error)
+        setHasFinalizedLessonRun(false)
+      })
+  }, [showCompleted, lessonRunId, userId, hasFinalizedLessonRun, refreshRankProgress])
+
+  useEffect(() => {
+    if (runtimeState == null) return
+
+    setProgress((prev) => createUiProgressFromRuntime(prev, runtimeState))
+  }, [runtimeState])
+
+  useEffect(() => {
+    if (!started) {
+      isStartingLessonRef.current = false
+    }
+  }, [started])
+
+  useEffect(() => {
+    if (!userId) return
+  
+    let timeoutId: ReturnType<typeof setTimeout>
+  
+    const LOGOUT_TIME = 30 * 60 * 1000 // 30分
+  
+    const resetTimer = () => {
+      clearTimeout(timeoutId)
+  
+      let hasLoggedOut = false
+
+      timeoutId = setTimeout(async () => {
+        if (hasLoggedOut) return
+        hasLoggedOut = true
+      
+        console.log('Auto logout (30min inactivity)')
+        await handleLogoutRef.current()
+      }, LOGOUT_TIME)
+    }
+  
+    const events: (keyof WindowEventMap)[] = [
+      'mousemove',
+      'keydown',
+      'click',
+      'scroll',
+      'touchstart',
+    ]
+  
+    events.forEach((event) => window.addEventListener(event, resetTimer))
+  
+    resetTimer()
+  
+    return () => {
+      clearTimeout(timeoutId)
+      events.forEach((event) => window.removeEventListener(event, resetTimer))
+    }
+  }, [userId])
+  
+  function startLessonRunEffects(userId: string, lesson: NonNullable<LessonPageData['lesson']>) {
+    startLessonRun(supabase, userId, lesson).then((result) => {
+      if (result.error) {
+        console.error('Lesson run start failed', result.error)
+      } else {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('nf_lesson_active', '1')
+        }
+
+        if (result.data?.id) setLessonRunId(result.data.id)
+      }
+    })
   }
 
-  function startLessonRunEffects(
-    userId: string,
-    lesson: NonNullable<LessonPageData['lesson']>
+  async function awardRuntimeStageFlowPointsIfNeeded(
+    state: LessonRuntimeEngineState,
+    stageId: Exclude<LessonStageId, 'listen'>
   ) {
-    startLessonRun(userId, lesson).then((result) => {
-      if (result.error) console.error('Lesson run start failed', result.error)
-      else if (result.data?.id) setLessonRunId(result.data.id)
-    })
-    incrementDailyStats(userId, { lesson_runs_started: 1 }).then((result) => {
-      if (result.error) console.error('Daily stats update failed', result.error)
-    })
+    if (!userId) return
+
+    const awardKey = getRuntimeStageAwardKey(state, stageId)
+    if (!awardKey) return
+
+    if (awardedStageKeysRef.current.has(awardKey)) {
+      return
+    }
+
+    const points = STAGE_FLOW_POINT_MAP[stageId] ?? 0
+    if (points <= 0) return
+
+    awardedStageKeysRef.current.add(awardKey)
+
+    const previousTotalFlowPoints = latestTotalFlowPointsRef.current
+    const awardResult = await awardLessonFlowPoints(userId, points)
+
+    if (awardResult.error || !awardResult.data) {
+      awardedStageKeysRef.current.delete(awardKey)
+      console.error('Stage flow point award failed', {
+        awardKey,
+        userId,
+        points,
+        awardResult,
+      })
+      return
+    }
+
+    const latestTotal = awardResult.data.total_flow_points
+    const awardedDelta = Math.max(0, latestTotal - previousTotalFlowPoints)
+
+    setTotalFlowPoints(latestTotal)
+    setEarnedFlowPoints((prev) => prev + awardedDelta)
+
+    await refreshRankProgress(userId)
   }
 
   function applyTypingCheckResult(isCorrect: boolean, correctTypingDelta: 0 | 1) {
-    setCorrectTypingCount((c) => c + correctTypingDelta)
+    setCorrectTypingCount((count) => count + correctTypingDelta)
     setProgress((prev) => ({
       ...prev,
       checked: true,
@@ -305,31 +699,342 @@ export default function LessonPage() {
     }))
   }
 
+  function handleBackToOverview() {
+    setStarted(false)
+    setShowListenRepeatComplete(false)
+    setStartErrorMessage(null)
+    setStartBlockedReason(null)
+  
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('resume', 'true')
+      window.history.replaceState(null, '', url.toString())
+    }
+  }
+  
   function handleStartLesson() {
-    if (lesson == null || userId == null || started) return
-    resetRunState()
-    setStarted(true)
-    startLessonRunEffects(userId, lesson)
+    console.log('handleStartLesson', {
+      hasLesson: lesson != null,
+      userId,
+      started,
+      isStarting: isStartingLessonRef.current,
+    })
+  
+    if (lesson == null) {
+      setStartBlockedReason('lesson が null のため開始できません。')
+      return
+    }
+  
+    if (userId == null) {
+      setStartBlockedReason('userId が null のため開始できません。')
+      return
+    }
+  
+    if (started || isStartingLessonRef.current) {
+      setStartBlockedReason('レッスン開始中です')
+      return
+    }
+  
+    if (runtimeState != null && !showCompleted) {
+      setStarted(true)
+      setShowListenRepeatComplete(false)
+      setStartErrorMessage(null)
+      setStartBlockedReason(null)
+      return
+    }
+  
+    const persisted = readPersistedLessonState()
+    const currentLessonId = getLessonStorageLessonId(lesson)
+  
+    if (
+      persisted &&
+      persisted.userId === userId &&
+      persisted.lessonId === currentLessonId &&
+      persisted.started &&
+      persisted.runtimeState != null &&
+      persisted.hasFinalizedLessonRun === false
+    ) {
+      setProgress(persisted.progress)
+      setInputValue(persisted.inputValue)
+      setCorrectTypingCount(persisted.correctTypingCount)
+      setRuntimeState(persisted.runtimeState)
+      setLessonRunId(persisted.lessonRunId)
+      setEarnedFlowPoints(persisted.earnedFlowPoints)
+      setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
+      awardedStageKeysRef.current = new Set(persisted.awardedStageKeys)
+      setStarted(true)
+      setShowListenRepeatComplete(false)
+      setStartErrorMessage(null)
+      setStartBlockedReason(null)
+  
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        url.searchParams.set('resume', 'true')
+        window.history.replaceState(null, '', url.toString())
+      }
+  
+      return
+    }
+  
+    if (isStartingLessonRef.current) {
+      setStartBlockedReason('開始処理中フラグが残っているため開始できません。')
+      return
+    }
+  
+    isStartingLessonRef.current = true
+    setStartErrorMessage(null)
+    setStartBlockedReason(null)
+  
+    try {
+      clearPersistedLessonState()
+  
+      const initial = getInitialRunState()
+  
+      setProgress(initial.progress)
+      setInputValue('')
+      setCorrectTypingCount(initial.correctTypingCount)
+      setEarnedFlowPoints(0)
+      setHasFinalizedLessonRun(false)
+      setShowListenRepeatComplete(false)
+      awardedStageKeysRef.current = new Set()
+  
+      const nextRuntimeState = createLessonRuntimeStateFromSession({
+        session: lesson,
+        userId,
+      })
+  
+      console.log('createLessonRuntimeStateFromSession success', nextRuntimeState)
+  
+      setRuntimeState(nextRuntimeState)
+      setStarted(true)
+      setPageError(null)
+  
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        url.searchParams.set('resume', 'true')
+        window.history.replaceState(null, '', url.toString())
+      }
+  
+  } catch (error) {
+      isStartingLessonRef.current = false
+      console.error('Failed to start lesson', error)
+      setPageError('load_failed')
+      setStartErrorMessage('レッスンの開始に失敗しました。データ構造を確認してください。')
+      setStarted(false)
+      setRuntimeState(null)
+      isStartingLessonRef.current = false
+    }
+  }
+
+  function handleStartRepeatFromListen() {
+    if (runtimeState == null) return
+    if (runtimeState.currentStageId !== 'listen') return
+  
+    const result = advanceLessonStage(runtimeState)
+    setRuntimeState(result.state)
+    setInputValue('')
+    setRepeatAutoStartNonce((prev) => prev + 1)
+  }
+
+  function handleRetryListenFromRepeat() {
+    
+    if (runtimeState == null) return
+  
+    const currentBlock = runtimeState.blocks[runtimeState.currentBlockIndex]
+    if (!currentBlock) return
+  
+    setRuntimeState({
+      ...runtimeState,
+      currentStageId: 'listen',
+      answers: runtimeState.answers.filter(
+        (answer) =>
+          !(
+            answer.blockId === currentBlock.id &&
+            (answer.stageId === 'repeat' || answer.stageId === 'listen')
+          )
+      ),
+    })
+  
+    setInputValue('')
+    setShowListenRepeatComplete(false)
+    setListenResetNonce((prev) => prev + 1)
+  }
+  
+  function handleAdvanceFromListenRepeatComplete() {
+    if (runtimeState == null) return
+    if (runtimeState.currentStageId !== 'repeat') return
+  
+    const result = advanceLessonStage(runtimeState)
+    setRuntimeState(result.state)
+    setInputValue('')
+    setShowListenRepeatComplete(false)
   }
 
   function handleNext() {
     if (lesson == null || block == null || item == null) return
-    const { nextProgress, nextInputValue } = executeNextStep({
-      lesson,
-      block,
-      item,
-      progress,
-      inputValue,
-      lessonRunId,
-      userId,
-      correctTypingCount,
-    })
-    setProgress(nextProgress)
-    setInputValue(nextInputValue)
+  
+    if (runtimeState == null) {
+      const { nextProgress, nextInputValue } = executeNextStep({
+        supabase,
+        lesson,
+        block,
+        item,
+        progress,
+        inputValue,
+        lessonRunId,
+        userId,
+        correctTypingCount,
+      })
+  
+      setProgress(nextProgress)
+      setInputValue(nextInputValue)
+      return
+    }
+  
+    let nextState = runtimeState
+    const currentStageId = nextState.currentStageId
+  
+    // 1) listen は card 内の「録音開始」から repeat へ進むので、ここでは進めない
+    if (currentStageId === 'listen') {
+      return
+    }
+  
+    // 2) repeat は card 内の採点完了・合格導線だけで進め、standalone next では進めない
+    if (currentStageId === 'repeat') {
+      const hasAnswered = inputValue.trim().length > 0
+
+      if (!hasAnswered && !canAdvanceLessonStage(nextState)) {
+        return
+      }
+
+      if (!canAdvanceLessonStage(nextState)) {
+        const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
+
+        nextState = submitLessonStageAnswer(nextState, {
+          stageId: 'repeat',
+          blockId: currentRuntimeBlock.id,
+          kind: 'repeat',
+          value: buildRuntimeStageSubmissionValue({
+            stageId: 'repeat',
+            inputValue,
+            fallbackAnswer: item.answer ?? null,
+          }),
+          isCorrect: null,
+          feedback: null,
+        })
+
+        void awardRuntimeStageFlowPointsIfNeeded(nextState, 'repeat')
+        setRuntimeState(nextState)
+      }
+
+      setShowListenRepeatComplete(true)
+      return
+    }
+  
+    // 3) 質問回答は1回のクリックで完了登録して次へ
+    if (currentStageId === 'ai_question') {
+      if (!canAdvanceLessonStage(nextState)) {
+        const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
+  
+        nextState = submitLessonStageAnswer(nextState, {
+          stageId: 'ai_question',
+          blockId: currentRuntimeBlock.id,
+          kind: 'ai_question',
+          value: buildRuntimeStageSubmissionValue({
+            stageId: 'ai_question',
+            inputValue,
+            fallbackAnswer: item.answer ?? null,
+          }),
+          isCorrect: null,
+          feedback: null,
+        })
+  
+        void awardRuntimeStageFlowPointsIfNeeded(nextState, 'ai_question')
+      }
+  
+      if (!canAdvanceLessonStage(nextState)) {
+        return
+      }
+  
+      const result = advanceLessonStage(nextState)
+      setRuntimeState(result.state)
+      setInputValue('')
+      return
+    }
+  
+    // 4) 書き取りはチェック完了まで進めない
+    if (currentStageId === 'typing') {
+      if (!canAdvanceLessonStage(nextState)) {
+        return
+      }
+  
+      const result = advanceLessonStage(nextState)
+      setRuntimeState(result.state)
+      setInputValue('')
+      return
+    }
+  
+    // 5) AI会話は完了登録してから完了へ
+    if (currentStageId === 'ai_conversation') {
+      if (!canAdvanceLessonStage(nextState)) {
+        const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
+  
+        nextState = submitLessonStageAnswer(nextState, {
+          stageId: 'ai_conversation',
+          blockId: currentRuntimeBlock.id,
+          kind: 'ai_conversation',
+          value: buildRuntimeStageSubmissionValue({
+            stageId: 'ai_conversation',
+            inputValue,
+            fallbackAnswer: item.answer ?? null,
+          }),
+          isCorrect: null,
+          feedback: null,
+        })
+  
+        void awardRuntimeStageFlowPointsIfNeeded(nextState, 'ai_conversation')
+      }
+  
+      if (!canAdvanceLessonStage(nextState)) {
+        return
+      }
+  
+      const result = advanceLessonStage(nextState)
+      setRuntimeState(result.state)
+      setInputValue('')
+    }
   }
 
   function handleCheck() {
     if (item == null) return
+
+    if (runtimeState != null) {
+      if (runtimeState.currentStageId !== 'typing') {
+        return
+      }
+
+      if (canAdvanceLessonStage(runtimeState)) {
+        return
+      }
+
+      const result = checkTypingAnswer(inputValue, item.answer ?? '')
+      const currentRuntimeBlock = getCurrentLessonRuntimeBlock(runtimeState)
+
+      const nextState = submitLessonStageAnswer(runtimeState, {
+        stageId: 'typing',
+        blockId: currentRuntimeBlock.id,
+        kind: 'typing',
+        value: inputValue,
+        isCorrect: result.isCorrect,
+        feedback: result.isCorrect ? 'correct' : 'incorrect',
+      })
+
+      setRuntimeState(nextState)
+      applyTypingCheckResult(result.isCorrect, result.correctTypingDelta)
+      void awardRuntimeStageFlowPointsIfNeeded(nextState, 'typing')
+      return
+    }
+
     const result = checkTypingAnswer(inputValue, item.answer ?? '')
     applyTypingCheckResult(result.isCorrect, result.correctTypingDelta)
   }
@@ -340,7 +1045,7 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <LessonSiteHeader />
+        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -348,34 +1053,45 @@ export default function LessonPage() {
             </p>
           </div>
         </main>
-        <LessonFooter />
+        <AppFooter />
       </div>
     )
   }
 
   if (lesson == null) {
     const errorMessage = getPageErrorMessage(pageError, copy)
+
     return (
       <div
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <LessonSiteHeader />
+        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">エラー</h2>
             <p className="mt-3 text-sm text-[#4a4a6a]">{errorMessage}</p>
-            <BackToDashboardLink copy={copy} compact />
           </div>
         </main>
-        <LessonFooter />
+        <AppFooter />
       </div>
     )
   }
 
-  const isLessonComplete = isFinalItem(lesson, progress)
-  const nextButtonLabel = isLessonComplete ? copy.buttons.complete : copy.buttons.next
+  const isLessonComplete =
+    runtimeState != null ? isRuntimeFinalStage(runtimeState) : isFinalItem(lesson, progress)
 
+  const nextButtonLabel = isLessonComplete ? copy.buttons.complete : copy.buttons.next
+  const showStandaloneNextButton =
+    runtimeState?.currentStageId !== 'listen' &&
+    runtimeState?.currentStageId !== 'repeat' &&
+    !showListenRepeatComplete &&
+    shouldShowStandaloneNextButton({
+      runtimeState,
+      item,
+      showCompleted,
+    })
+  
   if (started) {
     const stats = getStats(lesson, progress, { correctTypingItems: correctTypingCount })
     const summary = showCompleted ? getCompletionSummary(lesson, stats) : null
@@ -385,47 +1101,91 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <LessonSiteHeader />
+        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
         <main className="flex-1">
           <div className={`${CONTAINER_CLASS} pt-8 sm:pt-10`}>
-            <LessonProgressHeader
-              currentBlockIndex={progress.currentBlockIndex}
-              totalBlocks={totalBlocks}
-              stats={stats}
-              copy={copy}
-            />
-
-            {!showCompleted && block != null && item != null && (
-              <LessonActiveCard
-                block={block}
-                item={item}
-                progress={progress}
-                inputValue={inputValue}
-                onInputChange={setInputValue}
-                onCheck={handleCheck}
-                onNext={handleNext}
-                copy={copy}
-                isLessonComplete={isLessonComplete}
-              />
+            {!showCompleted && !showListenRepeatComplete && block != null && item != null && (
+              <>
+                <div className="mb-4 flex justify-start">
+                  <button
+                    type="button"
+                    onClick={handleBackToOverview}
+                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                  >
+                    ← レッスン案内へ戻る
+                  </button>
+                </div>
+                <LessonActiveCard
+                  block={block}
+                  item={item}
+                  progress={progress}
+                  currentQuestionIndex={progress.currentBlockIndex ?? 0}
+                  totalQuestions={lesson.blocks.length}
+                  inputValue={inputValue}
+                  onInputChange={setInputValue}
+                  onCheck={handleCheck}
+                  onStartRepeatFromListen={handleStartRepeatFromListen}
+                  onRetryListenFromRepeat={handleRetryListenFromRepeat}
+                  repeatAutoStartNonce={repeatAutoStartNonce}
+                  listenResetNonce={listenResetNonce}
+                  currentStageId={runtimeState?.currentStageId ?? null}
+                  copy={copy}
+                  isLessonComplete={isLessonComplete}
+                  targetLanguageLabel="英語"
+                  scenarioLabel="ビジネス"
+                />
+              </>
             )}
 
-            {!showCompleted && block != null && block.type !== 'typing' && (
+            {showStandaloneNextButton && (
               <button
                 type="button"
                 onClick={handleNext}
-                className="mt-6 w-full rounded-xl border border-[#ede9e2] bg-white py-3.5 font-semibold text-[#1a1a2e] hover:bg-[#faf9f7] focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+                className="mt-6 w-full cursor-pointer rounded-[16px] bg-[#F5A623] py-4 text-base font-bold text-white transition-all duration-200 hover:-translate-y-[2px] hover:bg-[#D4881A] hover:shadow-lg active:translate-y-[1px] active:shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
               >
                 {nextButtonLabel}
               </button>
             )}
 
-            {showCompleted && summary != null && (
-              <LessonCompletionCard summary={summary} copy={copy} />
+            {showListenRepeatComplete && (
+              <div className="rounded-[24px] border border-[#E8E4DF] bg-white px-6 py-8 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+                <div className="mx-auto max-w-[680px] text-center">
+                  <p className="text-[13px] font-bold tracking-[0.08em] text-[#7b7b94]">
+                    LISTEN & REPEAT COMPLETE
+                  </p>
+                  <h2 className="mt-3 text-2xl font-black tracking-tight text-[#1a1a2e]">
+                    今日の聞き取り・リピート練習は完了です
+                  </h2>
+                  <p className="mt-4 text-sm leading-7 text-[#5a5a7a]">
+                    ここまでで、耳で聞いた音をそのまま口に出す練習ができました。
+                    <br />
+                    次は、AIからの質問に英語で返す練習へ進みましょう。
+                  </p>
+
+                  <div className="mt-6 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={handleAdvanceFromListenRepeatComplete}
+                      className="cursor-pointer rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]"
+                    >
+                      次の練習に進む
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
 
-            <BackToDashboardLink copy={copy} />
+            {showCompleted && summary != null && (
+              <LessonCompletionCard
+                summary={summary}
+                copy={copy}
+                totalFlowPoints={totalFlowPoints}
+                earnedFlowPoints={earnedFlowPoints}
+              />
+            )}
           </div>
         </main>
+        <AppFooter />
       </div>
     )
   }
@@ -435,41 +1195,69 @@ export default function LessonPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <LessonSiteHeader />
+      <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
-          <h1 className="mt-6 text-2xl font-bold tracking-tight text-[#1a1a2e] sm:text-3xl">
-            {copy.intro.title}
-          </h1>
-          <p className="mt-2 text-sm text-[#4a4a6a]">
-            {copy.intro.body1}
-          </p>
-          <p className="mt-3 text-sm font-medium text-[#1a1a2e]">
-            {lesson.theme}
-          </p>
-          <p className="mt-1 text-xs text-[#4a4a6a]">
-            想定{lesson.totalEstimatedMinutes}分 · {lesson.blocks.length}ブロック
-          </p>
+        {/* 発音スコア履歴 */}
+        {scoreHistory.length > 0 && scoreSummary != null && (
+          <div className="mb-6 rounded-2xl border border-[#ede9e2] bg-white px-6 py-5 shadow-sm">
+            <h3 className="mb-3 text-base font-bold text-[#1a1a2e]">
+              発音スコア履歴
+            </h3>
 
-          <div className="mt-6">
-            <button
-              type="button"
-              onClick={handleStartLesson}
-              disabled={started}
-              className="w-full rounded-xl bg-amber-500 py-3.5 font-semibold text-white shadow-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
-            >
-              {copy.buttons.startLesson}
-            </button>
+            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#4a4a6a]">
+              <div>
+                最新: <span className="font-bold">{scoreSummary.latest}</span>
+              </div>
+              <div>
+                最高: <span className="font-bold">{scoreSummary.max}</span>
+              </div>
+              <div>
+                平均: <span className="font-bold">{scoreSummary.avg}</span>
+              </div>
+            </div>
+
+            <LessonScoreChart items={scoreHistory} />
+
+            <div className="mt-4 space-y-2">
+              {scoreHistory.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex justify-between border-b pb-1 text-sm"
+                >
+                  <span className="text-[#6b7280]">
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </span>
+                  <span className="font-bold text-[#1a1a2e]">
+                    {item.total_score}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+          <LessonOverviewCard
+            lesson={lesson}
+            copy={copy}
+            getLevelLabel={getLevelLabel}
+            onStart={handleStartLesson}
+            rankCode={rankCode}
+            totalFlowPoints={totalFlowPoints}
+            flowPointsToNextRank={flowPointsToNextRank}
+            targetLanguageLabel={targetLanguageLabel}
+          />
 
-          <h2 className="mt-8 text-sm font-semibold text-[#1a1a2e]">
-            レッスン内容
-          </h2>
-          <p className="mt-1 text-sm text-[#4a4a6a]">
-            {copy.intro.body2}
-          </p>
+          {startErrorMessage && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {startErrorMessage}
+            </div>
+          )}
 
-          <LessonOverviewCard lesson={lesson} copy={copy} getLevelLabel={getLevelLabel} />
+          {startBlockedReason && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+              {startBlockedReason}
+            </div>
+          )}
 
           {SHOW_DEBUG_PANELS && (
             <LessonDebugPanels
@@ -484,13 +1272,9 @@ export default function LessonPage() {
               lessonAIMessages={lessonAIMessages}
             />
           )}
-
-          <LessonBlockList blocks={lesson.blocks} copy={copy} />
-
-          <BackToDashboardLink copy={copy} />
         </div>
       </main>
-      <LessonFooter />
+      <AppFooter />
     </div>
   )
 }

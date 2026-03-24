@@ -44,32 +44,19 @@ export const ENABLED_TARGET_LANGUAGE_OPTIONS = TARGET_LANGUAGE_OPTIONS.filter(
   (option) => option.enabled
 )
 
-// ─── Target country (by learning language) ───────────────────────────────────
-// COUNTRY_BY_LANGUAGE is the single source of target-country options.
-// - Country labels are Japanese for now; may be localized later.
-// - For MVP, only English (en) is active; en has a full country list.
-// - ja, ko, zh are placeholders for future expansion; fill their country lists
-//   when the language is enabled in TARGET_LANGUAGE_OPTIONS.
-export type CountryOption = { value: string; label: string }
-
-const COUNTRIES_EN = [
-  { value: 'US', label: 'アメリカ' },
-  { value: 'GB', label: 'イギリス' },
-  { value: 'AU', label: 'オーストラリア' },
-  { value: 'CA', label: 'カナダ' },
-  { value: 'NZ', label: 'ニュージーランド' },
-] as const
-
-export const COUNTRY_BY_LANGUAGE = {
-  en: COUNTRIES_EN,
-  ja: [] as const,
-  ko: [] as const,
-  zh: [] as const,
-} as const satisfies Record<TargetLanguageCode, readonly CountryOption[]>
-
-/** Country code for user profile; valid values come from COUNTRY_BY_LANGUAGE. */
-export type TargetCountryCode =
-  (typeof COUNTRY_BY_LANGUAGE)[keyof typeof COUNTRY_BY_LANGUAGE][number]['value']
+/** Country options per target learning language. */
+export const COUNTRY_BY_LANGUAGE: Record<TargetLanguageCode, readonly OptionItem<string>[]> = {
+  en: [
+    { value: 'US', label: 'アメリカ英語' },
+    { value: 'GB', label: 'イギリス英語' },
+    { value: 'AU', label: 'オーストラリア英語' },
+    { value: 'CA', label: 'カナダ英語' },
+    { value: 'NZ', label: 'ニュージーランド英語' },
+  ],
+  ja: [],
+  ko: [],
+  zh: [],
+} as const
 
 /** Current level (MVP: beginner, intermediate, advanced) */
 export const CURRENT_LEVEL_OPTIONS: readonly OptionItem<'beginner' | 'intermediate' | 'advanced'>[] = [

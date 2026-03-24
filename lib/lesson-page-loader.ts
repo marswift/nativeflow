@@ -3,9 +3,15 @@
  * Used by app/lesson/page.tsx; keeps page thin and testable.
  * No React; client-side only (uses Supabase).
  */
-import { supabase } from './supabase'
+import { getSupabaseBrowserClient } from './supabase/browser-client'
 import type { UserProfileRow } from './types'
 import { buildLessonPageData, type LessonPageData } from './lesson-page-data'
+import type { LessonSession, LessonBlock, LessonBlockItem } from './lesson-engine'
+import pLimit from 'p-limit'
+const limit = pLimit(3)
+
+const supabase = getSupabaseBrowserClient()
+type HydratableLessonSession = NonNullable<LessonPageData['lesson']>
 
 /** Error key returned when profile fetch fails. Page maps this to copy in getPageErrorMessage. */
 export const LOAD_ERROR_PROFILE = 'profile_load_failed' as const
@@ -16,9 +22,21 @@ export type LoadLessonPageResult =
   | { error: typeof LOAD_ERROR_PROFILE }
   | { data: { pageData: LessonPageData; userId: string } }
 
-const PROFILE_SELECT =
-  'id, ui_language_code, target_language_code, current_learning_language, target_country_code, target_region_slug, current_level, target_outcome_text, speak_by_deadline_text, daily_study_minutes_goal'
-
+  const PROFILE_SELECT = `
+  id,
+  ui_language_code,
+  target_language_code,
+  target_country_code,
+  target_region_slug,
+  current_level,
+  target_outcome_text,
+  speak_by_deadline_text,
+  daily_study_minutes_goal,
+  planned_plan_code,
+  subscription_status,
+  current_period_end,
+  cancel_at_period_end
+`
 function toUserProfileRow(row: unknown): UserProfileRow {
   return row as UserProfileRow
 }
@@ -38,10 +56,19 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     return { redirect: '/login' }
   }
 
-  const { data: row, error: fetchError } = await supabase
+  const { data: userRow } = await supabase
     .from('user_profiles')
-    .select(PROFILE_SELECT)
+    .select('current_learning_language')
     .eq('id', session.user.id)
+    .single()
+
+  const currentLang = userRow?.current_learning_language
+
+  const { data: row, error: fetchError } = await supabase
+    .from('user_learning_profiles')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .eq('language_code', currentLang)
     .maybeSingle()
 
   if (fetchError) {
@@ -53,12 +80,93 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     return { redirect: '/onboarding' }
   }
 
-  const profile = toUserProfileRow(row)
-  const pageData = buildLessonPageData(profile)
+  const profile = {
+    id: row.user_id,
+    ui_language_code: 'ja',
+    target_language_code: row.language_code,
+    target_country_code: null,
+    target_region_slug: row.target_region_slug,
+    current_level: row.current_level,
+    target_outcome_text: row.target_outcome_text,
+    speak_by_deadline_text: row.speak_by_deadline_text,
+    daily_study_minutes_goal: row.daily_study_minutes_goal,
+    planned_plan_code: 'monthly',
+    subscription_status: null,
+    current_period_end: null,
+    cancel_at_period_end: null,
+  }
+
+  const pageData = buildLessonPageData(profile as any)
+
+  // 🔥ここが唯一の正解ポイント
+  const hydratedLesson = await hydrateLessonAudio(pageData.lesson)
+  
+  pageData.lesson = hydratedLesson
   return {
     data: {
       pageData,
       userId: session.user.id,
     },
+  }
+}
+
+async function hydrateAudioForText(text: string): Promise<string | null> {
+  if (!text || text.trim() === '') return null
+
+  try {
+    const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof window !== 'undefined' ? '' : 'http://localhost:3000')
+  
+    const res = await fetch(`${baseUrl}/api/audio/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      cache: 'no-store',
+    })
+
+    if (!res.ok) return null
+
+    const data = await res.json()
+    return data.audio_url ?? null
+  } catch (e) {
+    console.error('audio hydrate error', e)
+    return null
+  }
+}
+
+async function hydrateLessonAudio(
+  session: HydratableLessonSession
+): Promise<HydratableLessonSession> {
+  const newBlocks = await Promise.all(
+    session.blocks.map(async (block: LessonBlock) => {
+      const newItems = await Promise.all(
+        block.items.map((item: LessonBlockItem) =>
+          limit(async () => {
+            const sourceText =
+              item.answer?.trim() ||
+              item.prompt?.trim() ||
+              ''
+      
+            const audioUrl = await hydrateAudioForText(sourceText)
+      
+            return {
+              ...item,
+              audio_url: audioUrl,
+            }
+          })
+        )
+      )
+
+      return {
+        ...block,
+        items: newItems,
+      }
+    })
+  )
+
+  return {
+    ...session,
+    blocks: newBlocks,
   }
 }

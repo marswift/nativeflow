@@ -3,8 +3,8 @@
  * DB access only; no business logic. Uses Supabase client and lesson-run-types.
  */
 import type { PostgrestError } from '@supabase/supabase-js'
-import { supabase } from './supabase'
 import type { DailyStatRow } from './lesson-run-types'
+import { supabase } from './supabase'
 
 export type DailyStatsRepositoryResult<T> = {
   data: T | null
@@ -19,11 +19,9 @@ function toDailyStatRow(row: unknown): DailyStatRow | null {
 export type UpsertDailyStatPayload = {
   user_id: string
   stat_date: string
-  lesson_runs_started: number
   lesson_runs_completed: number
-  lesson_items_completed: number
-  typing_items_correct: number
   study_minutes: number
+  flow_points_today?: number
 }
 
 /**

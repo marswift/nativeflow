@@ -4,6 +4,7 @@
  * Used by app/lesson/page.tsx handleNext; keeps page thin.
  * No React; orchestrates lesson-run-service and lesson-runtime.
  */
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { LessonSession, LessonBlock, LessonBlockItem } from './lesson-engine'
 import type { LessonProgressState } from './lesson-progress'
 import { advanceRunState, getStats } from './lesson-runtime'
@@ -12,9 +13,9 @@ import {
   updateLessonRunStats,
   type SaveLessonRunItemInput,
 } from './lesson-run-service'
-import { incrementDailyStats } from './daily-stats-service'
 
 export type ExecuteNextStepInput = {
+  supabase: SupabaseClient
   lesson: LessonSession
   block: LessonBlock
   item: LessonBlockItem
@@ -36,7 +37,7 @@ export type ExecuteNextStepResult = {
  * Async side effects are fired; return value is synchronous from advanceRunState.
  */
 export function executeNextStep(input: ExecuteNextStepInput): ExecuteNextStepResult {
-  const { lesson, block, item, progress, inputValue, lessonRunId, userId, correctTypingCount } = input
+  const { supabase, lesson, block, item, progress, inputValue, lessonRunId, userId, correctTypingCount } = input
   const isTyping = block.type === 'typing'
   const now = new Date().toISOString()
 
@@ -53,7 +54,7 @@ export function executeNextStep(input: ExecuteNextStepInput): ExecuteNextStepRes
       is_correct: isTyping ? progress.isCorrect : null,
       completed_at: now,
     }
-    saveLessonRunItem(saveInput).then((result) => {
+    saveLessonRunItem(supabase, saveInput).then((result) => {
       if (result.error) console.error('Lesson run item save failed', result.error)
     })
   }
@@ -62,18 +63,8 @@ export function executeNextStep(input: ExecuteNextStepInput): ExecuteNextStepRes
 
   if (lessonRunId) {
     const stats = getStats(lesson, nextProgress, { correctTypingItems: correctTypingCount })
-    updateLessonRunStats(lessonRunId, stats).then((result) => {
+    updateLessonRunStats(supabase, lessonRunId, stats).then((result) => {
       if (result.error) console.error('Lesson run progress update failed', result.error)
-    })
-  }
-
-  if (userId && block && item) {
-    const increments: { lesson_items_completed: number; typing_items_correct?: number } = {
-      lesson_items_completed: 1,
-    }
-    if (block.type === 'typing' && progress.isCorrect) increments.typing_items_correct = 1
-    incrementDailyStats(userId, increments).then((result) => {
-      if (result.error) console.error('Daily stats update failed', result.error)
     })
   }
 

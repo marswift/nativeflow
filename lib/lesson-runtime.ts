@@ -5,7 +5,6 @@
  */
 
 import type { LessonSession } from './lesson-engine'
-import { generateLessonSession } from './lesson-engine'
 import type { LessonProgressState } from './lesson-progress'
 import {
   getLessonRunInitialState,
@@ -23,9 +22,34 @@ import {
   type LessonCompletionSummary,
 } from './lesson-summary'
 import type { UserProfileRow } from './types'
-
+import {
+  createLessonRuntimeEngineState,
+  getCurrentRuntimeBlock,
+  recordLessonStageAnswer,
+  advanceLessonRuntimeStage,
+  canAdvanceLessonRuntimeStage,
+  getLessonCompletionRatio,
+  buildLessonProgressPayload,
+  type LessonRuntimeEngineInput,
+  type LessonRuntimeEngineState,
+  type LessonRuntimeBlock,
+  type LessonRuntimeOverview,
+  type LessonRuntimeAdvanceResult,
+  type LessonAnswerKind,
+  type LessonAnswerRecord,
+  type LessonStageId,
+} from './lesson-runtime-engine'
 export type { TypingCheckResult } from './lesson-actions'
-
+export type {
+  LessonRuntimeEngineInput,
+  LessonRuntimeEngineState,
+  LessonRuntimeBlock,
+  LessonRuntimeOverview,
+  LessonRuntimeAdvanceResult,
+  LessonAnswerKind,
+  LessonAnswerRecord,
+  LessonStageId,
+} from './lesson-runtime-engine'
 /** Mutable fields for a lesson run (progress, input, typing correct count). */
 export type LessonRunStateFields = {
   progress: LessonProgressState
@@ -53,6 +77,120 @@ function isSessionObject(
   return Array.isArray(s.blocks) && typeof s.theme === 'string'
 }
 
+type UnknownRecord = Record<string, unknown>
+
+function asRecord(value: unknown): UnknownRecord {
+  return value as UnknownRecord
+}
+
+function readString(
+  source: UnknownRecord,
+  keys: string[],
+  fallback = ''
+): string {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string') {
+      return value
+    }
+  }
+
+  return fallback
+}
+
+function readNullableString(
+  source: UnknownRecord,
+  keys: string[]
+): string | null {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string') {
+      return value
+    }
+  }
+
+  return null
+}
+
+function readNumber(
+  source: UnknownRecord,
+  keys: string[],
+  fallback = 0
+): number {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value
+    }
+  }
+
+  return fallback
+}
+
+function getSessionLessonId(session: LessonSession): string {
+  const record = asRecord(session)
+
+  const lessonId = readString(record, ['id', 'lessonId', 'sessionId'])
+
+  if (!lessonId) {
+    throw new Error(
+      'LessonSession is missing a stable lesson identifier (expected id, lessonId, or sessionId).'
+    )
+  }
+
+  return lessonId
+}
+
+function toRuntimeOverview(session: LessonSession): LessonRuntimeOverview {
+  const record = asRecord(session)
+
+  return {
+    estimatedMinutes: readNumber(record, ['overviewEstimatedMinutes'], 0),
+    stepCount: readNumber(record, ['overviewStepCount'], 0),
+    flowPoint: readNumber(record, ['overviewFlowPoint'], 0),
+    sceneLabel: readString(record, ['overviewSceneLabel'], ''),
+    sceneDescription: readString(record, ['overviewSceneDescription'], ''),
+    blockCount: readNumber(record, ['overviewBlockCount'], session.blocks.length),
+  }
+}
+
+function toRuntimeBlocks(session: LessonSession): LessonRuntimeBlock[] {
+  console.log(JSON.stringify(session.blocks, null, 2))
+  
+  return session.blocks.flatMap((block, blockIndex) =>
+    block.items.map((item, itemIndex) => {
+      const record = asRecord(block)
+      const itemRecord = asRecord(item)
+
+      const id =
+        readString(itemRecord, ['id'], '') ||
+        `${getSessionLessonId(session)}-block-${blockIndex + 1}-item-${itemIndex + 1}`
+
+      const phraseText =
+        readNullableString(itemRecord, ['answer', 'expectedAnswer', 'typingPrompt']) ??
+        readString(itemRecord, ['prompt', 'phraseText', 'text', 'phrase'], '')
+
+      return {
+        id,
+        order: blockIndex * 100 + itemIndex,
+        phraseText,
+        translation: readNullableString(record, ['translation', 'translationText']),
+        sceneLabel:
+          readNullableString(record, ['sceneLabel']) ??
+          readNullableString(record, ['description']),
+        aiQuestion: readNullableString(record, ['aiQuestion', 'question']),
+        typingPrompt:
+          readNullableString(itemRecord, ['answer', 'typingPrompt', 'expectedAnswer']) ??
+          phraseText,
+        conversationPrompt:
+          readNullableString(record, ['conversationPrompt', 'conversationStarter']) ??
+          readNullableString(itemRecord, ['answer']) ??
+          phraseText,
+      }
+    })
+  )
+}
+
 // ——— SESSION ———
 // Boundary: accepts UserProfileRow (generate session) or prebuilt LessonSession (draft-based).
 /**
@@ -64,7 +202,7 @@ export function createSession(
   input: UserProfileRow | LessonSession
 ): LessonSession {
   if (isSessionObject(input)) return input
-  return generateLessonSession(input)
+  throw new Error('createSession: UserProfileRow input is no longer supported. Pass a LessonSession directly.')
 }
 
 // ——— RUN STATE ———
@@ -123,4 +261,110 @@ export function getCompletionSummary(
   stats: LessonStats
 ): LessonCompletionSummary {
   return buildLessonCompletionSummaryFromModule(session, stats)
+}
+// ——— NEW RUNTIME ENGINE ———
+/**
+ * Creates the new sequential lesson runtime state for the fixed 5-stage flow.
+ * This is the runtime used for listen → repeat → AI question → typing → AI conversation.
+ */
+export function createLessonRuntimeState(
+  input: LessonRuntimeEngineInput
+): LessonRuntimeEngineState {
+  return createLessonRuntimeEngineState(input)
+}
+
+/**
+ * Returns the current active lesson block in the new runtime engine.
+ */
+export function getCurrentLessonRuntimeBlock(
+  state: LessonRuntimeEngineState
+): LessonRuntimeBlock {
+  return getCurrentRuntimeBlock(state)
+}
+
+/**
+ * Records a user answer for the current non-listen stage.
+ */
+export function submitLessonStageAnswer(
+  state: LessonRuntimeEngineState,
+  input: {
+    stageId: Exclude<LessonStageId, 'listen'>
+    blockId: string
+    kind: LessonAnswerKind
+    value: string
+    isCorrect?: boolean | null
+    feedback?: string | null
+  }
+): LessonRuntimeEngineState {
+  return recordLessonStageAnswer(state, input)
+}
+
+/**
+ * Returns whether the current stage can move forward.
+ */
+export function canAdvanceLessonStage(
+  state: LessonRuntimeEngineState
+): boolean {
+  return canAdvanceLessonRuntimeStage(state)
+}
+
+/**
+ * Advances the runtime to the next stage, next block, or lesson completion.
+ */
+export function advanceLessonStage(
+  state: LessonRuntimeEngineState
+): LessonRuntimeAdvanceResult {
+  return advanceLessonRuntimeStage(state)
+}
+
+/**
+ * Returns normalized completion ratio from 0 to 1.
+ */
+export function getLessonRuntimeCompletionRatio(
+  state: LessonRuntimeEngineState
+): number {
+  return getLessonCompletionRatio(state)
+}
+
+/**
+ * Builds a serializable payload for persistence to Supabase.
+ */
+export function getLessonRuntimeProgressPayload(
+  state: LessonRuntimeEngineState
+) {
+  return buildLessonProgressPayload(state)
+}
+
+/**
+ * Converts an existing LessonSession into the new runtime engine input shape.
+ * Keeps the runtime integration isolated from UI code.
+ */
+export function createLessonRuntimeInputFromSession(input: {
+  session: LessonSession
+  userId: string
+  difficultyMultiplier?: number
+  flowPointBase?: number
+}): LessonRuntimeEngineInput {
+  return {
+    lessonId: getSessionLessonId(input.session),
+    userId: input.userId,
+    difficultyMultiplier: input.difficultyMultiplier,
+    flowPointBase: input.flowPointBase,
+    overview: toRuntimeOverview(input.session),
+    blocks: toRuntimeBlocks(input.session),
+  }
+}
+
+/**
+ * Convenience helper: creates the new runtime state directly from an existing LessonSession.
+ */
+export function createLessonRuntimeStateFromSession(input: {
+  session: LessonSession
+  userId: string
+  difficultyMultiplier?: number
+  flowPointBase?: number
+}): LessonRuntimeEngineState {
+  return createLessonRuntimeEngineState(
+    createLessonRuntimeInputFromSession(input)
+  )
 }

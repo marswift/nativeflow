@@ -1,0 +1,180 @@
+function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value))
+  }
+  
+  function round(value: number): number {
+    return Math.round(value)
+  }
+  
+  function normalizeText(input: string): string {
+    return input
+      .toLowerCase()
+      .replace(/[.,!?;:'"()[\]{}]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+  
+  function tokenize(input: string): string[] {
+    const normalized = normalizeText(input)
+    return normalized === '' ? [] : normalized.split(' ')
+  }
+  
+  function levenshtein(a: string, b: string): number {
+    const aLen = a.length
+    const bLen = b.length
+  
+    if (aLen === 0) return bLen
+    if (bLen === 0) return aLen
+  
+    const dp = Array.from({ length: aLen + 1 }, () => Array<number>(bLen + 1).fill(0))
+  
+    for (let i = 0; i <= aLen; i += 1) dp[i][0] = i
+    for (let j = 0; j <= bLen; j += 1) dp[0][j] = j
+  
+    for (let i = 1; i <= aLen; i += 1) {
+      for (let j = 1; j <= bLen; j += 1) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1
+        dp[i][j] = Math.min(
+          dp[i - 1][j] + 1,
+          dp[i][j - 1] + 1,
+          dp[i - 1][j - 1] + cost
+        )
+      }
+    }
+  
+    return dp[aLen][bLen]
+  }
+  
+  function getCharacterSimilarity(expected: string, actual: string): number {
+    if (!expected && !actual) return 100
+    if (!expected || !actual) return 0
+  
+    const distance = levenshtein(expected, actual)
+    const base = Math.max(expected.length, actual.length)
+    return round(clamp((1 - distance / base) * 100, 0, 100))
+  }
+  
+  function getWordMatchScore(expectedWords: string[], actualWords: string[]) {
+    if (expectedWords.length === 0) {
+      return {
+        score: 0,
+        matchedWords: [] as string[],
+        missingWords: [] as string[],
+      }
+    }
+  
+    const actualSet = new Set(actualWords)
+    const matchedWords = expectedWords.filter((word) => actualSet.has(word))
+    const missingWords = expectedWords.filter((word) => !actualSet.has(word))
+  
+    const coverage = matchedWords.length / expectedWords.length
+    const wordMatch = round(coverage * 100)
+
+    let orderedMatchCount = 0
+    for (let i = 0; i < Math.min(expectedWords.length, actualWords.length); i += 1) {
+      if (expectedWords[i] === actualWords[i]) {
+        orderedMatchCount += 1
+      }
+    }
+  
+    const order = orderedMatchCount / expectedWords.length
+    const score = round(clamp((coverage * 0.7 + order * 0.3) * 100, 0, 100))
+  
+    return {
+      score,
+      matchedWords,
+      missingWords,
+    }
+  }
+  
+  function getRhythmScore(expectedWords: string[], actualWords: string[], expected: string, actual: string) {
+    if (expectedWords.length === 0 || actualWords.length === 0) return 0
+  
+    const wordCountRatio =
+      Math.min(expectedWords.length, actualWords.length) /
+      Math.max(expectedWords.length, actualWords.length)
+  
+    const charLengthRatio =
+      Math.min(expected.length, actual.length) / Math.max(expected.length, actual.length)
+  
+    return round(clamp((wordCountRatio * 0.65 + charLengthRatio * 0.35) * 100, 0, 100))
+  }
+  
+  function getCompletenessScore(expectedWords: string[], missingWords: string[]) {
+    if (expectedWords.length === 0) return 0
+    const keptRatio = 1 - missingWords.length / expectedWords.length
+    return round(clamp(keptRatio * 100, 0, 100))
+  }
+  
+  function getClarityScore(expected: string, actual: string, averageLogprob: number | null) {
+    if (typeof averageLogprob === 'number' && Number.isFinite(averageLogprob)) {
+      const normalized = ((averageLogprob + 1.5) / 1.4) * 100
+      return round(clamp(normalized, 0, 100))
+    }
+  
+    return getCharacterSimilarity(expected, actual)
+  }
+  
+  export type PronunciationScoreBreakdown = {
+    clarity: number
+    wordMatch: number
+    rhythm: number
+    completeness: number
+  }
+  
+  export type PronunciationScoreResult = {
+    transcriptText: string
+    totalScore: number
+    breakdown: PronunciationScoreBreakdown
+    matchedWords: string[]
+    missingWords: string[]
+  }
+  
+  export function scorePronunciation(input: {
+    expectedText: string
+    transcriptText: string
+    averageLogprob?: number | null
+  }): PronunciationScoreResult {
+    const expected = normalizeText(input.expectedText)
+    const actual = normalizeText(input.transcriptText)
+  
+    const expectedWords = tokenize(expected)
+    const actualWords = tokenize(actual)
+  
+    const wordMatchResult = getWordMatchScore(expectedWords, actualWords)
+    const rhythm = getRhythmScore(expectedWords, actualWords, expected, actual)
+    const clarity = getClarityScore(expected, actual, input.averageLogprob ?? null)
+  
+    const completeness = getCompletenessScore(expectedWords, wordMatchResult.missingWords)
+
+    const wordMatch = round(
+      (wordMatchResult.matchedWords.length / Math.max(1, expectedWords.length)) * 100
+    )
+    
+    const wordMatchPenalty =
+      wordMatch < 30 ? 0.2 :
+      wordMatch < 50 ? 0.5 :
+      1
+    
+    const adjustedClarity = clarity * wordMatchPenalty
+    
+    const totalScore = round(
+      adjustedClarity * 0.4 +
+      wordMatch * 0.4 +
+      rhythm * 0.1 +
+      completeness * 0.1
+    )
+  
+    return {
+      transcriptText: input.transcriptText.trim(),
+      totalScore,
+      breakdown: {
+        clarity,
+        wordMatch: wordMatchResult.score,
+        rhythm,
+        completeness,
+      },
+      matchedWords: wordMatchResult.matchedWords,
+      missingWords: wordMatchResult.missingWords,
+    }
+  }

@@ -13,8 +13,8 @@ export type LessonAIMessage = {
 
 const USER_HEADER = 'Lesson generation context'
 
-function createSection(label: string, value: unknown): string[] {
-  return [label, JSON.stringify(value, null, 2)]
+function createSection(label: string, value: unknown): string {
+  return `${label}\n${JSON.stringify(value, null, 2)}`
 }
 
 function createSystemMessage(content: string): LessonAIMessage {
@@ -31,13 +31,13 @@ function buildSystemContent(payload: LessonAIPromptPayload): string {
 
 function buildUserContent(payload: LessonAIPromptPayload): string {
   const sections = [
-    ...createSection('[schemaVersion]', payload.schemaVersion),
-    ...createSection('[outputContract]', payload.outputContract),
-    ...createSection('[lessonInput]', payload.lessonInput),
-    ...createSection('[sessionConfig]', payload.sessionConfig),
-    ...createSection('[blueprint]', payload.blueprint),
-    ...createSection('[draft]', payload.draft),
-    ...createSection('[mappedSession]', payload.mappedSession),
+    createSection('[schemaVersion]', payload.schemaVersion),
+    createSection('[outputContract]', payload.outputContract),
+    createSection('[lessonInput]', payload.lessonInput),
+    createSection('[sessionConfig]', payload.sessionConfig),
+    createSection('[blueprint]', payload.blueprint),
+    createSection('[draft]', payload.draft),
+    createSection('[mappedSession]', payload.mappedSession),
   ]
   return [USER_HEADER, '', ...sections].join('\n')
 }

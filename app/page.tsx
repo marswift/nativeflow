@@ -3,7 +3,9 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useState, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { getSupabaseBrowserClient } from '../lib/supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
 
 // ── constants ──────────────────────────────────────────────────────────────
 const C = {
@@ -111,10 +113,10 @@ export default function LP() {
 
   useEffect(() => {
     let isActive = true
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    supabase.auth.getSession().then(({ data: { session: s } }: { data: { session: unknown } }) => {
       if (isActive) setSession(s ?? null)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: unknown, s: unknown) => {
       if (isActive) setSession(s ?? null)
     })
     return () => {
@@ -233,15 +235,15 @@ export default function LP() {
         <div className="lp-nav-inner" style={{ maxWidth: 1140, margin: '0 auto', height: 72, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Link href={isLoggedIn ? '/dashboard' : '/'} className="lp-logo-wrap" style={{ display: 'flex', alignItems: 'center' }} aria-label={isLoggedIn ? 'レッスンホームへ' : 'NativeFlow トップへ'}>
-              <Image
-                src="/header_logo.svg"
-                alt="NativeFlow"
-                width={200}
-                height={48}
-                priority
-                className="lp-logo-header"
-                style={{ height: 48, width: "auto" }}
-              />
+            <Image
+              src="/images/branding/header_logo.svg"
+              alt="NativeFlow"
+              width={200}
+              height={48}
+              priority
+              className="lp-logo-header"
+              style={{ height: 48, width: "auto" }}
+            />
             </Link>
           </div>
           <div className="lp-nav-right" style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
@@ -614,7 +616,7 @@ export default function LP() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
               <Link href={isLoggedIn ? '/dashboard' : '/'} style={{ display: 'flex', alignItems: 'center' }}>
                 <Image
-                  src="/footer_logo.svg"
+                  src="/images/branding/footer_logo.svg"
                   alt="NativeFlow"
                   width={200}
                   height={40}

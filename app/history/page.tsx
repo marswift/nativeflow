@@ -3,13 +3,15 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
 import { HISTORY_COPY_JA } from '../../lib/history-copy'
 import {
   getRecentLessonHistoryByUser,
   getDailyHistorySummariesByUser,
 } from '../../lib/history-service'
 import type { LessonHistoryItem, DailyHistorySummary } from '../../lib/history-types'
+import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
 
 const RECENT_LESSONS_LIMIT = 20
 const DAILY_SUMMARIES_LIMIT = 14

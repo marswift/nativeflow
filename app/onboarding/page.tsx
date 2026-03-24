@@ -3,8 +3,7 @@
 /**
  * Onboarding persists profile and subscription fields to user_profiles.
  * Uses planned_plan_code (from profile or user_metadata.plan, fallback monthly).
- * DB columns: username, age_group, country_code, planned_plan_code; trial_start_at/trial_ends_at left to DB defaults.
- *
+ * DB columns: username, age_group, origin_country, target_region_slug, planned_plan_code; trial_start_at/trial_ends_at left to DB defaults.
  * MVP: UI language and target learning language are fixed (Japanese / English). Labels are Japanese.
  */
 import type { FormEvent } from 'react'
@@ -12,7 +11,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { supabase } from '../../lib/supabase'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 import { ONBOARDING_COPY_JA } from '../../lib/onboarding-copy'
 import type { PartialUserProfileRow } from '../../lib/types'
 import {
@@ -20,11 +19,14 @@ import {
   UI_LANGUAGE_OPTIONS,
   TARGET_LANGUAGE_FIXED,
   TARGET_LANGUAGE_OPTIONS,
-  COUNTRY_BY_LANGUAGE,
   CURRENT_LEVEL_OPTIONS,
   type CurrentLevel,
 } from '../../lib/constants'
 import { computeStudyPlan } from '../../lib/study-plan-service'
+import {
+  getUserProfileForCompletionCheck,
+  isUserProfileOnboardingComplete,
+} from '@/lib/profile-completion'
 
 const AFTER_SAVE_REDIRECT = '/dashboard'
 
@@ -74,6 +76,39 @@ const PLANNED_PLAN_OPTIONS = [
   { value: 'yearly', label: '年額プラン' },
 ] as const
 
+const LOCAL_EXPRESSION_OPTIONS = [
+  { value: 'en_us_ny', label: 'アメリカ / ニューヨーク' },
+  { value: 'en_us_la', label: 'アメリカ / ロサンゼルス' },
+  { value: 'en_gb_london', label: 'イギリス / ロンドン' },
+  { value: 'en_au', label: 'オーストラリア' },
+  { value: 'en_ca', label: 'カナダ' },
+] as const
+
+const ORIGIN_COUNTRY_OPTIONS = [
+  { value: 'JP', label: '日本' },
+  { value: 'US', label: 'アメリカ' },
+  { value: 'GB', label: 'イギリス' },
+  { value: 'AU', label: 'オーストラリア' },
+  { value: 'CA', label: 'カナダ' },
+  { value: 'KR', label: '韓国' },
+  { value: 'TW', label: '台湾' },
+  { value: 'CN', label: '中国' },
+  { value: 'HK', label: '香港' },
+  { value: 'SG', label: 'シンガポール' },
+  { value: 'FR', label: 'フランス' },
+  { value: 'IT', label: 'イタリア' },
+  { value: 'DE', label: 'ドイツ' },
+  { value: 'ES', label: 'スペイン' },
+  { value: 'BR', label: 'ブラジル' },
+  { value: 'MX', label: 'メキシコ' },
+  { value: 'IN', label: 'インド' },
+  { value: 'TH', label: 'タイ' },
+  { value: 'VN', label: 'ベトナム' },
+  { value: 'PH', label: 'フィリピン' },
+  { value: 'ID', label: 'インドネシア' },
+  { value: 'OTHER', label: 'その他' },
+] as const
+
 type PlannedPlanCode = (typeof PLANNED_PLAN_OPTIONS)[number]['value']
 
 function getPlannedPlanSummary(plan: PlannedPlanCode): { label: string; priceText: string } {
@@ -82,13 +117,10 @@ function getPlannedPlanSummary(plan: PlannedPlanCode): { label: string; priceTex
     : { label: '月額プラン', priceText: '¥2,480 / 月' }
 }
 
-/** Japan-first MVP: nationality hidden in UI; fixed in DB so onboarding can complete. */
-const DEFAULT_COUNTRY_CODE = 'JP'
-
 type OnboardingProfileRow = PartialUserProfileRow & {
   username?: string | null
   age_group?: string | null
-  country_code?: string | null
+  origin_country?: string | null
   planned_plan_code?: string | null
   stripe_subscription_id?: string | null
   subscription_status?: string | null
@@ -105,9 +137,18 @@ const HINT_CLASS = 'mt-1 text-xs text-[#4a4a6a] leading-relaxed'
 const FIELD_ERROR_SELECT = '選択してください。'
 const FIELD_ERROR_REQUIRED = '入力してください。'
 
-function getSaveErrorMessage(err: { message?: string } | null, fallback: string): string {
-  if (process.env.NODE_ENV === 'development' && err?.message) {
-    return `${fallback} (${err.message})`
+function getSaveErrorMessage(
+  err: { message?: string; code?: string; details?: string; hint?: string } | null,
+  fallback: string
+): string {
+  if (process.env.NODE_ENV === 'development' && err) {
+    const debugParts = [err.message, err.code, err.details, err.hint]
+      .filter((value) => value !== undefined && value !== null && value !== '')
+      .join(' / ')
+
+    if (debugParts) {
+      return `${fallback} (${debugParts})`
+    }
   }
   return fallback
 }
@@ -125,48 +166,6 @@ function getRuntimeErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
-function isOnboardingComplete(profile: OnboardingProfileRow | null): boolean {
-  if (!profile) return false
-  const deadline = profile.speak_by_deadline_text?.trim()
-  const outcome = profile.target_outcome_text?.trim()
-  const plan = profile.planned_plan_code
-  const validPlan = plan === 'monthly' || plan === 'yearly'
-  const countryCode = profile.country_code?.trim()
-  const validCountry =
-    countryCode === DEFAULT_COUNTRY_CODE || (countryCode != null && countryCode.length > 0)
-
-  const profileComplete = !!(
-    profile.ui_language_code === UI_LANGUAGE_FIXED &&
-    profile.target_language_code === TARGET_LANGUAGE_FIXED &&
-    profile.target_country_code &&
-    profile.current_level &&
-    deadline &&
-    outcome &&
-    profile.username?.trim() &&
-    profile.age_group &&
-    validCountry &&
-    validPlan
-  )
-
-  return profileComplete && hasStartedBilling(profile)
-}
-
-function hasStartedBilling(profile: OnboardingProfileRow | null): boolean {
-  if (!profile) return false
-
-  const subscriptionId = profile.stripe_subscription_id?.trim()
-  if (subscriptionId) return true
-
-  const status = profile.subscription_status?.trim()
-  return (
-    status === 'trialing' ||
-    status === 'active' ||
-    status === 'past_due' ||
-    status === 'unpaid' ||
-    status === 'canceled'
-  )
-}
-
 function resolveInitialPlan(
   profilePlan?: string | null,
   metaPlan?: string | null
@@ -178,14 +177,17 @@ function resolveInitialPlan(
   return (validProfilePlan ?? validMetaPlan ?? 'monthly') as PlannedPlanCode
 }
 
+const supabase = getSupabaseBrowserClient()
+
 export default function OnboardingPage() {
   const router = useRouter()
   const copy = ONBOARDING_COPY_JA
   const [username, setUsername] = useState('')
   const [ageGroup, setAgeGroup] = useState('')
   const [plannedPlanCode, setPlannedPlanCode] = useState<PlannedPlanCode>('monthly')
-  const [targetCountryCode, setTargetCountryCode] = useState('')
   const [targetRegionSlug, setTargetRegionSlug] = useState('')
+  const [originCountryCode, setOriginCountryCode] = useState('')
+  const [nativeLanguageCode, setNativeLanguageCode] = useState('')
   const [currentLevel, setCurrentLevel] = useState<CurrentLevel | ''>('')
   const [speakByDeadlineText, setSpeakByDeadlineText] = useState('')
   const [targetOutcomeText, setTargetOutcomeText] = useState('')
@@ -195,15 +197,13 @@ export default function OnboardingPage() {
   const [formError, setFormError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const countryOptions = COUNTRY_BY_LANGUAGE[TARGET_LANGUAGE_FIXED] ?? []
-
   useEffect(() => {
     let isActive = true
 
     function applyProfile(profile: OnboardingProfileRow, metaPlan?: string | null) {
       if (profile.username != null) setUsername(profile.username)
       if (profile.age_group != null) setAgeGroup(profile.age_group)
-      if (profile.target_country_code != null) setTargetCountryCode(profile.target_country_code)
+      if (profile.origin_country != null) setOriginCountryCode(profile.origin_country)
       if (profile.target_region_slug != null) setTargetRegionSlug(profile.target_region_slug)
       const validCurrentLevel =
         profile.current_level != null &&
@@ -213,32 +213,35 @@ export default function OnboardingPage() {
       if (profile.target_outcome_text != null) setTargetOutcomeText(profile.target_outcome_text)
       const initialPlan = resolveInitialPlan(profile.planned_plan_code, metaPlan)
       setPlannedPlanCode(initialPlan)
+      if ((profile as any).native_language_code != null) {
+        setNativeLanguageCode((profile as any).native_language_code)
+      }
     }
 
     async function loadProfile() {
       let willRedirect = false
+
       try {
         const {
-          data: { session },
-          error: sessionError,
-        } = await supabase.auth.getSession()
-        if (sessionError || !session?.user) {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser()
+
+        if (userError || !user) {
           if (isActive) {
             willRedirect = true
             router.replace('/login')
           }
           return
         }
-        const metaPlan = session.user.user_metadata?.plan
-        const { data: profile, error: fetchError } = await supabase
-          .from('user_profiles')
-          .select(
-            'ui_language_code, target_language_code, target_country_code, target_region_slug, current_level, speak_by_deadline_text, target_outcome_text, username, age_group, country_code, planned_plan_code, stripe_subscription_id, subscription_status'
-          )
-          .eq('id', session.user.id)
-          .maybeSingle()
+
+        const metaPlan = user.user_metadata?.plan
+
+        const { profile, error: fetchError } =
+          await getUserProfileForCompletionCheck(user.id)
+
         if (fetchError) {
-          console.error('Onboarding profile fetch error', {
+          console.warn('Onboarding profile fetch handled error', {
             message: fetchError.message,
             code: (fetchError as { code?: string }).code,
             details: (fetchError as { details?: string }).details,
@@ -246,24 +249,29 @@ export default function OnboardingPage() {
             full: fetchError,
           })
         }
+
         if (!fetchError && profile && isActive) {
           const onboardingProfile = profile as OnboardingProfileRow
-          if (isOnboardingComplete(onboardingProfile)) {
+
+          if (isUserProfileOnboardingComplete(onboardingProfile)) {
             willRedirect = true
             router.replace(AFTER_SAVE_REDIRECT)
             return
           }
+
           applyProfile(onboardingProfile, metaPlan)
         }
+
         if (!fetchError && !profile && isActive) {
           const initialPlan = resolveInitialPlan(null, metaPlan)
           setPlannedPlanCode(initialPlan)
-          // country_code fixed to DEFAULT_COUNTRY_CODE in payload; no UI state needed
         }
       } catch (error) {
-        console.error('Onboarding loadProfile exception', error)
+        console.warn('Onboarding loadProfile handled exception', error)
       } finally {
-        if (isActive && !willRedirect) setAuthChecked(true)
+        if (isActive && !willRedirect) {
+          setAuthChecked(true)
+        }
       }
     }
 
@@ -281,7 +289,9 @@ export default function OnboardingPage() {
     const errors: Record<string, string> = {}
     if (!username.trim()) errors.username = FIELD_ERROR_REQUIRED
     if (!ageGroup) errors.age_group = FIELD_ERROR_SELECT
-    if (!targetCountryCode) errors.target_country_code = FIELD_ERROR_SELECT
+    if (!targetRegionSlug) errors.target_region_slug = FIELD_ERROR_SELECT
+    if (!originCountryCode) errors.origin_country = FIELD_ERROR_SELECT
+    if (!nativeLanguageCode) errors.native_language_code = FIELD_ERROR_SELECT
     if (!currentLevel) errors.current_level = FIELD_ERROR_SELECT
     if (!speakByDeadlineText.trim()) errors.speak_by_deadline = FIELD_ERROR_SELECT
     if (!targetOutcomeText.trim()) errors.target_outcome_text = FIELD_ERROR_REQUIRED
@@ -294,11 +304,11 @@ export default function OnboardingPage() {
     setLoading(true)
     try {
       const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession()
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser()
 
-      if (sessionError || !session?.user) {
+      if (userError || !user) {
         setFormError(copy.errors.loginRequired)
         return
       }
@@ -308,29 +318,32 @@ export default function OnboardingPage() {
         currentLevel: currentLevel as CurrentLevel,
       })
 
+      console.info('Onboarding auth user', {
+        id: user.id,
+        email: user.email,
+      })
       const payload = {
-        id: session.user.id,
+        id: user.id,
         ui_language_code: UI_LANGUAGE_FIXED,
+        native_language_code: nativeLanguageCode,
         target_language_code: TARGET_LANGUAGE_FIXED,
-        target_country_code: targetCountryCode,
-        target_region_slug: targetRegionSlug.trim() || null,
+        target_region_slug: targetRegionSlug,
         current_level: currentLevel as CurrentLevel,
+        origin_country: originCountryCode,
         speak_by_deadline_text: speakByDeadlineText.trim(),
         target_outcome_text: targetOutcomeText.trim(),
         daily_study_minutes_goal: studyPlan.recommendedDailyMinutes,
         username: username.trim(),
         age_group: ageGroup,
-        country_code: DEFAULT_COUNTRY_CODE,
         planned_plan_code: plannedPlanCode || 'monthly',
       }
 
       const { error: upsertError } = await supabase
         .from('user_profiles')
         .upsert(payload, { onConflict: 'id' })
-        .select()
 
       if (upsertError) {
-        console.error('Onboarding upsert error', {
+        console.warn('Onboarding upsert handled error', {
           message: upsertError.message,
           code: (upsertError as { code?: string }).code,
           details: (upsertError as { details?: string }).details,
@@ -342,8 +355,13 @@ export default function OnboardingPage() {
       }
       setLoading(false)
 
-      const accessToken = session.access_token
-      if (!accessToken) {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      const accessToken = session?.access_token
+      if (sessionError || !accessToken) {
         setFormError(copy.errors.loginRequired)
         return
       }
@@ -359,7 +377,7 @@ export default function OnboardingPage() {
         setCheckoutLaunching(false)
       }
     } catch (error) {
-      console.error(error)
+      console.warn('Onboarding submit handled exception', error)
       setFormError(getRuntimeErrorMessage(error, copy.errors.saveError))
     } finally {
       setLoading(false)
@@ -375,7 +393,7 @@ export default function OnboardingPage() {
         <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
           <div className="mx-auto flex h-16 max-w-[960px] items-center px-6 sm:px-10">
             <Link href="/" className="flex items-center" aria-label="NativeFlow トップへ">
-              <Image src="/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
+              <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
             </Link>
           </div>
         </header>
@@ -404,7 +422,7 @@ export default function OnboardingPage() {
       <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
         <div className="mx-auto flex h-16 max-w-[960px] items-center px-6 sm:px-10">
           <Link href="/" className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg" aria-label="NativeFlow トップへ">
-            <Image src="/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
+            <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
           </Link>
         </div>
       </header>
@@ -492,42 +510,85 @@ export default function OnboardingPage() {
                   </p>
                 </div>
               </div>
-
               <div>
                 <label htmlFor="target_country_code" className={LABEL_CLASS}>
-                  {copy.labels.targetCountry} <span className="ml-1 text-xs font-medium text-amber-600">{copy.requiredMark}</span>
+                  学習したい地域・ローカル表現 <span className="ml-1 text-xs font-medium text-amber-600">{copy.requiredMark}</span>
                 </label>
                 <select
-                  id="target_country_code"
-                  value={targetCountryCode}
-                  onChange={(e) => setTargetCountryCode(e.target.value)}
+                  id="target_region_slug"
+                  value={targetRegionSlug}
+                  onChange={(e) => setTargetRegionSlug(e.target.value)}
                   className={INPUT_CLASS}
                   disabled={loading || checkoutLaunching}
                 >
                   <option value="">{copy.placeholders.select}</option>
-                  {countryOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  {LOCAL_EXPRESSION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </select>
-                {fieldErrors.target_country_code && (
-                  <p className="mt-1.5 text-sm text-red-600">{fieldErrors.target_country_code}</p>
+                {fieldErrors.target_region_slug && (
+                  <p className="mt-1.5 text-sm text-red-600">{fieldErrors.target_region_slug}</p>
                 )}
               </div>
 
               <div>
-                <label htmlFor="target_region_slug" className={LABEL_CLASS}>
-                  {copy.labels.regionOptional}
+                <label htmlFor="origin_country_code" className={LABEL_CLASS}>
+                  出身国 <span className="ml-1 text-xs font-medium text-amber-600">{copy.requiredMark}</span>
                 </label>
-                <p className={HINT_CLASS}>{copy.hints.region}</p>
-                <input
-                  id="target_region_slug"
-                  type="text"
-                  value={targetRegionSlug}
-                  onChange={(e) => setTargetRegionSlug(e.target.value)}
-                  placeholder={copy.placeholders.region}
+                <select
+                  id="origin_country_code"
+                  value={originCountryCode}
+                  onChange={(e) => setOriginCountryCode(e.target.value)}
                   className={INPUT_CLASS}
                   disabled={loading || checkoutLaunching}
-                />
+                >
+                  <option value="">{copy.placeholders.select}</option>
+                  {ORIGIN_COUNTRY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                {fieldErrors.origin_country && (
+                  <p className="mt-1.5 text-sm text-red-600">{fieldErrors.origin_country}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="native_language_code" className={LABEL_CLASS}>
+                  母国語 <span className="ml-1 text-xs font-medium text-amber-600">{copy.requiredMark}</span>
+                </label>
+                <select
+                  id="native_language_code"
+                  value={nativeLanguageCode}
+                  onChange={(e) => setNativeLanguageCode(e.target.value)}
+                  className={INPUT_CLASS}
+                  disabled={loading || checkoutLaunching}
+                >
+                  <option value="">選択してください</option>
+                  <option value="ja">日本語</option>
+                  <option value="en">英語</option>
+                  <option value="ko">韓国語</option>
+                  <option value="zh">中国語</option>
+                  <option value="es">スペイン語</option>
+                  <option value="fr">フランス語</option>
+                  <option value="de">ドイツ語</option>
+                  <option value="it">イタリア語</option>
+                  <option value="pt">ポルトガル語</option>
+                  <option value="ru">ロシア語</option>
+                  <option value="ar">アラビア語</option>
+                  <option value="hi">ヒンディー語</option>
+                  <option value="th">タイ語</option>
+                  <option value="vi">ベトナム語</option>
+                  <option value="id">インドネシア語</option>
+                  <option value="tl">タガログ語</option>
+                  <option value="other">その他</option>
+                </select>
+                {fieldErrors.native_language_code && (
+                  <p className="mt-1.5 text-sm text-red-600">{fieldErrors.native_language_code}</p>
+                )}
               </div>
 
               <div>
@@ -667,7 +728,7 @@ export default function OnboardingPage() {
       <footer className="border-t border-[#ede9e2] bg-white px-6 py-8 sm:px-10 sm:py-8">
         <div className="mx-auto max-w-[960px] flex flex-col items-center gap-2 text-center">
           <Link href="/" className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">
-            <Image src="/footer_logo.svg" alt="NativeFlow" width={200} height={40} className="h-9 w-auto object-contain" />
+            <Image src="/images/branding/footer_logo.svg" alt="NativeFlow" width={200} height={40} className="h-9 w-auto object-contain" />
           </Link>
           <p className="text-[13px] text-[#aaa]">Speak with AI. Learn like a native.</p>
           <p className="text-xs text-[#bbb]">© 2026 NativeFlow</p>

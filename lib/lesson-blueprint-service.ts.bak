@@ -1,0 +1,68 @@
+/**
+ * Defines the lesson structure for NativeFlow's Hybrid-C format.
+ * Conversation → Typing → Review → AI Conversation.
+ * Bridge layer before full AI lesson generation is connected.
+ * Pure logic only; no React, Supabase, or OpenAI.
+ */
+
+import type { CurrentLevel } from './constants'
+import type { LessonSessionFactoryOutput } from './lesson-session-factory'
+
+function createBlock(
+  type: LessonBlueprintBlockType,
+  title: string,
+  goal: string
+): LessonBlueprintBlock {
+  return { type, title, goal }
+}
+
+export type LessonBlueprintBlockType =
+  | 'conversation'
+  | 'typing'
+  | 'review'
+  | 'ai_conversation'
+
+export type LessonBlueprintBlock = {
+  type: LessonBlueprintBlockType
+  title: string
+  goal: string
+}
+
+export type LessonBlueprint = {
+  theme: string
+  level: CurrentLevel
+  blocks: LessonBlueprintBlock[]
+}
+
+/**
+ * Builds a Hybrid-C lesson blueprint from session config.
+ * Returns exactly 4 blocks: conversation, typing, review, ai_conversation.
+ */
+export function createLessonBlueprint(
+  input: LessonSessionFactoryOutput
+): LessonBlueprint {
+  const dailyFlow = [
+    '起床',
+    '朝の準備',
+    '外出',
+    '日中',
+    '帰宅',
+    '夜',
+    '就寝',
+  ]
+
+  // MVP: 将来拡張を見据えて index を変数化
+  const sceneIndex = 0
+  const currentScene = dailyFlow[sceneIndex] ?? '起床'
+
+  return {
+    theme: input.theme,
+    level: input.level,
+    blocks: [
+      createBlock('conversation', '聞き取りとリピート', currentScene),
+      createBlock('typing', '書き取り', currentScene),
+      createBlock('review', '復習', currentScene),
+      createBlock('ai_conversation', 'AI会話', currentScene),
+    ],
+  }
+}

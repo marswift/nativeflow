@@ -5,7 +5,13 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
+import {
+  getUserProfileForCompletionCheck,
+  isUserProfileOnboardingComplete,
+} from '@/lib/profile-completion'
+
+const supabase = getSupabaseBrowserClient()
 
 const CONTAINER_CLASS = 'mx-auto max-w-lg px-6 py-10 sm:py-12'
 const CARD_CLASS = 'rounded-2xl border border-[#ede9e2] bg-white px-6 py-8 shadow-sm sm:px-8 sm:py-9'
@@ -28,27 +34,8 @@ export function SignupClient() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    let isActive = true
-
-    async function checkSession() {
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        if (!sessionError && session?.user) {
-          if (isActive) router.replace('/dashboard')
-          return
-        }
-      } catch (err) {
-        console.error(err)
-      } finally {
-        if (isActive) setLoading(false)
-      }
-    }
-
-    checkSession()
-    return () => {
-      isActive = false
-    }
-  }, [router])
+    setLoading(false)
+  }, [])
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
@@ -86,8 +73,14 @@ export function SignupClient() {
     }
 
     const fallback = '登録に失敗しました。時間をおいて再度お試しください'
-    if (process.env.NODE_ENV === 'development' && err.message) {
-      return `${fallback}（${err.message}）`
+    if (process.env.NODE_ENV === 'development') {
+      const debugParts = [err.message, err.code, err.status]
+        .filter((value) => value !== undefined && value !== null && value !== '')
+        .join(' / ')
+
+      if (debugParts) {
+        return `${fallback}（${debugParts}）`
+      }
     }
     return fallback
   }
@@ -121,6 +114,12 @@ export function SignupClient() {
 
     setSubmitting(true)
     try {
+      console.info('Attempting signup', {
+        email: trimmedEmail,
+        plan: hasPlan ? plan : null,
+        emailRedirectTo,
+      })
+
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: trimmedEmail,
         password,
@@ -129,21 +128,50 @@ export function SignupClient() {
           data: planMeta,
         },
       })
+
       if (signUpError) {
-        console.error('Signup error', {
+        console.warn('Signup handled error', {
           message: signUpError.message,
           code: (signUpError as { code?: string }).code,
           status: (signUpError as { status?: number }).status,
           full: signUpError,
         })
-        setFormError(getSignupErrorMessage(signUpError as { message: string; code?: string; status?: number }))
+        setFormError(
+          getSignupErrorMessage(
+            signUpError as { message: string; code?: string; status?: number }
+          )
+        )
         return
       }
-      if (data?.session) {
-        router.replace('/onboarding')
-      } else {
-        router.replace('/auth/verify-notice')
+
+      const nextQuery = hasPlan ? `?plan=${plan}` : ''
+
+      if (!data.user) {
+        setFormError('ユーザー作成に失敗しました')
+        return
       }
+
+      // サーバー設定に従い、メール認証ありでは verify-notice へ送る
+      if (!data.session) {
+        router.replace(`/auth/verify-notice${nextQuery}`)
+        return
+      }
+
+      const { profile, error: profileError } =
+        await getUserProfileForCompletionCheck(data.user.id)
+
+      if (profileError) {
+        setFormError('プロフィール取得に失敗しました。再度お試しください')
+        return
+      }
+
+      if (!profile || !isUserProfileOnboardingComplete(profile)) {
+        router.replace(`/onboarding${nextQuery}`)
+        return
+      }
+
+      router.replace('/dashboard')
+
     } catch (err) {
       console.error('Signup exception', err)
       setFormError(
@@ -162,7 +190,7 @@ export function SignupClient() {
         <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
           <div className="mx-auto flex h-16 max-w-[960px] items-center justify-between px-6 sm:px-10">
             <Link href="/" className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg" aria-label="NativeFlow トップへ">
-              <Image src="/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
+              <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
             </Link>
           </div>
         </header>
@@ -185,7 +213,7 @@ export function SignupClient() {
           <div className="mx-auto grid max-w-[1140px] gap-10 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
             <div>
               <Link href="/" className="mb-3.5 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">
-                <Image src="/footer_logo.svg" alt="NativeFlow" width={200} height={40} className="h-10 w-auto object-contain" />
+                <Image src="/images/branding/footer_logo.svg" alt="NativeFlow" width={200} height={40} className="h-10 w-auto object-contain" />
               </Link>
               <p className="max-w-[240px] text-[13px] leading-relaxed text-[#aaa]">Speak with AI. Learn like a native.</p>
             </div>
@@ -227,7 +255,7 @@ export function SignupClient() {
             aria-label="NativeFlow トップへ"
           >
             <Image
-              src="/header_logo.svg"
+              src="/images/branding/header_logo.svg"
               alt="NativeFlow"
               width={200}
               height={48}
@@ -376,7 +404,7 @@ export function SignupClient() {
         <div className="mx-auto grid max-w-[1140px] gap-10 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr]">
           <div>
             <Link href="/" className="mb-3.5 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded">
-              <Image src="/footer_logo.svg" alt="NativeFlow" width={200} height={40} className="h-10 w-auto object-contain" />
+              <Image src="/images/branding/footer_logo.svg" alt="NativeFlow" width={200} height={40} className="h-10 w-auto object-contain" />
             </Link>
             <p className="max-w-[240px] text-[13px] leading-relaxed text-[#aaa]">
               Speak with AI. Learn like a native.

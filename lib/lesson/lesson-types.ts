@@ -45,6 +45,8 @@ export type Lesson = {
   cefrLevel: CefrLevel | null
   status: LessonStatus
   scenes: Scene[]
+  /** Optional mascot/character name displayed on overview. */
+  mascot?: string
 }
 
 export type Scene = {
@@ -67,6 +69,10 @@ export type Phrase = {
   order: number
   imageUrl: string | null
   imagePrompt: string | null
+  /** Generated TTS audio URL. Null until generated. */
+  audioUrl: string | null
+  /** Voice used for TTS (e.g. 'alloy', 'nova'). Null = use default. */
+  audioVoice: string | null
 }
 
 export type ConversationTurn = {

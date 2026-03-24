@@ -19,6 +19,8 @@ import { buildContinuityPrompt } from '@/lib/continuity-prompt'
 import { buildLiveTopicPrompt } from '@/lib/live-topic-prompt'
 import { buildGenerationalPrompt } from '@/lib/generational-prompt'
 
+const DEFAULT_TEMPERATURE = 0.7
+
 export function trimOrNull(
   value: string | null | undefined
 ): string | null {
@@ -184,7 +186,10 @@ export async function generateAssistantTurn(args: {
       })),
       { role: 'user', content: args.userMessage },
     ]
-    const { text } = await generateChatCompletion({ messages, temperature: 0.7 })
+    const { text } = await generateChatCompletion({
+      messages,
+      temperature: DEFAULT_TEMPERATURE,
+    })
     if (text === '' || text.trim() === '') {
       return fallback
     }
@@ -288,7 +293,7 @@ export async function generateAIConversationTurn(
     },
   }
   const fallbackReply = buildAIConversationAssistantReply({
-    text: "I'm sorry. Please try again.",
+    text: "Let's try again. You can do it.",
     status: 'needs_retry',
   })
   const defaultEvaluation = {
@@ -300,7 +305,10 @@ export async function generateAIConversationTurn(
     canProceed: true,
   }
   try {
-    const { text } = await generateChatCompletion({ messages })
+    const { text } = await generateChatCompletion({
+      messages,
+      temperature: DEFAULT_TEMPERATURE,
+    })
     const trimmed = typeof text === 'string' ? text.trim() : ''
     if (trimmed === '') {
       return { promptBundle, assistantReply: fallbackReply, evaluation: defaultEvaluation }

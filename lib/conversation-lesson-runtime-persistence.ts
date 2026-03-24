@@ -4,6 +4,7 @@ import {
   type RepoResult,
   type ConversationLessonRuntimeSessionRow,
 } from '@/lib/conversation-lesson-runtime-session-repository'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 
 export type PersistConversationLessonRuntimeInput = {
   state: ConversationLessonFacadeState
@@ -23,11 +24,15 @@ function mapLessonStatusToRepoStatus(
 export async function persistConversationLessonRuntime(
   input: PersistConversationLessonRuntimeInput
 ): Promise<RepoResult<ConversationLessonRuntimeSessionRow>> {
+  const supabase = getSupabaseBrowserClient()
+
   const lessonId = input.state.session.lessonId
   const status = mapLessonStatusToRepoStatus(input.state.lesson.status)
   const startedAt = input.state.lesson.startedAt
   const completedAt = input.completedAt ?? input.state.lesson.completedAt ?? null
+
   return saveConversationLessonRuntimeSession({
+    supabase,
     userId: input.userId,
     lessonId,
     runtimeState: input.state,

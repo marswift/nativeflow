@@ -1,5 +1,4 @@
-import type { PostgrestError } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 
 const TABLE = 'conversation_lesson_runtime_sessions'
 
@@ -20,6 +19,7 @@ export type ConversationLessonRuntimeSessionRow = {
 }
 
 export type SaveConversationLessonRuntimeSessionInput = {
+  supabase: SupabaseClient
   userId: string
   lessonId: string
   runtimeState: unknown
@@ -29,6 +29,7 @@ export type SaveConversationLessonRuntimeSessionInput = {
 }
 
 export type GetConversationLessonRuntimeSessionInput = {
+  supabase: SupabaseClient
   userId: string
   lessonId: string
 }
@@ -48,11 +49,13 @@ export async function saveConversationLessonRuntimeSession(
     completed_at: input.completedAt ?? null,
     updated_at: now,
   }
-  const { data, error } = await supabase
+
+  const { data, error } = await input.supabase
     .from(TABLE)
     .insert(payload)
     .select()
     .single()
+
   return {
     data: data as ConversationLessonRuntimeSessionRow | null,
     error: error ?? null,
@@ -62,7 +65,7 @@ export async function saveConversationLessonRuntimeSession(
 export async function getConversationLessonRuntimeSession(
   input: GetConversationLessonRuntimeSessionInput
 ): Promise<RepoResult<ConversationLessonRuntimeSessionRow | null>> {
-  const { data, error } = await supabase
+  const { data, error } = await input.supabase
     .from(TABLE)
     .select()
     .eq('user_id', input.userId)
@@ -70,6 +73,7 @@ export async function getConversationLessonRuntimeSession(
     .order('updated_at', { ascending: false })
     .limit(1)
     .maybeSingle()
+
   return {
     data: data as ConversationLessonRuntimeSessionRow | null,
     error: error ?? null,

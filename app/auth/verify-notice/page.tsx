@@ -18,7 +18,7 @@ export default function VerifyNoticePage() {
             aria-label="NativeFlow トップへ"
           >
             <Image
-              src="/header_logo.svg"
+              src="/images/branding/header_logo.svg"
               alt="NativeFlow"
               width={200}
               height={48}
@@ -59,7 +59,7 @@ export default function VerifyNoticePage() {
               className="mb-3.5 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded"
             >
               <Image
-                src="/footer_logo.svg"
+                src="/images/branding/footer_logo.svg"
                 alt="NativeFlow"
                 width={200}
                 height={40}

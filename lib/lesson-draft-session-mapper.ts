@@ -17,7 +17,7 @@ export type LessonDraftSessionItem = {
   answer: string | null
 }
 
-type DraftSessionBlockType = 'conversation' | 'review' | 'typing'
+export type DraftSessionBlockType = 'conversation' | 'review' | 'typing'
 
 export type LessonDraftSessionBlock = {
   id: string
@@ -35,28 +35,29 @@ export type LessonDraftSession = {
   blocks: LessonDraftSessionBlock[]
 }
 
-function createBlockId(blockIndex: number): string {
-  return `block-${blockIndex + 1}`
+function createBlockId(
+  lessonId: string,
+  blockIndex: number
+): string {
+  return `${lessonId}-block-${blockIndex + 1}`
 }
 
-function createItemId(blockIndex: number, itemIndex: number): string {
-  return `block-${blockIndex + 1}-item-${itemIndex + 1}`
-}
-
-function mapDraftBlockType(
-  type: LessonBlueprintDraftBlock['type']
-): DraftSessionBlockType {
-  if (type === 'ai_conversation') return 'conversation'
-  return type
+function createItemId(
+  lessonId: string,
+  blockIndex: number,
+  itemIndex: number
+): string {
+  return `${lessonId}-block-${blockIndex + 1}-item-${itemIndex + 1}`
 }
 
 function mapDraftItemToSessionItem(
   item: LessonBlueprintDraftItem,
+  lessonId: string,
   blockIndex: number,
   itemIndex: number
 ): LessonDraftSessionItem {
   return {
-    id: createItemId(blockIndex, itemIndex),
+    id: createItemId(lessonId, blockIndex, itemIndex),
     prompt: item.prompt,
     answer: item.answer,
   }
@@ -64,30 +65,38 @@ function mapDraftItemToSessionItem(
 
 function mapDraftBlockToSessionBlock(
   block: LessonBlueprintDraftBlock,
+  lessonId: string,
   blockIndex: number
 ): LessonDraftSessionBlock {
   return {
-    id: createBlockId(blockIndex),
+    id: createBlockId(lessonId, blockIndex),
     type: mapDraftBlockType(block.type),
     title: block.title,
     description: block.description,
     estimatedMinutes: block.estimatedMinutes,
     items: block.items.map((item, itemIndex) =>
-      mapDraftItemToSessionItem(item, blockIndex, itemIndex)
+      mapDraftItemToSessionItem(item, lessonId, blockIndex, itemIndex)
     ),
   }
 }
 
-/**
- * Builds a lesson engine–compatible session from a blueprint draft.
- * Preserves block order; ai_conversation becomes conversation.
- */
 export function createLessonDraftSession(
   draft: LessonBlueprintDraft,
   level: CurrentLevel
 ): LessonDraftSession {
-  const blocks = draft.blocks.map((block, i) => mapDraftBlockToSessionBlock(block, i))
-  const totalEstimatedMinutes = blocks.reduce((sum, b) => sum + b.estimatedMinutes, 0)
+const lessonId =
+  draft.theme && draft.theme.trim() !== ''
+    ? draft.theme
+    : 'lesson'
+
+  const blocks = draft.blocks.map((block, i) =>
+    mapDraftBlockToSessionBlock(block, lessonId, i)
+  )
+
+  const totalEstimatedMinutes = blocks.reduce(
+    (sum, b) => sum + b.estimatedMinutes,
+    0
+  )
 
   return {
     theme: draft.theme,
@@ -95,4 +104,11 @@ export function createLessonDraftSession(
     totalEstimatedMinutes,
     blocks,
   }
+}
+
+function mapDraftBlockType(
+  type: LessonBlueprintDraftBlock['type']
+): DraftSessionBlockType {
+  if (type === 'ai_conversation') return 'conversation'
+  return type
 }
