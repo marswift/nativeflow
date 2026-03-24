@@ -200,16 +200,18 @@ function getTrialDisplay(
 function DashboardLoadingState({
   loadingMessage,
   onLogout,
+  currentLanguage,
 }: {
   loadingMessage: string
   onLogout: () => void
+  currentLanguage: string
 }) {
   return (
     <div
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={onLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+    <AppHeader onLogout={onLogout} currentLanguage={currentLanguage} onChangeLanguage={() => {}} />
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className={`w-full max-w-md ${CARD_CLASS} px-6 py-8 text-center`}>
           <p className="text-[#4a4a6a]" aria-live="polite">
@@ -225,16 +227,18 @@ function DashboardLoadingState({
 function DashboardErrorState({
   message,
   onLogout,
+  currentLanguage,
 }: {
   message: string
   onLogout: () => void
+  currentLanguage: string
 }) {
   return (
     <div
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={onLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+     <AppHeader onLogout={onLogout} currentLanguage={currentLanguage} onChangeLanguage={() => {}} />
       <main className="flex-1 flex items-center justify-center px-6 py-12">
         <div className={`w-full max-w-md ${CARD_CLASS} px-6 py-8 text-center`}>
           <h2 className="text-lg font-semibold text-[#1a1a2e]">
@@ -413,8 +417,9 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <DashboardLoadingState
-        loadingMessage={copy.loading}
+        loadingMessage="読み込み中です..."
         onLogout={handleLogout}
+        currentLanguage={profile?.target_language_code ?? 'en'}
       />
     )
   }
@@ -422,8 +427,9 @@ export default function DashboardPage() {
   if (!profile || pageError) {
     return (
       <DashboardErrorState
-        message={pageError || USER_FACING_ERROR}
+        message="データの読み込みに失敗しました"
         onLogout={handleLogout}
+        currentLanguage={profile?.target_language_code ?? 'en'}
       />
     )
   }
