@@ -336,7 +336,7 @@ export default function LessonPage() {
   const copy: LessonCopy = getLessonCopy(pageData?.uiLanguageCode)
 
   const targetLanguageLabel =
-    TARGET_LANGUAGE_OPTIONS.find((option) => option.value === TARGET_LANGUAGE_FIXED)?.label ?? '英語'
+    TARGET_LANGUAGE_OPTIONS.find((option) => option.value === pageData?.lessonInput?.targetLanguageCode)?.label ?? '英語'
 
   const {
     lesson,
@@ -1131,7 +1131,7 @@ export default function LessonPage() {
                   currentStageId={runtimeState?.currentStageId ?? null}
                   copy={copy}
                   isLessonComplete={isLessonComplete}
-                  targetLanguageLabel="英語"
+                  targetLanguageLabel={targetLanguageLabel}
                   scenarioLabel="ビジネス"
                 />
               </>

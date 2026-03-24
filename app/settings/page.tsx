@@ -253,6 +253,7 @@ export default function SettingsPage() {
         age_group: ageGroup || null,
         origin_country: originCountry.trim() || null,
         target_language_code: ENGLISH_LANGUAGE_VALUE,
+        current_learning_language: ENGLISH_LANGUAGE_VALUE,
         target_region_slug: targetLocale || null,
         current_level: currentLevel || null,
         speak_by_deadline_text: deadlineTrimmed || null,
@@ -269,6 +270,28 @@ export default function SettingsPage() {
         setSaveMessage(updateError.message || '保存に失敗しました')
         return
       }
+
+      const { error: learningProfileError } = await supabase
+        .from('user_learning_profiles')
+        .upsert(
+          {
+            user_id: profile.id,
+            language_code: ENGLISH_LANGUAGE_VALUE,
+            target_region_slug: payload.target_region_slug,
+            current_level: payload.current_level,
+            speak_by_deadline_text: payload.speak_by_deadline_text,
+            target_outcome_text: payload.target_outcome_text,
+            daily_study_minutes_goal: payload.daily_study_minutes_goal,
+          },
+          { onConflict: 'user_id,language_code' }
+        )
+
+      if (learningProfileError) {
+        setSaveStatus('error')
+        setSaveMessage(learningProfileError.message || '学習プロフィールの保存に失敗しました')
+        return
+      }
+
       setSaveStatus('saved')
       setSaveMessage('プロフィールを更新しました')
       setProfile((prev) =>
