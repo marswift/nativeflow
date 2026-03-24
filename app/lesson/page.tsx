@@ -1045,7 +1045,7 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -1066,7 +1066,7 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">エラー</h2>
@@ -1101,7 +1101,7 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1">
           <div className={`${CONTAINER_CLASS} pt-8 sm:pt-10`}>
             {!showCompleted && !showListenRepeatComplete && block != null && item != null && (
@@ -1195,7 +1195,7 @@ export default function LessonPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
         {/* 発音スコア履歴 */}

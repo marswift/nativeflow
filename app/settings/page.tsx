@@ -304,7 +304,7 @@ export default function SettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -323,7 +323,7 @@ export default function SettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-sm text-[#4a4a6a]">{pageError || USER_FACING_ERROR}</p>
@@ -359,7 +359,7 @@ export default function SettingsPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
