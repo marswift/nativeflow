@@ -17,7 +17,6 @@ import type { PartialUserProfileRow } from '../../lib/types'
 import {
   UI_LANGUAGE_FIXED,
   UI_LANGUAGE_OPTIONS,
-  TARGET_LANGUAGE_FIXED,
   TARGET_LANGUAGE_OPTIONS,
   CURRENT_LEVEL_OPTIONS,
   type CurrentLevel,
@@ -51,9 +50,6 @@ async function requestCheckout(accessToken: string, plan: string): Promise<{ url
 
 const UI_LANGUAGE_LABEL =
   UI_LANGUAGE_OPTIONS.find((o) => o.value === UI_LANGUAGE_FIXED)?.label ?? '日本語'
-const TARGET_LANGUAGE_LABEL =
-  TARGET_LANGUAGE_OPTIONS.find((o) => o.value === TARGET_LANGUAGE_FIXED)?.label ?? '英語'
-
 const DEADLINE_OPTIONS = [
   '6ヶ月',
   '1年',
@@ -185,6 +181,7 @@ export default function OnboardingPage() {
   const [username, setUsername] = useState('')
   const [ageGroup, setAgeGroup] = useState('')
   const [plannedPlanCode, setPlannedPlanCode] = useState<PlannedPlanCode>('monthly')
+  const [targetLanguageCode, setTargetLanguageCode] = useState('en')
   const [targetRegionSlug, setTargetRegionSlug] = useState('')
   const [originCountryCode, setOriginCountryCode] = useState('')
   const [nativeLanguageCode, setNativeLanguageCode] = useState('')
@@ -204,6 +201,7 @@ export default function OnboardingPage() {
       if (profile.username != null) setUsername(profile.username)
       if (profile.age_group != null) setAgeGroup(profile.age_group)
       if (profile.origin_country != null) setOriginCountryCode(profile.origin_country)
+      if (profile.target_language_code != null) setTargetLanguageCode(profile.target_language_code)
       if (profile.target_region_slug != null) setTargetRegionSlug(profile.target_region_slug)
       const validCurrentLevel =
         profile.current_level != null &&
@@ -326,7 +324,8 @@ export default function OnboardingPage() {
         id: user.id,
         ui_language_code: UI_LANGUAGE_FIXED,
         native_language_code: nativeLanguageCode,
-        target_language_code: TARGET_LANGUAGE_FIXED,
+        target_language_code: targetLanguageCode,
+        current_learning_language: targetLanguageCode,
         target_region_slug: targetRegionSlug,
         current_level: currentLevel as CurrentLevel,
         origin_country: originCountryCode,
@@ -454,10 +453,22 @@ export default function OnboardingPage() {
               </div>
 
               <div>
-                <span className={LABEL_CLASS}>{copy.labels.targetLanguage}</span>
-                <div className="mt-2 rounded-xl border border-[#ede9e2] bg-[#faf9f7] px-4 py-3 text-[#1a1a2e]">
-                  {TARGET_LANGUAGE_LABEL}
-                </div>
+                <label htmlFor="target_language_code" className={LABEL_CLASS}>
+                  {copy.labels.targetLanguage}
+                </label>
+                <select
+                  id="target_language_code"
+                  value={targetLanguageCode}
+                  onChange={(e) => setTargetLanguageCode(e.target.value)}
+                  className={INPUT_CLASS}
+                  disabled={loading || checkoutLaunching}
+                >
+                  {TARGET_LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
