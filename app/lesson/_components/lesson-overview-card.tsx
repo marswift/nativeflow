@@ -91,14 +91,6 @@ export function LessonOverviewCard({
 
   const newPhraseCount = lesson.blocks.reduce((sum, block) => sum + block.items.length, 0)
 
-  const sceneList = Array.from(
-    new Set(
-      lesson.blocks
-        .map((block) => (block.title ?? '').trim())
-        .filter((title) => title.length > 0)
-    )
-  )
-
   const estimatedMinutes =
     typeof overview.overviewEstimatedMinutes === 'number'
       ? overview.overviewEstimatedMinutes
@@ -167,16 +159,20 @@ export function LessonOverviewCard({
     },
   ]
 
-  const stages =
-    overviewStepCount <= baseStages.length
-      ? baseStages.slice(0, overviewStepCount)
-      : [
-          ...baseStages,
-          ...Array.from({ length: overviewStepCount - baseStages.length }, (_, index) => ({
-            title: `追加ステップ ${index + 1}`,
-            description: 'このレッスン内容に応じた追加練習が入ります。',
-          })),
-        ]
+  let stages = baseStages.slice(0, overviewStepCount)
+
+  if (overviewStepCount > baseStages.length) {
+    stages = [
+      ...baseStages,
+      ...Array.from(
+        { length: overviewStepCount - baseStages.length },
+        (_, index) => ({
+          title: `追加ステップ ${index + 1}`,
+          description: 'このレッスン内容に応じた追加練習が入ります。',
+        })
+      ),
+    ]
+  }
 
   return (
     <div className="mt-8 space-y-5">
@@ -309,27 +305,6 @@ export function LessonOverviewCard({
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="rounded-[20px] border border-[#E8E4DF] bg-white px-5 py-5 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
-        <p className="mb-2 text-[13px] font-bold tracking-[0.04em] text-[#5a5a7a]">
-          {uiText.sceneSectionTitle}
-        </p>
-        <p className="mb-2 text-sm font-bold text-[#1a1a2e]">{sceneLabel}</p>
-        <p className="text-sm leading-relaxed text-[#5a5a7a]">
-          {sceneDescription}
-        </p>
-      </div>
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {sceneList.map((scene, index) => (
-          <span
-            key={`${scene}-${index}`}
-            className="rounded-full border border-[#E8E4DF] bg-[#FAF7F2] px-3 py-1 text-xs font-semibold text-[#5a5a7a]"
-          >
-            {scene}
-          </span>
-        ))}
       </div>
 
       <div>
