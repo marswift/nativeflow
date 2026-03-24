@@ -140,7 +140,7 @@ export default function SettingsPage() {
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
           .select(
-            'id, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal, username, age_group, origin_country, target_language_code, target_region_slug, ui_language_code'
+            'id, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal, username, age_group, origin_country, target_language_code, current_learning_language, target_region_slug, ui_language_code'
           )
           .eq('id', session.user.id)
           .maybeSingle()
@@ -157,19 +157,52 @@ export default function SettingsPage() {
         }
 
         const profileRow = row as ProfileRow
+
+        const currentLearningLanguage =
+          (profileRow as ProfileRow & { current_learning_language?: string | null }).current_learning_language ??
+          profileRow.target_language_code ??
+          ENGLISH_LANGUAGE_VALUE
+
+        const { data: learningRow, error: learningFetchError } = await supabase
+          .from('user_learning_profiles')
+          .select(
+            'language_code, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal, target_region_slug'
+          )
+          .eq('user_id', session.user.id)
+          .eq('language_code', currentLearningLanguage)
+          .maybeSingle()
+
+        if (learningFetchError) {
+          console.error('My Page learning profile fetch error', learningFetchError)
+          if (isActive) setPageError(USER_FACING_ERROR)
+          return
+        }
+
+        const mergedProfile = learningRow
+          ? ({
+              ...profileRow,
+              target_language_code: learningRow.language_code ?? profileRow.target_language_code,
+              target_region_slug: learningRow.target_region_slug ?? profileRow.target_region_slug,
+              current_level: learningRow.current_level ?? profileRow.current_level,
+              speak_by_deadline_text: learningRow.speak_by_deadline_text ?? profileRow.speak_by_deadline_text,
+              target_outcome_text: learningRow.target_outcome_text ?? profileRow.target_outcome_text,
+              daily_study_minutes_goal: learningRow.daily_study_minutes_goal ?? profileRow.daily_study_minutes_goal,
+            } as ProfileRow)
+          : profileRow
+
         if (isActive) {
-          setProfile(profileRow)
-          const rawUsername = profileRow.username != null ? String(profileRow.username).trim() : ''
+          setProfile(mergedProfile)
+          const rawUsername = mergedProfile.username != null ? String(mergedProfile.username).trim() : ''
           setUsername(rawUsername === sessionEmail ? '' : rawUsername)
-          setAgeGroup(profileRow.age_group ?? '')
-          setOriginCountry(profileRow.origin_country?.trim() ?? '')
-          setTargetLocale(profileRow.target_region_slug?.trim() ?? '')
-          setCurrentLevel((profileRow.current_level as CurrentLevel) ?? '')
-          const deadline = profileRow.speak_by_deadline_text?.trim() ?? ''
+          setAgeGroup(mergedProfile.age_group ?? '')
+          setOriginCountry(mergedProfile.origin_country?.trim() ?? '')
+          setTargetLocale(mergedProfile.target_region_slug?.trim() ?? '')
+          setCurrentLevel((mergedProfile.current_level as CurrentLevel) ?? '')
+          const deadline = mergedProfile.speak_by_deadline_text?.trim() ?? ''
           setSpeakByDeadlineText(DEADLINE_OPTIONS.some((o) => o.value === deadline) ? deadline : '')
-          setTargetOutcomeText(profileRow.target_outcome_text?.trim() ?? '')
-          if (isActive && profileRow.ui_language_code) {
-            setUiLanguageCode(profileRow.ui_language_code)
+          setTargetOutcomeText(mergedProfile.target_outcome_text?.trim() ?? '')
+          if (isActive && mergedProfile.ui_language_code) {
+            setUiLanguageCode(mergedProfile.ui_language_code)
           }
         }
       } catch (err) {
