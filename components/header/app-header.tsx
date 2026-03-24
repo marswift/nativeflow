@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { TARGET_LANGUAGE_OPTIONS } from '@/lib/constants'
 
 type AppHeaderProps = {
   onLogout: () => void
@@ -32,8 +33,11 @@ export default function AppHeader({
               onChange={(e) => onChangeLanguage(e.target.value)}
               className="cursor-not-allowed rounded-md border border-[#ede9e2] bg-[#f8f6f2] px-2 py-1 text-sm text-[#7a7a7a]" disabled
             >
-              <option value="en">英語</option>
-              <option value="ko">韓国語</option>
+              {TARGET_LANGUAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
