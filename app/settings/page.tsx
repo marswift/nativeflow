@@ -281,12 +281,15 @@ export default function SettingsPage() {
             }).recommendedDailyMinutes
           : null
 
+      const activeLanguageCode =
+        profile.target_language_code || ENGLISH_LANGUAGE_VALUE
+
       const payload = {
         username: username.trim() || null,
         age_group: ageGroup || null,
         origin_country: originCountry.trim() || null,
-        target_language_code: ENGLISH_LANGUAGE_VALUE,
-        current_learning_language: ENGLISH_LANGUAGE_VALUE,
+        target_language_code: activeLanguageCode,
+        current_learning_language: activeLanguageCode,
         target_region_slug: targetLocale || null,
         current_level: currentLevel || null,
         speak_by_deadline_text: deadlineTrimmed || null,
@@ -309,7 +312,7 @@ export default function SettingsPage() {
         .upsert(
           {
             user_id: profile.id,
-            language_code: ENGLISH_LANGUAGE_VALUE,
+            language_code: activeLanguageCode,
             target_region_slug: payload.target_region_slug,
             current_level: payload.current_level,
             speak_by_deadline_text: payload.speak_by_deadline_text,
