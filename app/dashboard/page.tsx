@@ -31,6 +31,15 @@ type DashboardProfileRow = UserProfileRow & {
   username?: string | null
   age_group?: string | null
   origin_country?: string | null
+  current_learning_language?: string | null
+}
+
+type DashboardLearningProfileRow = {
+  language_code: string
+  current_level: string | null
+  speak_by_deadline_text: string | null
+  target_outcome_text: string | null
+  daily_study_minutes_goal: number | null
 }
 
 const PAGE_SHELL_CLASS = 'min-h-screen flex flex-col bg-[#faf9f6]'
@@ -259,6 +268,7 @@ export default function DashboardPage() {
   }
 
   const [profile, setProfile] = useState<DashboardProfileRow | null>(null)
+  const [learningProfile, setLearningProfile] = useState<DashboardLearningProfileRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [todayStat, setTodayStat] = useState<DailyStatRow | null>(null)
   const [dailyStatsError, setDailyStatsError] = useState(false)
@@ -306,7 +316,7 @@ export default function DashboardPage() {
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
           .select(
-            'id, daily_study_minutes_goal, current_streak_days, best_streak_days, last_streak_date, avatar_character_code, avatar_level, avatar_image_url, planned_plan_code, subscription_status, current_period_end, total_flow_points, username'
+            'id, daily_study_minutes_goal, current_streak_days, best_streak_days, last_streak_date, avatar_character_code, avatar_level, avatar_image_url, planned_plan_code, subscription_status, current_period_end, total_flow_points, username, current_learning_language, target_language_code'
           )
           .eq('id', userId)
           .maybeSingle()
@@ -323,8 +333,28 @@ export default function DashboardPage() {
           return
         }
 
+        const typedProfile = row as DashboardProfileRow
+
+        const { data: learningProfileRow, error: learningProfileError } = await supabase
+          .from('user_learning_profiles')
+          .select(
+            'language_code, current_level, speak_by_deadline_text, target_outcome_text, daily_study_minutes_goal'
+          )
+          .eq('user_id', userId)
+          .eq('language_code', typedProfile.current_learning_language ?? typedProfile.target_language_code ?? 'en')
+          .maybeSingle()
+
+        if (learningProfileError) {
+          if (isActive) setPageError(USER_FACING_ERROR)
+          if (isActive) setLoading(false)
+          return
+        }
+
         profileLoaded = true
-        if (isActive) setProfile(row as DashboardProfileRow)
+        if (isActive) {
+          setProfile(typedProfile)
+          setLearningProfile((learningProfileRow as DashboardLearningProfileRow | null) ?? null)
+        }
         } catch (_err) {
           if (isActive && !profileLoaded) setPageError(USER_FACING_ERROR)
           if (isActive) setLoading(false)
@@ -399,7 +429,7 @@ export default function DashboardPage() {
   }
 
   const studyMinutesActual = todayStat?.study_minutes ?? 0
-  const studyGoal = profile.daily_study_minutes_goal ?? 0
+  const studyGoal = learningProfile?.daily_study_minutes_goal ?? profile?.daily_study_minutes_goal ?? 0
 
   // ストリーク: プロフィールの current_streak_days を優先、なければ算出値
   const displayStreak = (profile.current_streak_days != null && profile.current_streak_days > 0)
