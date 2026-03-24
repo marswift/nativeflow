@@ -58,11 +58,11 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
 
   const { data: userRow } = await supabase
     .from('user_profiles')
-    .select('current_learning_language')
+    .select('id, ui_language_code, current_learning_language, planned_plan_code, subscription_status')
     .eq('id', session.user.id)
     .single()
 
-  const currentLang = userRow?.current_learning_language
+  const currentLang = userRow?.current_learning_language ?? 'en'
 
   const { data: row, error: fetchError } = await supabase
     .from('user_learning_profiles')
@@ -82,7 +82,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
 
   const profile = {
     id: row.user_id,
-    ui_language_code: 'ja',
+    ui_language_code: userRow.ui_language_code,
     target_language_code: row.language_code,
     target_country_code: null,
     target_region_slug: row.target_region_slug,
@@ -90,8 +90,8 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     target_outcome_text: row.target_outcome_text,
     speak_by_deadline_text: row.speak_by_deadline_text,
     daily_study_minutes_goal: row.daily_study_minutes_goal,
-    planned_plan_code: 'monthly',
-    subscription_status: null,
+    planned_plan_code: userRow.planned_plan_code,
+    subscription_status: userRow.subscription_status,
     current_period_end: null,
     cancel_at_period_end: null,
   }
