@@ -1,6 +1,6 @@
 /**
  * Lesson engine: pure-function implementation of start/resume/pause/complete/advance/addTurn/queueReview.
- * No DB, no UI, no API. Uses contract types from lesson-engine-types.
+ * No DB, no UI, no API. Uses contract types from lesson-types, lesson-runtime-types, and lesson-engine-types.
  */
 import type { Lesson, Phrase, PhraseId, Scene, SceneId } from './lesson-types'
 import type {
@@ -23,8 +23,8 @@ import type {
   LessonEngineSuccessResult,
 } from './lesson-engine-types'
 
-function now(): string {
-  return new Date().toISOString()
+function now(timestamp?: string): string {
+  return timestamp ?? new Date().toISOString()
 }
 
 function scenesByOrder(lesson: Lesson): Scene[] {
@@ -271,7 +271,7 @@ export function completeLesson(
   return success(newState, 'complete_lesson', ts, changed)
 }
 
-function cannotAdvance(status: LessonRuntimeState['status']): boolean {
+function isInvalidAdvanceState(status: LessonRuntimeState['status']): boolean {
   return status === 'idle' || status === 'completed'
 }
 
@@ -281,7 +281,7 @@ export function advanceScene(
 ): LessonEngineOperationResult {
   const { state } = input
   const ts = input.timestamp ?? now()
-  if (cannotAdvance(state.status)) {
+  if (isInvalidAdvanceState(state.status)) {
     return fail(
       'invalid_transition',
       'Cannot advance scene from current status',
@@ -335,7 +335,7 @@ export function advancePhrase(
 ): LessonEngineOperationResult {
   const { state } = input
   const ts = input.timestamp ?? now()
-  if (cannotAdvance(state.status)) {
+  if (isInvalidAdvanceState(state.status)) {
     return fail(
       'invalid_transition',
       'Cannot advance phrase from current status',
@@ -409,7 +409,7 @@ export function addTurn(
 ): LessonEngineOperationResult {
   const { state, turn } = input
   const ts = input.timestamp ?? now()
-  if (cannotAdvance(state.status)) {
+  if (isInvalidAdvanceState(state.status)) {
     return fail(
       'invalid_transition',
       'Cannot add turn from current status',
@@ -437,7 +437,7 @@ export function queueReview(
 ): LessonEngineOperationResult {
   const { state, item } = input
   const ts = input.timestamp ?? now()
-  if (cannotAdvance(state.status)) {
+  if (isInvalidAdvanceState(state.status)) {
     return fail(
       'invalid_transition',
       'Cannot queue review from current status',

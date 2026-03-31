@@ -1,8 +1,9 @@
 /**
  * Service layer for lesson run persistence.
- * Orchestrates repository calls and maps lesson-engine / lesson-stats data to DB payloads.
+ * Orchestrates repository calls and maps lesson session / lesson-stats data to DB payloads.
  * No React or UI; minimal business logic for MVP.
  */
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { LessonSession, LessonBlock, LessonBlockItem } from './lesson-engine'
 import { getTotalItemCount, getTotalTypingItemCount } from './lesson-stats'
 import type { LessonStats } from './lesson-stats'
@@ -20,6 +21,7 @@ import {
  * Initial progress is zero; status is in_progress.
  */
 export async function startLessonRun(
+  supabase: SupabaseClient,
   userId: string,
   session: LessonSession
 ): Promise<RepositoryResult<LessonRunRow>> {
@@ -27,7 +29,7 @@ export async function startLessonRun(
   const totalTypingItems = getTotalTypingItemCount(session)
   const startedAt = new Date().toISOString()
 
-  return createLessonRun({
+  return createLessonRun(supabase, {
     user_id: userId,
     lesson_theme: session.theme,
     lesson_level: session.level,
@@ -65,9 +67,10 @@ export type SaveLessonRunItemInput = {
  * Persists one lesson_run_items row for the current block/item state.
  */
 export async function saveLessonRunItem(
+  supabase: SupabaseClient,
   input: SaveLessonRunItemInput
 ): Promise<RepositoryResult<LessonRunItemRow>> {
-  return insertLessonRunItem({
+  return insertLessonRunItem(supabase, {
     lesson_run_id: input.lesson_run_id,
     user_id: input.user_id,
     block_index: input.block_index,
@@ -87,10 +90,11 @@ export async function saveLessonRunItem(
  * Updates a lesson run's progress from current stats (completed_items, correct_typing_items, progress_percent).
  */
 export async function updateLessonRunStats(
+  supabase: SupabaseClient,
   lessonRunId: string,
   stats: LessonStats
 ): Promise<RepositoryResult<LessonRunRow>> {
-  return updateLessonRunProgress(lessonRunId, {
+  return updateLessonRunProgress(supabase, lessonRunId, {
     completed_items: stats.completedItems,
     correct_typing_items: stats.correctTypingItems,
     progress_percent: stats.progressPercent,
@@ -101,9 +105,33 @@ export async function updateLessonRunStats(
  * Marks a lesson run as completed.
  */
 export async function finishLessonRun(
+  supabase: SupabaseClient,
   lessonRunId: string
 ): Promise<RepositoryResult<LessonRunRow>> {
-  return completeLessonRun(lessonRunId)
+  // ① 既に完了しているか確認
+  const { data: existing, error: fetchError } = await supabase
+    .from('lesson_runs')
+    .select('*')
+    .eq('id', lessonRunId)
+    .maybeSingle()
+
+  if (fetchError) {
+    return {
+      data: null,
+      error: fetchError,
+    }
+  }
+
+  // ② すでに完了済みなら何もしない（冪等性）
+  if (existing?.completed_at) {
+    return {
+      data: existing as LessonRunRow,
+      error: null,
+    }
+  }
+
+  // ③ 初回のみ完了処理
+  return completeLessonRun(supabase, lessonRunId)
 }
 
 /**

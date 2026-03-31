@@ -1,5 +1,5 @@
 /**
- * Pure progression utilities for streak, rank, and avatar level.
+ * Pure progression utilities for streak, rank, avatar level, and Flow Point progression.
  * Framework-free; used by progression-service and dashboard.
  * Designed so avatar_image_url / avatar_badge_image_url can be attached later
  * without changing this logic.
@@ -11,6 +11,19 @@ export type RankCode =
   | 'silver'
   | 'gold'
   | 'diamond'
+
+export type RankRequirement = {
+  rank: RankCode
+  minFlowPoints: number
+}
+
+export const FLOW_POINT_RANK_REQUIREMENTS: RankRequirement[] = [
+  { rank: 'starter', minFlowPoints: 0 },
+  { rank: 'bronze', minFlowPoints: 500 },
+  { rank: 'silver', minFlowPoints: 2000 },
+  { rank: 'gold', minFlowPoints: 5000 },
+  { rank: 'diamond', minFlowPoints: 10000 },
+]
 
 /** Rank by total streak days: starter 1–6, bronze 7–29, silver 30–99, gold 100–364, diamond 365+ */
 export function computeRankCodeFromStreak(days: number): RankCode {
@@ -30,6 +43,59 @@ export function computeAvatarLevelFromStreak(days: number): number {
   if (days >= 7) return 2
   if (days >= 1) return 1
   return 1
+}
+
+/** Rank by total Flow Points. */
+export function computeRankCodeFromFlowPoints(flowPoints: number): RankCode {
+  const safeFlowPoints = Number.isFinite(flowPoints) ? Math.max(0, Math.floor(flowPoints)) : 0
+
+  let currentRank: RankCode = 'starter'
+
+  for (const requirement of FLOW_POINT_RANK_REQUIREMENTS) {
+    if (safeFlowPoints >= requirement.minFlowPoints) {
+      currentRank = requirement.rank
+    } else {
+      break
+    }
+  }
+
+  return currentRank
+}
+
+/** Avatar level 1–5 by total Flow Points. */
+export function computeAvatarLevelFromFlowPoints(flowPoints: number): number {
+  const rank = computeRankCodeFromFlowPoints(flowPoints)
+
+  if (rank === 'diamond') return 5
+  if (rank === 'gold') return 4
+  if (rank === 'silver') return 3
+  if (rank === 'bronze') return 2
+  return 1
+}
+
+/** Returns the next rank requirement, or null if already at max rank. */
+export function getNextRankRequirement(flowPoints: number): RankRequirement | null {
+  const safeFlowPoints = Number.isFinite(flowPoints) ? Math.max(0, Math.floor(flowPoints)) : 0
+
+  for (const requirement of FLOW_POINT_RANK_REQUIREMENTS) {
+    if (safeFlowPoints < requirement.minFlowPoints) {
+      return requirement
+    }
+  }
+
+  return null
+}
+
+/** Returns Flow Points remaining until the next rank. */
+export function getFlowPointsToNextRank(flowPoints: number): number {
+  const safeFlowPoints = Number.isFinite(flowPoints) ? Math.max(0, Math.floor(flowPoints)) : 0
+  const nextRequirement = getNextRankRequirement(safeFlowPoints)
+
+  if (!nextRequirement) {
+    return 0
+  }
+
+  return Math.max(0, nextRequirement.minFlowPoints - safeFlowPoints)
 }
 
 /** Previous calendar day in YYYY-MM-DD. */
@@ -53,13 +119,15 @@ export type ProgressionProfileUpdate = {
   current_streak_days: number
   best_streak_days: number
   last_streak_date: string
-  rank_code: RankCode
-  avatar_level: number
 }
 
 /**
  * Computes updated streak and derived rank/avatar for a study day.
  * Idempotent for same day: if lastStreakDate === todayYmd, returns values that imply no change.
+ *
+ * Note:
+ * This function remains streak-based for legacy progression compatibility.
+ * Flow Point-based rank helpers should be used for the main NativeFlow rank UI.
  */
 export function computeUpdatedStreakProfile(
   input: ProgressionProfileInput
@@ -72,8 +140,6 @@ export function computeUpdatedStreakProfile(
       current_streak_days: currentStreakDays,
       best_streak_days: bestStreakDays,
       last_streak_date: todayYmd,
-      rank_code: computeRankCodeFromStreak(bestStreakDays),
-      avatar_level: computeAvatarLevelFromStreak(bestStreakDays),
     }
   }
 
@@ -90,7 +156,5 @@ export function computeUpdatedStreakProfile(
     current_streak_days: newCurrent,
     best_streak_days: newBest,
     last_streak_date: todayYmd,
-    rank_code: computeRankCodeFromStreak(newBest),
-    avatar_level: computeAvatarLevelFromStreak(newBest),
   }
 }

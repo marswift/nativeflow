@@ -16,10 +16,8 @@ function isNonEmptyString(value: string | null | undefined): value is string {
   return value != null && value !== ''
 }
 
-/** Minimal profile fields required to generate lesson session input. */
 export type LessonGeneratorProfileInput = {
   target_language_code: string
-  target_country_code: string | null
   target_region_slug: string | null
   current_level: CurrentLevel
   target_outcome_text: string | null
@@ -52,15 +50,13 @@ export function generateLessonSessionInput(
   const theme = outcomeTrimmed ?? DEFAULT_THEME
 
   const scenario =
-    profile.target_country_code != null && profile.target_country_code !== ''
-      ? `daily life (${profile.target_country_code})`
+    profile.target_region_slug != null && profile.target_region_slug !== ''
+      ? `daily life (${profile.target_region_slug})`
       : DEFAULT_SCENARIO
 
   const learnerGoal = outcomeTrimmed ?? DEFAULT_LEARNER_GOAL
 
-  const localeParts = [profile.target_country_code, profile.target_region_slug].filter(
-    isNonEmptyString
-  )
+  const localeParts = [profile.target_region_slug].filter(isNonEmptyString)
   const localeFocus = localeParts.length > 0 ? localeParts.join(' · ') : null
 
   const speakByDeadline = getTrimmedOrNull(profile.speak_by_deadline_text)

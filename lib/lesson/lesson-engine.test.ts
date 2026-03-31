@@ -27,8 +27,10 @@ const sceneB: Scene = {
   description: '',
   order: 5,
   phrases: [
-    { id: 'phrase-b1', sceneId: 'scene-b', text: 'B1', translation: 'B1', hint: null, order: 1, imageUrl: null, imagePrompt: null },
-    { id: 'phrase-b2', sceneId: 'scene-b', text: 'B2', translation: 'B2', hint: null, order: 2, imageUrl: null, imagePrompt: null },
+    { id: 'phrase-b1', sceneId: 'scene-b', text: 'B1', translation: 'B1', hint: null, order: 1, imageUrl: null, imagePrompt: null, audioUrl: null,
+      audioVoice: null },
+    { id: 'phrase-b2', sceneId: 'scene-b', text: 'B2', translation: 'B2', hint: null, order: 2, imageUrl: null, imagePrompt: null, audioUrl: null,
+      audioVoice: null },
   ],
 }
 const sceneA: Scene = {
@@ -40,8 +42,10 @@ const sceneA: Scene = {
   description: '',
   order: 10,
   phrases: [
-    { id: 'phrase-a1', sceneId: 'scene-a', text: 'A1', translation: 'A1', hint: null, order: 2, imageUrl: null, imagePrompt: null },
-    { id: 'phrase-a2', sceneId: 'scene-a', text: 'A2', translation: 'A2', hint: null, order: 1, imageUrl: null, imagePrompt: null },
+    { id: 'phrase-a1', sceneId: 'scene-a', text: 'A1', translation: 'A1', hint: null, order: 2, imageUrl: null, imagePrompt: null, audioUrl: null,
+      audioVoice: null, },
+    { id: 'phrase-a2', sceneId: 'scene-a', text: 'A2', translation: 'A2', hint: null, order: 1, imageUrl: null, imagePrompt: null, audioUrl: null,
+      audioVoice: null, },
   ],
 }
 

@@ -4,7 +4,12 @@
  * These match the NativeFlow MVP database schema.
  */
 
-export type LessonBlockType = 'conversation' | 'review' | 'typing'
+export type LessonBlockType =
+  | 'conversation'
+  | 'review'
+  | 'scaffold_transition'
+  | 'typing'
+  | 'ai_conversation'
 
 export type LessonRunStatus = 'in_progress' | 'completed' | 'abandoned'
 
@@ -81,6 +86,7 @@ export type DailyStatRow = {
   lesson_items_completed: number
   typing_items_correct: number
   study_minutes: number
+  flow_points_today: number | null
 
   created_at: string
   updated_at: string

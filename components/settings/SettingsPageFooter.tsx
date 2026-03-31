@@ -14,7 +14,7 @@ export function SettingsPageFooter() {
             aria-label="NativeFlow トップ"
           >
             <Image
-              src="/footer_logo.svg"
+              src="/images/branding/footer_logo.svg"
               alt="NativeFlow"
               width={200}
               height={40}

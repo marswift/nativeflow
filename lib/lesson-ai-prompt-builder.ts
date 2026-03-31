@@ -10,10 +10,18 @@ import type { LessonBlueprint } from './lesson-blueprint-service'
 import type { LessonBlueprintDraft } from './lesson-blueprint-adapter'
 import type { LessonDraftSession } from './lesson-draft-session-mapper'
 
+const SCHEMA_VERSION = 'v1' as const
+
+const OUTPUT_CONTRACT =
+  'Return a structured NativeFlow lesson that is safe, level-appropriate, concise, and directly usable for session generation.' as const
+
+const SYSTEM_PURPOSE =
+  'Generate a NativeFlow lesson session for a Japanese learner using the provided structured lesson context.' as const
+
 export type LessonAIPromptPayload = {
-  schemaVersion: string
-  outputContract: string
-  systemPurpose: string
+  schemaVersion: typeof SCHEMA_VERSION
+  outputContract: typeof OUTPUT_CONTRACT
+  systemPurpose: typeof SYSTEM_PURPOSE
   lessonInput: LessonSessionInput
   sessionConfig: LessonSessionFactoryOutput
   blueprint: LessonBlueprint
@@ -28,14 +36,6 @@ export type CreateLessonAIPromptPayloadParams = {
   draft: LessonBlueprintDraft
   mappedSession: LessonDraftSession
 }
-
-const SCHEMA_VERSION = 'v1'
-
-const OUTPUT_CONTRACT =
-  'Return a structured NativeFlow lesson that is safe, level-appropriate, concise, and directly usable for session generation.'
-
-const SYSTEM_PURPOSE =
-  'Generate a NativeFlow lesson session for a Japanese learner using the provided structured lesson context.'
 
 function buildPayload(
   params: CreateLessonAIPromptPayloadParams

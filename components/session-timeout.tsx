@@ -2,7 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
 
 const INACTIVITY_MS = 30 * 60 * 1000
 const WARNING_MS = 25 * 60 * 1000

@@ -8,6 +8,8 @@ import type {
   DailyMissionProgress,
   LearnerStreakState,
 } from '@/lib/habit-retention-types'
+import { incrementDailyStats } from '@/lib/daily-stats-service'
+import { supabaseServer } from '@/lib/supabase-server'
 
 type CompleteConversationLessonRequestBody = {
   state: ConversationLessonFacadeState
@@ -231,6 +233,38 @@ export async function POST(
       )
     }
     const result = await finalizeConversationLessonFacade(validated.data)
+
+    // daily_stats への書き込み（study_minutes / lesson_runs_completed）
+    if (result.isLessonCompleted) {
+      try {
+        const startedAt = result.state.lesson.startedAt
+        const completedAt = validated.data.completedAt
+        const start = startedAt ? new Date(startedAt).getTime() : null
+        const end = completedAt ? new Date(completedAt).getTime() : null
+        const studyMinutes =
+          start !== null && end !== null && Number.isFinite(start) && Number.isFinite(end)
+            ? Math.max(0, Math.floor((end - start) / 60000))
+            : 0
+
+        const lessonId = result.state.session.lessonId
+        const idempotencyKey = `${validated.data.userId}:${lessonId}:${validated.data.todayDate}`
+
+        await incrementDailyStats(
+          supabaseServer,
+          validated.data.userId,
+          {
+            lesson_runs_completed: 1,
+            study_minutes: studyMinutes,
+          },
+          validated.data.todayDate,
+          idempotencyKey
+        )
+      } catch (statsErr) {
+        // daily_stats の書き込み失敗はレッスン完了のレスポンスをブロックしない
+        console.error('daily_stats increment failed', statsErr)
+      }
+    }
+
     return NextResponse.json(
       {
         ok: true,

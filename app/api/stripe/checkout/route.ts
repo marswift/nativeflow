@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { stripe, getPriceIdByPlan, normalizePlanCode } from '@/lib/stripe'
+import { getStripe, getPriceIdByPlan, normalizePlanCode } from '@/lib/stripe'
 import { supabaseServer } from '@/lib/supabase-server'
 
 type CheckoutBody = { plan?: unknown }
@@ -38,7 +38,10 @@ function getSiteUrl(req: NextRequest): string {
 }
 
 export async function POST(req: NextRequest) {
+  const stripe = getStripe()
+
   let body: CheckoutBody
+
   try {
     body = await req.json()
   } catch {
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
 
   const authHeader = req.headers.get('authorization')
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+
   if (!token) {
     return NextResponse.json(
       { message: 'Unauthorized' },
@@ -65,7 +69,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const { data: { user }, error: authError } = await supabaseServer.auth.getUser(token)
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseServer.auth.getUser(token)
+
   if (authError || !user) {
     return NextResponse.json(
       { message: 'Unauthorized' },
@@ -73,8 +81,37 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const { data: profileRow } = await supabaseServer
+    .from('user_profiles')
+    .select('stripe_customer_id, stripe_subscription_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  const stripeCustomerId =
+    typeof profileRow?.stripe_customer_id === 'string'
+      ? profileRow.stripe_customer_id.trim()
+      : ''
+
+  // Cancel existing subscription before creating a new one
+  const existingSubId =
+    typeof profileRow?.stripe_subscription_id === 'string'
+      ? profileRow.stripe_subscription_id.trim()
+      : ''
+  if (existingSubId) {
+    try {
+      await stripe.subscriptions.cancel(existingSubId)
+      console.log('CANCELLED EXISTING SUBSCRIPTION:', existingSubId)
+    } catch (cancelErr) {
+      // Not fatal — subscription may already be cancelled or invalid
+      console.warn('Failed to cancel existing subscription (continuing)', {
+        subscriptionId: existingSubId,
+        message: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+      })
+    }
+  }
+
   const customerEmail = (user.email ?? '').trim()
-  if (!customerEmail) {
+  if (!stripeCustomerId && !customerEmail) {
     return NextResponse.json(
       { message: 'User email is required for checkout' },
       { status: 400 }
@@ -82,32 +119,137 @@ export async function POST(req: NextRequest) {
   }
 
   const priceId = getPriceIdByPlan(plan)
+  if (!priceId || typeof priceId !== 'string') {
+    return NextResponse.json(
+      { message: 'Stripe price ID is not configured for this plan' },
+      { status: 500 }
+    )
+  }
+
   const siteUrl = getSiteUrl(req)
 
-  const { billingStartDateLabel, cancelDeadlineLabel } = formatTrialEndDateParts()
+  try {
+    const price = await stripe.prices.retrieve(priceId)
+
+    if (!price.active) {
+      return NextResponse.json(
+        { message: 'Stripe price is inactive' },
+        { status: 500 }
+      )
+    }
+
+    if (price.type !== 'recurring') {
+      return NextResponse.json(
+        { message: 'Stripe price must be recurring for subscription checkout' },
+        { status: 500 }
+      )
+    }
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : 'Failed to retrieve Stripe price'
+
+    console.error('Stripe price validation failed', {
+      message,
+      userId: user.id,
+      plan,
+      priceId,
+    })
+
+    return NextResponse.json({ message }, { status: 500 })
+  }
+
+  const { billingStartDateLabel, cancelDeadlineLabel } =
+    formatTrialEndDateParts()
   const priceLabel = plan === 'yearly' ? '￥19,800/年' : '￥2,480/月'
 
-  /** Must stay aligned with webhook metadata contract. */
   const sessionMetadata = { user_id: user.id, plan }
 
+  console.log('CHECKOUT USER ID:', user.id)
+  console.log('CHECKOUT SESSION METADATA:', sessionMetadata)
+  console.log('CHECKOUT STRIPE CUSTOMER ID:', stripeCustomerId || '(none)')
+  console.log('CHECKOUT CUSTOMER EMAIL:', customerEmail || '(none)')
+
   try {
+    console.info('Creating Stripe checkout session', {
+      userId: user.id,
+      plan,
+      priceId,
+      hasStripeCustomerId: Boolean(stripeCustomerId),
+      hasCustomerEmail: Boolean(customerEmail),
+      siteUrl,
+      trialDays: TRIAL_DAYS,
+      billingStartDateLabel,
+      cancelDeadlineLabel,
+      priceLabel,
+    })
+
+    let finalCustomerId = stripeCustomerId
+
+    if (!finalCustomerId) {
+      const customer = await stripe.customers.create({
+        email: customerEmail,
+        metadata: {
+          user_id: user.id,
+          plan,
+        },
+      })
+
+      finalCustomerId = customer.id
+
+      const { error: customerUpdateError } = await supabaseServer
+        .from('user_profiles')
+        .update({
+          stripe_customer_id: finalCustomerId,
+        })
+        .eq('id', user.id)
+
+      if (customerUpdateError) {
+        console.error('Failed to save stripe_customer_id', {
+          userId: user.id,
+          customerId: finalCustomerId,
+          message: customerUpdateError.message,
+          details: customerUpdateError.details,
+          hint: customerUpdateError.hint,
+          code: customerUpdateError.code,
+        })
+
+        return NextResponse.json(
+          { message: 'Failed to save Stripe customer' },
+          { status: 500 }
+        )
+      }
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      customer_email: customerEmail,
-      client_reference_id: user.id,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${siteUrl}/dashboard?checkout=success`,
-      cancel_url: `${siteUrl}/#pricing`,
-      custom_text: {
-        submit: {
-          message: `最初の決済は、${priceLabel}、${billingStartDateLabel}以降です。${cancelDeadlineLabel}までに解約手続きをした場合、料金はかかりません。`,
+      customer: finalCustomerId,
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
         },
+      ],
+      success_url: `${siteUrl}/dashboard?checkout=success`,
+      cancel_url: `${siteUrl}/pricing?checkout=cancel`,
+      metadata: {
+        user_id: user.id,
+        plan,
       },
-      metadata: sessionMetadata,
       subscription_data: {
         trial_period_days: TRIAL_DAYS,
-        metadata: sessionMetadata,
+        metadata: {
+          user_id: user.id,
+          plan,
+        },
       },
+    })
+
+    console.log('CHECKOUT SESSION CREATED:', {
+      sessionId: session.id,
+      clientReferenceId: session.client_reference_id,
+      customer: session.customer,
+      subscription: session.subscription,
+      metadata: session.metadata,
     })
 
     if (session.url == null || session.url === '') {
@@ -120,12 +262,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: session.url })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Checkout failed'
+
     console.error('Checkout failed', {
       message,
-      userId: user?.id ?? undefined,
+      userId: user.id,
       plan,
       priceId,
+      hasStripeCustomerId: Boolean(stripeCustomerId),
+      hasCustomerEmail: Boolean(customerEmail),
+      siteUrl,
     })
-    return NextResponse.json({ message }, { status: 500 })
+
+    return NextResponse.json(
+      {
+        message,
+        code: 'STRIPE_CHECKOUT_CREATE_FAILED',
+      },
+      { status: 500 }
+    )
   }
 }

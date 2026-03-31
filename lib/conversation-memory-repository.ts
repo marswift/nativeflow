@@ -1,5 +1,4 @@
-import type { PostgrestError } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import type {
   ConversationSessionInsert,
   ConversationSessionUpdate,
@@ -20,15 +19,20 @@ export type RepoResult<T> = { data: T | null; error: PostgrestError | null }
 
 const FALLBACK = { data: null, error: null }
 
+type RepoClientInput = {
+  supabase: SupabaseClient
+}
+
 export async function createConversationSession(
-  payload: ConversationSessionInsert
+  input: RepoClientInput & { payload: ConversationSessionInsert }
 ): Promise<RepoResult<ConversationSessionRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_sessions')
-      .insert(payload)
+      .insert(input.payload)
       .select()
       .single()
+
     return { data: data as ConversationSessionRow | null, error: error ?? null }
   } catch (e) {
     console.error('createConversationSession', e)
@@ -37,17 +41,18 @@ export async function createConversationSession(
 }
 
 export async function getActiveConversationSessionByUser(
-  userId: string
+  input: RepoClientInput & { userId: string }
 ): Promise<RepoResult<ConversationSessionRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_sessions')
       .select()
-      .eq('user_id', userId)
+      .eq('user_id', input.userId)
       .eq('status', 'active')
       .order('started_at', { ascending: false })
       .limit(1)
       .maybeSingle()
+
     return { data: data as ConversationSessionRow | null, error: error ?? null }
   } catch (e) {
     console.error('getActiveConversationSessionByUser', e)
@@ -56,14 +61,15 @@ export async function getActiveConversationSessionByUser(
 }
 
 export async function getConversationSessionById(
-  id: string
+  input: RepoClientInput & { id: string }
 ): Promise<RepoResult<ConversationSessionRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_sessions')
       .select()
-      .eq('id', id)
+      .eq('id', input.id)
       .maybeSingle()
+
     return { data: data as ConversationSessionRow | null, error: error ?? null }
   } catch (e) {
     console.error('getConversationSessionById', e)
@@ -72,16 +78,19 @@ export async function getConversationSessionById(
 }
 
 export async function updateConversationSession(
-  id: string,
-  payload: ConversationSessionUpdate
+  input: RepoClientInput & {
+    id: string
+    payload: ConversationSessionUpdate
+  }
 ): Promise<RepoResult<ConversationSessionRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_sessions')
-      .update(payload)
-      .eq('id', id)
+      .update(input.payload)
+      .eq('id', input.id)
       .select()
       .single()
+
     return { data: data as ConversationSessionRow | null, error: error ?? null }
   } catch (e) {
     console.error('updateConversationSession', e)
@@ -90,14 +99,15 @@ export async function updateConversationSession(
 }
 
 export async function createConversationTurn(
-  payload: ConversationTurnInsert
+  input: RepoClientInput & { payload: ConversationTurnInsert }
 ): Promise<RepoResult<ConversationTurnRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_turns')
-      .insert(payload)
+      .insert(input.payload)
       .select()
       .single()
+
     return { data: data as ConversationTurnRow | null, error: error ?? null }
   } catch (e) {
     console.error('createConversationTurn', e)
@@ -106,16 +116,16 @@ export async function createConversationTurn(
 }
 
 export async function listConversationTurns(
-  conversationId: string,
-  limit = 20
+  input: RepoClientInput & { conversationId: string; limit?: number }
 ): Promise<RepoResult<ConversationTurnRow[]>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_turns')
       .select()
-      .eq('conversation_id', conversationId)
+      .eq('conversation_id', input.conversationId)
       .order('turn_index', { ascending: true })
-      .limit(limit)
+      .limit(input.limit ?? 20)
+
     return { data: (data ?? []) as ConversationTurnRow[], error: error ?? null }
   } catch (e) {
     console.error('listConversationTurns', e)
@@ -124,16 +134,17 @@ export async function listConversationTurns(
 }
 
 export async function getLastConversationTurn(
-  conversationId: string
+  input: RepoClientInput & { conversationId: string }
 ): Promise<RepoResult<ConversationTurnRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('conversation_turns')
       .select()
-      .eq('conversation_id', conversationId)
+      .eq('conversation_id', input.conversationId)
       .order('turn_index', { ascending: false })
       .limit(1)
       .maybeSingle()
+
     return { data: data as ConversationTurnRow | null, error: error ?? null }
   } catch (e) {
     console.error('getLastConversationTurn', e)
@@ -142,14 +153,15 @@ export async function getLastConversationTurn(
 }
 
 export async function getLearnerMemory(
-  userId: string
+  input: RepoClientInput & { userId: string }
 ): Promise<RepoResult<LearnerMemoryRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('learner_memories')
       .select()
-      .eq('user_id', userId)
+      .eq('user_id', input.userId)
       .maybeSingle()
+
     return { data: data as LearnerMemoryRow | null, error: error ?? null }
   } catch (e) {
     console.error('getLearnerMemory', e)
@@ -158,14 +170,15 @@ export async function getLearnerMemory(
 }
 
 export async function upsertLearnerMemory(
-  payload: LearnerMemoryInsert
+  input: RepoClientInput & { payload: LearnerMemoryInsert }
 ): Promise<RepoResult<LearnerMemoryRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('learner_memories')
-      .upsert(payload, { onConflict: 'user_id' })
+      .upsert(input.payload, { onConflict: 'user_id' })
       .select()
       .single()
+
     return { data: data as LearnerMemoryRow | null, error: error ?? null }
   } catch (e) {
     console.error('upsertLearnerMemory', e)
@@ -174,14 +187,15 @@ export async function upsertLearnerMemory(
 }
 
 export async function createReviewCandidate(
-  payload: ReviewCandidateInsert
+  input: RepoClientInput & { payload: ReviewCandidateInsert }
 ): Promise<RepoResult<ReviewCandidateRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('review_candidates')
-      .insert(payload)
+      .insert(input.payload)
       .select()
       .single()
+
     return { data: data as ReviewCandidateRow | null, error: error ?? null }
   } catch (e) {
     console.error('createReviewCandidate', e)
@@ -190,16 +204,16 @@ export async function createReviewCandidate(
 }
 
 export async function listRecentReviewCandidatesByUser(
-  userId: string,
-  limit = 20
+  input: RepoClientInput & { userId: string; limit?: number }
 ): Promise<RepoResult<ReviewCandidateRow[]>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('review_candidates')
       .select()
-      .eq('user_id', userId)
+      .eq('user_id', input.userId)
       .order('created_at', { ascending: false })
-      .limit(limit)
+      .limit(input.limit ?? 20)
+
     return { data: (data ?? []) as ReviewCandidateRow[], error: error ?? null }
   } catch (e) {
     console.error('listRecentReviewCandidatesByUser', e)
@@ -208,14 +222,15 @@ export async function listRecentReviewCandidatesByUser(
 }
 
 export async function upsertSceneProgress(
-  payload: SceneProgressInsert
+  input: RepoClientInput & { payload: SceneProgressInsert }
 ): Promise<RepoResult<SceneProgressRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('scene_progress')
-      .upsert(payload, { onConflict: 'user_id,scene_id,micro_situation_id' })
+      .upsert(input.payload, { onConflict: 'user_id,scene_id,micro_situation_id' })
       .select()
       .single()
+
     return { data: data as SceneProgressRow | null, error: error ?? null }
   } catch (e) {
     console.error('upsertSceneProgress', e)
@@ -224,15 +239,15 @@ export async function upsertSceneProgress(
 }
 
 export async function getSceneProgressByUserAndScene(
-  userId: string,
-  sceneId: string
+  input: RepoClientInput & { userId: string; sceneId: string }
 ): Promise<RepoResult<SceneProgressRow[]>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('scene_progress')
       .select()
-      .eq('user_id', userId)
-      .eq('scene_id', sceneId)
+      .eq('user_id', input.userId)
+      .eq('scene_id', input.sceneId)
+
     return { data: (data ?? []) as SceneProgressRow[], error: error ?? null }
   } catch (e) {
     console.error('getSceneProgressByUserAndScene', e)
@@ -241,14 +256,15 @@ export async function getSceneProgressByUserAndScene(
 }
 
 export async function upsertSceneState(
-  payload: SceneStateInsert
+  input: RepoClientInput & { payload: SceneStateInsert }
 ): Promise<RepoResult<SceneStateRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('scene_states')
-      .upsert(payload, { onConflict: 'conversation_id' })
+      .upsert(input.payload, { onConflict: 'conversation_id' })
       .select()
       .single()
+
     return { data: data as SceneStateRow | null, error: error ?? null }
   } catch (e) {
     console.error('upsertSceneState', e)
@@ -257,14 +273,15 @@ export async function upsertSceneState(
 }
 
 export async function getSceneStateByConversationId(
-  conversationId: string
+  input: RepoClientInput & { conversationId: string }
 ): Promise<RepoResult<SceneStateRow>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await input.supabase
       .from('scene_states')
       .select()
-      .eq('conversation_id', conversationId)
+      .eq('conversation_id', input.conversationId)
       .maybeSingle()
+
     return { data: data as SceneStateRow | null, error: error ?? null }
   } catch (e) {
     console.error('getSceneStateByConversationId', e)

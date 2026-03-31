@@ -37,6 +37,8 @@ export function getLessonById(lessonId: string): Lesson | null {
             order: 0,
             imageUrl: null,
             imagePrompt: null,
+            audioUrl: null,
+            audioVoice: null,
           },
         ],
       },

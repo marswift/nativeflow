@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { supabase } from '../../../lib/supabase'
+import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
+const supabase = getSupabaseBrowserClient()
 
 const MAIN_LOADING_CLASS = 'min-h-screen bg-[#faf8f5] flex items-center justify-center'
 const MAIN_CONTENT_CLASS = 'min-h-screen bg-[#faf8f5] px-6 py-12'
@@ -18,8 +19,9 @@ export default function ProfileSettingsPage() {
   const [error, setError] = useState('')
   const [infoMessage, setInfoMessage] = useState('')
   const [email, setEmail] = useState('')
-  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
   const [profilePhotoUrl, setProfilePhotoUrl] = useState('')
+  const [uiLanguageCode, setUiLanguageCode] = useState('ja')
 
   useEffect(() => {
     let isActive = true
@@ -32,6 +34,19 @@ export default function ProfileSettingsPage() {
           return
         }
         if (isActive) setEmail(session.user.email ?? '')
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('username, ui_language_code')
+            .eq('id', session.user.id)
+            .single()
+
+          if (isActive && data?.username) {
+            setUsername(data.username)
+          }
+
+          if (isActive && data?.ui_language_code) {
+            setUiLanguageCode(data.ui_language_code)
+          }
       } catch (err) {
         console.error(err)
       } finally {
@@ -51,15 +66,34 @@ export default function ProfileSettingsPage() {
     setInfoMessage('')
     setSubmitting(true)
     try {
-      // Display name and profile photo URL are not in user_profiles; local state only.
-      setInfoMessage('この項目は現在UI準備中です。まだ保存は永続化されません。')
+      const { data: { user } } = await supabase.auth.getUser()
+    
+      if (!user) {
+        setError('ログインしてください')
+        return
+      }
+    
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({
+          username,
+          ui_language_code: uiLanguageCode,
+        })
+        .eq('id', user.id)
+    
+      if (error) {
+        setError('保存に失敗しました')
+        return
+      }
+    
+      setInfoMessage('保存しました')
     } catch (err) {
       console.error(err)
       setError('プロフィール設定の保存に失敗しました')
     } finally {
       setSubmitting(false)
     }
-  }
+  }  // ← handleSubmit関数の閉じ括弧を追加
 
   if (loading) {
     return (
@@ -95,8 +129,8 @@ export default function ProfileSettingsPage() {
             表示名
             <input
               type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               placeholder="表示名を入力"
               className={INPUT_CLASS}
               disabled={submitting}
@@ -112,6 +146,18 @@ export default function ProfileSettingsPage() {
               className={INPUT_CLASS}
               disabled={submitting}
             />
+          </label>
+          <label className="mt-4 block text-sm font-medium text-[#2c2c2c]">
+            表示言語（母国語）
+            <select
+              value={uiLanguageCode}
+              onChange={(e) => setUiLanguageCode(e.target.value)}
+              className={INPUT_CLASS}
+              disabled={submitting}
+            >
+              <option value="ja">日本語</option>
+              <option value="en">English</option>
+            </select>
           </label>
           <div className="mt-4">
             <span className="block text-sm font-medium text-[#2c2c2c]">メールアドレス</span>

@@ -1,6 +1,7 @@
 import type { ConversationLessonFacadeState } from '@/lib/conversation-lesson-runtime-facade'
 import { getLessonRuntimeStatus } from '@/lib/lesson-runtime-controller'
 import { getConversationLessonRuntimeSession } from '@/lib/conversation-lesson-runtime-session-repository'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 
 export type ResumeConversationLessonRuntimeInput = {
   userId: string
@@ -17,7 +18,9 @@ export type ResumeConversationLessonRuntimeResult = {
 export async function resumeConversationLessonRuntime(
   input: ResumeConversationLessonRuntimeInput
 ): Promise<ResumeConversationLessonRuntimeResult> {
+  const supabase = getSupabaseBrowserClient()
   const { data: row, error } = await getConversationLessonRuntimeSession({
+    supabase,
     userId: input.userId,
     lessonId: input.lessonId,
   })

@@ -4,7 +4,9 @@ import type { FormEvent } from 'react'
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { supabase } from '../../lib/supabase'
+import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
 
 const CONTAINER_CLASS = 'mx-auto max-w-md px-6 py-10 sm:py-12'
 const CARD_CLASS = 'rounded-2xl border border-[#ede9e2] bg-white px-6 py-8 shadow-sm sm:px-8 sm:py-9'
@@ -69,7 +71,7 @@ export default function ForgotPasswordPage() {
             aria-label="NativeFlow トップへ"
           >
             <Image
-              src="/header_logo.svg"
+              src="/images/branding/header_logo.svg"
               alt="NativeFlow"
               width={200}
               height={48}
@@ -170,7 +172,7 @@ export default function ForgotPasswordPage() {
               className="mb-3.5 flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded"
             >
               <Image
-                src="/footer_logo.svg"
+                src="/images/branding/footer_logo.svg"
                 alt="NativeFlow"
                 width={200}
                 height={40}

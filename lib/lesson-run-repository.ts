@@ -1,13 +1,14 @@
 /**
  * Repository for lesson run persistence.
- * DB access only; no business logic. Uses Supabase client and lesson-run-types.
+ * Handles DB access for lesson runs and lesson run items using Supabase.
  */
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PostgrestError } from '@supabase/supabase-js'
-import { supabase } from './supabase'
 import type {
   LessonRunRow,
   LessonRunItemRow,
 } from './lesson-run-types'
+import type { LessonBlockType } from './lesson-run-types'
 
 /** Payload to create a new lesson run. */
 export type CreateLessonRunPayload = {
@@ -38,7 +39,7 @@ export type InsertLessonRunItemPayload = {
   user_id: string
   block_index: number
   item_index: number
-  block_type: 'conversation' | 'review' | 'typing'
+  block_type: LessonBlockType
   block_title: string
   prompt_text: string
   expected_answer_text: string | null
@@ -65,6 +66,7 @@ function toLessonRunItemRow(row: unknown): LessonRunItemRow | null {
  * Inserts a new row into lesson_runs. Returns the inserted row.
  */
 export async function createLessonRun(
+  supabase: SupabaseClient,
   payload: CreateLessonRunPayload
 ): Promise<RepositoryResult<LessonRunRow>> {
   const { data, error } = await supabase
@@ -80,6 +82,7 @@ export async function createLessonRun(
  * Updates progress fields on an existing lesson run. Returns the updated row.
  */
 export async function updateLessonRunProgress(
+  supabase: SupabaseClient,
   lessonRunId: string,
   payload: UpdateLessonRunProgressPayload
 ): Promise<RepositoryResult<LessonRunRow>> {
@@ -101,6 +104,7 @@ export async function updateLessonRunProgress(
  * Inserts a new row into lesson_run_items. Returns the inserted row.
  */
 export async function insertLessonRunItem(
+  supabase: SupabaseClient,
   payload: InsertLessonRunItemPayload
 ): Promise<RepositoryResult<LessonRunItemRow>> {
   const { data, error } = await supabase
@@ -116,6 +120,7 @@ export async function insertLessonRunItem(
  * Marks a lesson run as completed. Returns the updated row.
  */
 export async function completeLessonRun(
+  supabase: SupabaseClient,
   lessonRunId: string
 ): Promise<RepositoryResult<LessonRunRow>> {
   const { data, error } = await supabase

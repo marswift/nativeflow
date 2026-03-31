@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { stripe, STRIPE_PORTAL_RETURN_URL } from '@/lib/stripe'
+import { getStripe, getStripePortalSessionParams } from '@/lib/stripe'
 import { supabaseServer } from '@/lib/supabase-server'
 
 export async function POST(req: NextRequest) {
@@ -47,10 +47,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const session = await stripe.billingPortal.sessions.create({
-      customer: stripeCustomerId,
-      return_url: STRIPE_PORTAL_RETURN_URL,
-    })
+    const session = await getStripe().billingPortal.sessions.create(
+      getStripePortalSessionParams(stripeCustomerId)
+    )
 
     if (!session.url) {
       return NextResponse.json(
