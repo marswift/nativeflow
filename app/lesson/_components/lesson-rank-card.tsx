@@ -84,15 +84,15 @@ function getRankTheme(rankCode: string) {
 function getRankImageSrc(rankCode: string): string {
   switch (rankCode) {
     case 'bronze':
-      return '/images/characters/leo_rank/bronze.png'
+      return '/images/characters/leo/rank/bronze.png'
     case 'silver':
-      return '/images/characters/leo_rank/silver.png'
+      return '/images/characters/leo/rank/silver.png'
     case 'gold':
-      return '/images/characters/leo_rank/gold.png'
+      return '/images/characters/leo/rank/gold.png'
     case 'diamond':
-      return '/images/characters/leo_rank/diamond.png'
+      return '/images/characters/leo/rank/diamond.png'
     default:
-      return '/images/characters/leo_rank/starter.png'
+      return '/images/characters/leo/rank/starter.png'
   }
 }
 

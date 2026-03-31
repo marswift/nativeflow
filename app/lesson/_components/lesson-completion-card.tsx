@@ -1,5 +1,7 @@
 'use client'
 
+import { useState } from 'react'
+import Link from 'next/link'
 import type { LessonCopy } from '../../../lib/lesson-copy'
 import type { LessonCompletionSummary } from '../../../lib/lesson-summary'
 
@@ -8,6 +10,7 @@ export type LessonCompletionCardProps = {
   copy: LessonCopy
   totalFlowPoints: number
   earnedFlowPoints: number
+  onStartExtraSession?: () => void
 }
 
 function SummaryStatCard({
@@ -19,7 +22,7 @@ function SummaryStatCard({
 }) {
   return (
     <div className="rounded-[16px] border border-[#E8E4DF] bg-[#FAF7F2] px-4 py-3">
-      <p className="text-[11px] font-bold tracking-widest text-[#7b7b94]">
+      <p className="text-xs font-bold tracking-widest text-[#7b7b94]">
         {label}
       </p>
       <p className="mt-1 text-sm font-bold text-[#1a1a2e]">{value}</p>
@@ -46,7 +49,10 @@ export function LessonCompletionCard({
   copy,
   totalFlowPoints,
   earnedFlowPoints,
+  onStartExtraSession,
 }: LessonCompletionCardProps) {
+  const [showExtraConfirm, setShowExtraConfirm] = useState(false)
+
   const hasTypingStats = summary.totalTypingItems > 0
   const completionLine =
     `${copy.completion.completed} ${summary.completedItems} / ${summary.totalItems} · ` +
@@ -56,9 +62,11 @@ export function LessonCompletionCard({
 
   const safeEarnedFlowPoints = Math.max(0, earnedFlowPoints)
   const flowPointMessage = getFlowPointMessage(safeEarnedFlowPoints)
+  const cc = copy.completion
 
   return (
     <section className="mt-6 overflow-hidden rounded-[24px] border border-[#DDEED8] bg-[linear-gradient(135deg,#F7FFF5_0%,#FFFFFF_55%,#F9FFF8_100%)] px-5 py-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
+      {/* --- Stop-first heading --- */}
       <div className="flex items-start gap-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#DDF7D8] text-xl font-black text-[#2F9E44]">
           ✓
@@ -66,21 +74,22 @@ export function LessonCompletionCard({
 
         <div className="min-w-0 flex-1">
           <p className="text-lg font-black text-[#1a1a2e]">
-            レッスン完了！
+            {cc.stopFirstHeading}
           </p>
-          <p className="mt-1 text-sm text-[#5a5a7a]">
-            {summary.completionMessage}
+          <p className="mt-1 text-sm font-bold text-[#2F9E44]">
+            {cc.stopFirstSubheading}
           </p>
-          <p className="mt-2 text-xs font-medium text-[#7c7c7c]">
-            {summary.theme}
+          <p className="mt-2 text-xs text-[#7c7c7c]">
+            {cc.stopFirstSupport}
           </p>
         </div>
       </div>
 
+      {/* --- Flow points --- */}
       <div className="mt-5 rounded-[18px] border border-[#DDEED8] bg-white px-4 py-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold tracking-widest text-[#6A8F63]">
+            <p className="text-xs font-bold tracking-widest text-[#6A8F63]">
               獲得フローポイント
             </p>
             <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
@@ -97,12 +106,9 @@ export function LessonCompletionCard({
         <p className="mt-3 text-sm font-medium text-[#355b3f]">
           {flowPointMessage}
         </p>
-
-        <p className="mt-2 text-xs leading-5 text-[#5a5a7a]">
-          レッスンを続けるほど、Leoの成長に近づきます。
-        </p>
       </div>
 
+      {/* --- Summary stats --- */}
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <SummaryStatCard
           label="完了"
@@ -126,6 +132,39 @@ export function LessonCompletionCard({
         <p className="text-xs text-[#5c5c5c]">{completionLine}</p>
         {hasTypingStats && (
           <p className="mt-1 text-xs text-[#5c5c5c]">{typingLine}</p>
+        )}
+      </div>
+
+      {/* --- Button hierarchy --- */}
+      <div className="mt-5 flex flex-col items-center gap-4">
+        {/* Primary: stop and come back tomorrow */}
+        <Link
+          href="/dashboard"
+          className="w-full max-w-[320px] rounded-xl bg-[#F5A623] py-4 text-center text-base font-bold text-white transition hover:bg-[#D4881A]"
+        >
+          {cc.primaryAction}
+        </Link>
+
+        {/* Secondary: extra session (visually weaker, but tappable) */}
+        {!showExtraConfirm ? (
+          <button
+            type="button"
+            onClick={() => setShowExtraConfirm(true)}
+            className="inline-flex cursor-pointer items-center justify-center rounded-lg px-4 py-2.5 text-sm text-[#7b7b94] underline underline-offset-2 transition hover:bg-[#F3F4F6] hover:text-[#5a5a7a]"
+          >
+            {cc.secondaryAction}
+          </button>
+        ) : (
+          <div className="w-full max-w-[320px] rounded-xl border border-[#E8E4DF] bg-white px-4 py-4 text-center">
+            <p className="text-sm text-[#5a5a7a]">{cc.extraSessionConfirm}</p>
+            <button
+              type="button"
+              onClick={() => onStartExtraSession?.()}
+              className="mt-4 cursor-pointer rounded-xl bg-[#e0e0e0] px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#d0d0d0]"
+            >
+              {cc.secondaryAction}
+            </button>
+          </div>
         )}
       </div>
     </section>

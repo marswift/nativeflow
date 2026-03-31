@@ -1,10 +1,16 @@
+/**
+ * Lesson runtime engine — pure state machine for lesson stage progression.
+ * BOUNDARY: This module must NOT import from review, flow-point, social, or persistence layers.
+ * External systems interact with lesson state via the facade in lesson-runtime.ts.
+ */
 export const LESSON_STAGE_ORDER = [
-    'listen',
-    'repeat',
-    'ai_question',
-    'typing',
-    'ai_conversation',
-  ] as const
+  'listen',
+  'repeat',
+  'scaffold_transition',
+  'ai_question',
+  'typing',
+  'ai_conversation',
+] as const
   
   export type LessonStageId = (typeof LESSON_STAGE_ORDER)[number]
   
@@ -20,6 +26,7 @@ export const LESSON_STAGE_ORDER = [
   
   export type LessonAnswerKind =
     | 'repeat'
+    | 'scaffold_transition'
     | 'ai_question'
     | 'typing'
     | 'ai_conversation'
@@ -111,18 +118,15 @@ export const LESSON_STAGE_ORDER = [
   function getExpectedAnswerKindForStage(
     stageId: Exclude<LessonStageId, 'listen'>,
   ): LessonAnswerKind {
-    if (stageId === 'repeat') {
-      return 'repeat'
+    if (stageId === 'repeat') return 'repeat'
+
+    if (stageId === 'scaffold_transition') {
+      return 'scaffold_transition'
     }
-  
-    if (stageId === 'ai_question') {
-      return 'ai_question'
-    }
-  
-    if (stageId === 'typing') {
-      return 'typing'
-    }
-  
+    
+    if (stageId === 'ai_question') return 'ai_question'
+    if (stageId === 'typing') return 'typing'
+    
     return 'ai_conversation'
   }
   
@@ -210,7 +214,7 @@ export const LESSON_STAGE_ORDER = [
   }
   
   function getRequiredAnswerStageCountPerBlock(): number {
-    return 4
+    return 5
   }
   
   function getAnsweredRequiredStageCount(
@@ -439,11 +443,15 @@ export function createLessonRuntimeEngineState(
     }
 
     if (state.currentStageId === 'repeat') {
-        return hasAnsweredCurrentStage(state, 'repeat')
+      return hasAnsweredCurrentStage(state, 'repeat')
     }
-
+    
+    if (state.currentStageId === 'scaffold_transition') {
+      return hasAnsweredCurrentStage(state, 'scaffold_transition')
+    }
+    
     if (state.currentStageId === 'ai_question') {
-        return hasAnsweredCurrentStage(state, 'ai_question')
+      return hasAnsweredCurrentStage(state, 'ai_question')
     }
 
     if (state.currentStageId === 'typing') {

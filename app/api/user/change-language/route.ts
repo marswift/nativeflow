@@ -1,0 +1,93 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+type ChangeLanguageBody = {
+  language?: string
+}
+
+export async function POST(req: Request) {
+  try {
+    const authHeader = req.headers.get('authorization')
+    const body = (await req.json()) as ChangeLanguageBody
+    const language = body.language?.trim()
+
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!language) {
+      return NextResponse.json({ error: 'language is required' }, { status: 400 })
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      return NextResponse.json({ error: 'Server env is not configured' }, { status: 500 })
+    }
+
+    const userSupabase = createClient(supabaseUrl, anonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    })
+
+    const {
+      data: { user },
+      error: authError,
+    } = await userSupabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const adminSupabase = createClient(supabaseUrl, serviceRoleKey)
+
+    const { error: updateProfileError } = await adminSupabase
+      .from('user_profiles')
+      .update({
+        current_learning_language: language,
+      })
+      .eq('id', user.id)
+
+    if (updateProfileError) {
+      return NextResponse.json({ error: updateProfileError.message }, { status: 500 })
+    }
+
+    const {
+        data: existingLearningProfile,
+        error: existingLearningProfileError,
+      } = await adminSupabase
+        .from('user_learning_profiles')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .eq('language_code', language)
+        .maybeSingle()
+      
+      if (existingLearningProfileError) {
+        return NextResponse.json({ error: existingLearningProfileError.message }, { status: 500 })
+      }
+      
+      if (!existingLearningProfile) {
+        const { error: insertLearningProfileError } = await adminSupabase
+          .from('user_learning_profiles')
+          .insert({
+            user_id: user.id,
+            language_code: language,
+            current_level: 'beginner',
+          })
+      
+        if (insertLearningProfileError) {
+          return NextResponse.json({ error: insertLearningProfileError.message }, { status: 500 })
+        }
+      }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('POST /api/user/change-language failed', error)
+    return NextResponse.json({ error: 'Unexpected error' }, { status: 500 })
+  }
+}

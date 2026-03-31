@@ -119,8 +119,6 @@ export type ProgressionProfileUpdate = {
   current_streak_days: number
   best_streak_days: number
   last_streak_date: string
-  rank_code: RankCode
-  avatar_level: number
 }
 
 /**
@@ -142,8 +140,6 @@ export function computeUpdatedStreakProfile(
       current_streak_days: currentStreakDays,
       best_streak_days: bestStreakDays,
       last_streak_date: todayYmd,
-      rank_code: computeRankCodeFromStreak(bestStreakDays),
-      avatar_level: computeAvatarLevelFromStreak(bestStreakDays),
     }
   }
 
@@ -160,7 +156,5 @@ export function computeUpdatedStreakProfile(
     current_streak_days: newCurrent,
     best_streak_days: newBest,
     last_streak_date: todayYmd,
-    rank_code: computeRankCodeFromStreak(newBest),
-    avatar_level: computeAvatarLevelFromStreak(newBest),
   }
 }

@@ -1,10 +1,14 @@
 /**
  * Service layer for user Flow Point operations.
  * Keeps Flow Point updates separate from lesson run persistence and daily stats aggregation.
+ *
+ * BOUNDARY: Gamification domain. Must NOT import from lesson-runtime-engine.
+ * Future ranking/social features should create separate services, not extend this one.
+ *
+ * NOTE: Supabase client must be injected to avoid cross-boundary bugs and improve testability.
  */
-import type { PostgrestError } from '@supabase/supabase-js'
+import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js'
 import { recordLessonFlowPointsForToday } from './daily-stats-service'
-import { supabase } from './supabase'
 
 export type FlowPointResult<T> = {
   data: T | null
@@ -16,6 +20,7 @@ export type UserFlowPointRow = {
 }
 
 export async function getUserFlowPoints(
+  supabase: SupabaseClient,
   userId: string
 ): Promise<FlowPointResult<UserFlowPointRow>> {
   const { data, error } = await supabase
@@ -51,6 +56,7 @@ export async function getUserFlowPoints(
 }
 
 export async function addFlowPoints(
+  supabase: SupabaseClient,
   userId: string,
   points: number
 ): Promise<FlowPointResult<UserFlowPointRow>> {
@@ -69,10 +75,10 @@ export async function addFlowPoints(
   }
 
   if (safePoints === 0) {
-    return getUserFlowPoints(userId)
+    return getUserFlowPoints(supabase, userId)
   }
 
-  const currentResult = await getUserFlowPoints(userId)
+  const currentResult = await getUserFlowPoints(supabase, userId)
 
   if (currentResult.error || !currentResult.data) {
     return {
@@ -112,6 +118,7 @@ export async function addFlowPoints(
 }
 
 export async function awardLessonFlowPoints(
+  supabase: SupabaseClient,
   userId: string,
   awardedPoints: number
 ): Promise<FlowPointResult<UserFlowPointRow>> {
@@ -132,10 +139,10 @@ export async function awardLessonFlowPoints(
   }
 
   if (safePoints === 0) {
-    return getUserFlowPoints(userId)
+    return getUserFlowPoints(supabase, userId)
   }
 
-  const dailyResult = await recordLessonFlowPointsForToday(userId, safePoints)
+  const dailyResult = await recordLessonFlowPointsForToday(supabase, userId, safePoints)
 
   if (dailyResult.error) {
     console.error('recordLessonFlowPointsForToday failed', {
@@ -145,5 +152,5 @@ export async function awardLessonFlowPoints(
     })
   }
 
-  return await addFlowPoints(userId, safePoints)
+  return await addFlowPoints(supabase, userId, safePoints)
 }

@@ -25,7 +25,6 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ヘッダーメニュー: 手カーソルを確実に適用（Tailwind等の上書きを防ぐ） */
 .lp-nav .lp-nav-links a,
 .lp-nav .lp-nav-menu-link,
 .lp-nav .lp-nav-menu-link * {
@@ -33,7 +32,6 @@ body {
   pointer-events: auto !important;
 }
 
-/* Remove focus rings and outlines globally for clean buttons/links/inputs */
 button:focus,
 button:focus-visible,
 a:focus,
@@ -50,7 +48,6 @@ a {
   cursor: pointer;
 }
 
-/* クリック可能UIも統一 */
 [data-clickable='true'] {
   cursor: pointer;
 }

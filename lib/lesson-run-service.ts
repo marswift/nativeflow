@@ -1,6 +1,6 @@
 /**
  * Service layer for lesson run persistence.
- * Orchestrates repository calls and maps lesson-engine / lesson-stats data to DB payloads.
+ * Orchestrates repository calls and maps lesson session / lesson-stats data to DB payloads.
  * No React or UI; minimal business logic for MVP.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -125,7 +125,7 @@ export async function finishLessonRun(
   // ② すでに完了済みなら何もしない（冪等性）
   if (existing?.completed_at) {
     return {
-      data: existing as any,
+      data: existing as LessonRunRow,
       error: null,
     }
   }

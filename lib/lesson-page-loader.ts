@@ -6,7 +6,8 @@
 import { getSupabaseBrowserClient } from './supabase/browser-client'
 import type { UserProfileRow } from './types'
 import { buildLessonPageData, type LessonPageData } from './lesson-page-data'
-import type { LessonSession, LessonBlock, LessonBlockItem } from './lesson-engine'
+import type { LessonBlock, LessonBlockItem } from './lesson-engine'
+import { fetchReviewItemsWithContent, injectReviewBlocks } from './review-injection'
 import pLimit from 'p-limit'
 const limit = pLimit(3)
 
@@ -21,25 +22,6 @@ export type LoadLessonPageResult =
   | { redirect: '/onboarding' }
   | { error: typeof LOAD_ERROR_PROFILE }
   | { data: { pageData: LessonPageData; userId: string } }
-
-  const PROFILE_SELECT = `
-  id,
-  ui_language_code,
-  target_language_code,
-  target_country_code,
-  target_region_slug,
-  current_level,
-  target_outcome_text,
-  speak_by_deadline_text,
-  daily_study_minutes_goal,
-  planned_plan_code,
-  subscription_status,
-  current_period_end,
-  cancel_at_period_end
-`
-function toUserProfileRow(row: unknown): UserProfileRow {
-  return row as UserProfileRow
-}
 
 /**
  * Loads session, fetches user profile, builds lesson page data.
@@ -58,7 +40,9 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
 
   const { data: userRow } = await supabase
     .from('user_profiles')
-    .select('id, ui_language_code, current_learning_language, planned_plan_code, subscription_status')
+    .select(
+      'id, ui_language_code, current_learning_language, planned_plan_code, subscription_status, preferred_session_length, enable_dating_contexts, total_flow_points'
+    )
     .eq('id', session.user.id)
     .single()
 
@@ -77,12 +61,42 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
   }
 
   if (!row) {
-    return { redirect: '/onboarding' }
+    // user_learning_profiles が存在しない場合はデフォルト値でフォールバック
+    const fallbackProfile: UserProfileRow = {
+      id: session.user.id,
+      ui_language_code: userRow?.ui_language_code ?? 'ja',
+      target_language_code: currentLang,
+      target_country_code: null,
+      target_region_slug: null,
+      current_level: 'beginner',
+      target_outcome_text: null,
+      speak_by_deadline_text: null,
+      daily_study_minutes_goal: null,
+      preferred_session_length: userRow?.preferred_session_length ?? 'standard',
+      enable_dating_contexts: userRow?.enable_dating_contexts ?? false,
+      total_flow_points: userRow?.total_flow_points ?? 0,
+      planned_plan_code: userRow?.planned_plan_code ?? null,
+      subscription_status: userRow?.subscription_status ?? null,
+      current_period_end: null,
+      cancel_at_period_end: null,
+    }
+    const fallbackPageData = buildLessonPageData(fallbackProfile)
+    const fallbackReviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
+    if (fallbackReviewSources.length > 0) {
+      const injected = injectReviewBlocks(fallbackPageData.lesson, fallbackReviewSources)
+      fallbackPageData.lesson = { ...fallbackPageData.lesson, blocks: injected.blocks, overviewBlockCount: injected.blocks.length }
+    }
+    return {
+      data: {
+        pageData: fallbackPageData,
+        userId: session.user.id,
+      },
+    }
   }
 
-  const profile = {
+  const profile: UserProfileRow = {
     id: row.user_id,
-    ui_language_code: userRow.ui_language_code,
+    ui_language_code: userRow?.ui_language_code ?? 'ja',
     target_language_code: row.language_code,
     target_country_code: null,
     target_region_slug: row.target_region_slug,
@@ -90,18 +104,23 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     target_outcome_text: row.target_outcome_text,
     speak_by_deadline_text: row.speak_by_deadline_text,
     daily_study_minutes_goal: row.daily_study_minutes_goal,
-    planned_plan_code: userRow.planned_plan_code,
-    subscription_status: userRow.subscription_status,
+    preferred_session_length: userRow?.preferred_session_length ?? 'standard',
+    enable_dating_contexts: userRow?.enable_dating_contexts ?? false,
+    total_flow_points: userRow?.total_flow_points ?? 0,
+    planned_plan_code: userRow?.planned_plan_code ?? null,
+    subscription_status: userRow?.subscription_status ?? null,
     current_period_end: null,
     cancel_at_period_end: null,
   }
-
-  const pageData = buildLessonPageData(profile as any)
-
-  // 🔥ここが唯一の正解ポイント
-  const hydratedLesson = await hydrateLessonAudio(pageData.lesson)
   
-  pageData.lesson = hydratedLesson
+  const pageData = buildLessonPageData(profile)
+
+  const reviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
+  if (reviewSources.length > 0) {
+    const injected = injectReviewBlocks(pageData.lesson, reviewSources)
+    pageData.lesson = { ...pageData.lesson, blocks: injected.blocks, overviewBlockCount: injected.blocks.length }
+  }
+
   return {
     data: {
       pageData,
@@ -115,9 +134,9 @@ async function hydrateAudioForText(text: string): Promise<string | null> {
 
   try {
     const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (typeof window !== 'undefined' ? '' : 'http://localhost:3000')
-  
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (typeof window !== 'undefined' ? '' : 'http://localhost:3000')
+
     const res = await fetch(`${baseUrl}/api/audio/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -135,7 +154,7 @@ async function hydrateAudioForText(text: string): Promise<string | null> {
   }
 }
 
-async function hydrateLessonAudio(
+export async function hydrateLessonAudio(
   session: HydratableLessonSession
 ): Promise<HydratableLessonSession> {
   const newBlocks = await Promise.all(
@@ -147,9 +166,9 @@ async function hydrateLessonAudio(
               item.answer?.trim() ||
               item.prompt?.trim() ||
               ''
-      
+
             const audioUrl = await hydrateAudioForText(sourceText)
-      
+
             return {
               ...item,
               audio_url: audioUrl,

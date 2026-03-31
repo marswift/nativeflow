@@ -11,31 +11,59 @@ const supabase = createClient(
 async function resolveUserIdForSubscription(
   subscription: Stripe.Subscription
 ): Promise<string | null> {
+  // Strategy 1: subscription metadata (set via subscription_data.metadata at checkout)
   const metadataUserId = subscription.metadata?.user_id?.trim()
   if (metadataUserId) return metadataUserId
 
+  // Strategy 2: DB lookup by stripe_subscription_id
   const subscriptionId =
     typeof subscription.id === 'string' ? subscription.id.trim() : ''
-  if (!subscriptionId) return null
+  if (subscriptionId) {
+    const { data: profileRow, error } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('stripe_subscription_id', subscriptionId)
+      .maybeSingle()
 
-  const { data: profileRow, error } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .eq('stripe_subscription_id', subscriptionId)
-    .maybeSingle()
+    if (error) {
+      console.error('Failed to resolve user by stripe_subscription_id', {
+        subscriptionId,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      })
+    }
 
-  if (error) {
-    console.error('Failed to resolve user by stripe_subscription_id', {
-      subscriptionId,
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    })
-    return null
+    if (typeof profileRow?.id === 'string') return profileRow.id
   }
 
-  return typeof profileRow?.id === 'string' ? profileRow.id : null
+  // Strategy 3: DB lookup by stripe_customer_id (always available — saved before checkout)
+  const customerId =
+    typeof subscription.customer === 'string'
+      ? subscription.customer.trim()
+      : ''
+  if (customerId) {
+    const { data: profileRow, error } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('stripe_customer_id', customerId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Failed to resolve user by stripe_customer_id', {
+        customerId,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      })
+    }
+
+    if (typeof profileRow?.id === 'string') return profileRow.id
+  }
+
+  return null
 }
 
 export async function POST(req: NextRequest) {
@@ -135,11 +163,11 @@ export async function POST(req: NextRequest) {
             stripe_customer_id: customerId,
             stripe_subscription_id: subscriptionId,
             subscription_status: subscriptionStatus,
-            current_period_end: subscriptionCurrentPeriodEnd,
-            cancel_at_period_end: subscriptionCancelAtPeriodEnd,
+            subscription_current_period_end: subscriptionCurrentPeriodEnd,
+            subscription_cancel_at_period_end: subscriptionCancelAtPeriodEnd,
           })
           .eq('id', userId)
-          .select('id, stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end')
+          .select('id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end')
 
         if (updateError) {
           throw new Error(
@@ -181,7 +209,29 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        const planCode = sub.metadata?.plan === 'yearly' ? 'yearly' : 
+        // Guard: skip stale subscription events that would overwrite a newer subscription
+        const { data: currentRow } = await supabase
+          .from('user_profiles')
+          .select('stripe_subscription_id')
+          .eq('id', userId)
+          .maybeSingle()
+
+        const storedSubId = currentRow?.stripe_subscription_id ?? null
+        if (
+          storedSubId &&
+          storedSubId !== sub.id &&
+          sub.status !== 'active' &&
+          sub.status !== 'trialing'
+        ) {
+          console.log('SKIPPING STALE SUBSCRIPTION EVENT:', {
+            eventSubId: sub.id,
+            eventStatus: sub.status,
+            storedSubId,
+          })
+          break
+        }
+
+        const planCode = sub.metadata?.plan === 'yearly' ? 'yearly' :
                  sub.metadata?.plan === 'monthly' ? 'monthly' : null
 
         const { data: updatedRows, error: updateError } = await supabase
@@ -190,16 +240,16 @@ export async function POST(req: NextRequest) {
             stripe_customer_id: customerId,
             stripe_subscription_id: sub.id,
             subscription_status: sub.status,
-            current_period_end: (() => {
+            subscription_current_period_end: (() => {
               const ts = sub.trial_end ?? sub.items.data[0]?.current_period_end ?? null
               return typeof ts === 'number' ? new Date(ts * 1000).toISOString() : null
             })(),
-            cancel_at_period_end: sub.cancel_at_period_end === true,
+            subscription_cancel_at_period_end: sub.cancel_at_period_end === true,
             ...(planCode !== null && { planned_plan_code: planCode }),
           })
           .eq('id', userId)
           .select(
-            'id, stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, cancel_at_period_end'
+            'id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end'
           )
 
         if (updateError) {
@@ -245,11 +295,11 @@ export async function POST(req: NextRequest) {
             stripe_customer_id: customerId,
             stripe_subscription_id: sub.id,
             subscription_status: 'canceled',
-            cancel_at_period_end: true,
+            subscription_cancel_at_period_end: true,
           })
           .eq('id', userId)
           .select(
-            'id, stripe_customer_id, stripe_subscription_id, subscription_status, cancel_at_period_end'
+            'id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_cancel_at_period_end'
           )
 
         if (updateError) {

@@ -10,7 +10,9 @@ import {
   getFlowPointsToNextRank,
   type RankCode,
 } from './progression-utils'
-import { supabase } from './supabase'
+import { getSupabaseBrowserClient } from './supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
 
 export type RankProgressData = {
   flowPoints: number

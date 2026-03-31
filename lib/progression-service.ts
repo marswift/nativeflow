@@ -8,7 +8,7 @@
  */
 import type { PostgrestError } from '@supabase/supabase-js'
 import { computeUpdatedStreakProfile } from './progression-utils'
-import { supabase } from './supabase'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type ProgressionUpdateResult = {
   error: PostgrestError | null
@@ -24,6 +24,7 @@ const PROGRESSION_COLUMNS =
  * avatar_image_url, or avatar_badge_image_url.
  */
 export async function updateProgressionForStudyDay(
+  supabase: SupabaseClient,
   userId: string,
   statDate: string
 ): Promise<ProgressionUpdateResult> {

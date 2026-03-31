@@ -9,12 +9,21 @@ import type {
   LessonBlueprintDraft,
   LessonBlueprintDraftBlock,
   LessonBlueprintDraftItem,
+  ScaffoldStep,
+  SemanticChunk,
 } from './lesson-blueprint-adapter'
 
 export type LessonDraftSessionItem = {
   id: string
   prompt: string
   answer: string | null
+  nativeHint: string | null
+  mixHint: string | null
+  aiQuestionText: string | null
+  scaffold_steps: string[] | null
+  structured_scaffold_steps: ScaffoldStep[] | null
+  semantic_chunks: SemanticChunk[] | null
+  image_url: string | null
 }
 
 export type DraftSessionBlockType = 'conversation' | 'review' | 'typing'
@@ -26,6 +35,7 @@ export type LessonDraftSessionBlock = {
   description: string
   estimatedMinutes: number
   items: LessonDraftSessionItem[]
+  image_prompt: string | null
 }
 
 export type LessonDraftSession = {
@@ -60,6 +70,13 @@ function mapDraftItemToSessionItem(
     id: createItemId(lessonId, blockIndex, itemIndex),
     prompt: item.prompt,
     answer: item.answer,
+    nativeHint: item.nativeHint ?? null,
+    mixHint: item.mixHint ?? null,
+    aiQuestionText: item.aiQuestionText ?? null,
+    scaffold_steps: item.scaffold_steps ?? null,
+    structured_scaffold_steps: item.structured_scaffold_steps ?? null,
+    semantic_chunks: item.semantic_chunks ?? null,
+    image_url: item.image_url ?? null,
   }
 }
 
@@ -77,6 +94,7 @@ function mapDraftBlockToSessionBlock(
     items: block.items.map((item, itemIndex) =>
       mapDraftItemToSessionItem(item, lessonId, blockIndex, itemIndex)
     ),
+    image_prompt: block.image_prompt ?? null,
   }
 }
 

@@ -21,7 +21,6 @@ import {
   buildLessonCompletionSummary as buildLessonCompletionSummaryFromModule,
   type LessonCompletionSummary,
 } from './lesson-summary'
-import type { UserProfileRow } from './types'
 import {
   createLessonRuntimeEngineState,
   getCurrentRuntimeBlock,
@@ -70,9 +69,7 @@ export type AdvanceRunStateResult = {
   inputValue: string
 }
 
-function isSessionObject(
-  input: UserProfileRow | LessonSession
-): input is LessonSession {
+function isSessionObject(input: LessonSession): input is LessonSession {
   const s = input as LessonSession
   return Array.isArray(s.blocks) && typeof s.theme === 'string'
 }
@@ -155,8 +152,6 @@ function toRuntimeOverview(session: LessonSession): LessonRuntimeOverview {
 }
 
 function toRuntimeBlocks(session: LessonSession): LessonRuntimeBlock[] {
-  console.log(JSON.stringify(session.blocks, null, 2))
-  
   return session.blocks.flatMap((block, blockIndex) =>
     block.items.map((item, itemIndex) => {
       const record = asRecord(block)
@@ -191,18 +186,16 @@ function toRuntimeBlocks(session: LessonSession): LessonRuntimeBlock[] {
   )
 }
 
-// ——— SESSION ———
-// Boundary: accepts UserProfileRow (generate session) or prebuilt LessonSession (draft-based).
+// Boundary: accepts only a prebuilt LessonSession.
 /**
- * Creates a lesson session from a user profile or returns an already-built session.
- * If input is a LessonSession (e.g. mapped draft), returns it as-is.
- * Otherwise delegates to lesson-engine mock generation.
+ * Returns an already-built LessonSession as-is.
  */
-export function createSession(
-  input: UserProfileRow | LessonSession
-): LessonSession {
+export function createSession(input: LessonSession): LessonSession {
   if (isSessionObject(input)) return input
-  throw new Error('createSession: UserProfileRow input is no longer supported. Pass a LessonSession directly.')
+
+  throw new Error(
+    'createSession: invalid LessonSession input. Expected blocks and theme.'
+  )
 }
 
 // ——— RUN STATE ———

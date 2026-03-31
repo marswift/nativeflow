@@ -7,6 +7,7 @@ import type { UserProfileRow } from '../../../lib/types'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
+import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -65,9 +66,9 @@ function formatPeriodEnd(value: BillingProfile['current_period_end']): string {
   }).format(date)
 }
 
-
 export default function BillingSettingsPage() {
   const router = useRouter()
+  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()  // ← 追加
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<BillingProfile | null>(null)
   const [pageError, setPageError] = useState('')
@@ -223,7 +224,7 @@ export default function BillingSettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -242,7 +243,7 @@ export default function BillingSettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-sm text-red-600">{pageError}</p>
@@ -268,7 +269,7 @@ export default function BillingSettingsPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage="en" onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>

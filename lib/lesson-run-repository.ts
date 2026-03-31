@@ -1,6 +1,6 @@
 /**
  * Repository for lesson run persistence.
- * DB access only; no business logic. Uses Supabase client and lesson-run-types.
+ * Handles DB access for lesson runs and lesson run items using Supabase.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PostgrestError } from '@supabase/supabase-js'
@@ -8,6 +8,7 @@ import type {
   LessonRunRow,
   LessonRunItemRow,
 } from './lesson-run-types'
+import type { LessonBlockType } from './lesson-run-types'
 
 /** Payload to create a new lesson run. */
 export type CreateLessonRunPayload = {
@@ -38,7 +39,7 @@ export type InsertLessonRunItemPayload = {
   user_id: string
   block_index: number
   item_index: number
-  block_type: 'conversation' | 'review' | 'typing' | 'ai_conversation'
+  block_type: LessonBlockType
   block_title: string
   prompt_text: string
   expected_answer_text: string | null

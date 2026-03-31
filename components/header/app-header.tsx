@@ -6,7 +6,7 @@ import { TARGET_LANGUAGE_OPTIONS } from '@/lib/constants'
 type AppHeaderProps = {
   onLogout: () => void
   currentLanguage: string
-  onChangeLanguage: (lang: string) => void
+  onChangeLanguage?: (lang: string) => void
 }
 
 export default function AppHeader({
@@ -30,8 +30,9 @@ export default function AppHeader({
             <span className="text-sm text-[#5c5c5c]">現在の学習言語</span>
             <select
               value={currentLanguage}
-              onChange={(e) => onChangeLanguage(e.target.value)}
-              className="cursor-pointer rounded-md border border-[#ede9e2] bg-[#f8f6f2] px-2 py-1 text-sm text-[#7a7a7a]"
+              onChange={(e) => onChangeLanguage?.(e.target.value)}
+              className="cursor-not-allowed rounded-md border border-[#ede9e2] bg-[#f8f6f2] px-2 py-1 text-sm text-[#7a7a7a]"
+              disabled
             >
               {TARGET_LANGUAGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>

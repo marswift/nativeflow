@@ -10,17 +10,42 @@ function StageCard({
   number,
   title,
   description,
+  isCompleted,
+  isCurrent,
 }: {
   number: number
   title: string
   description: string
+  isCompleted: boolean
+  isCurrent: boolean
 }) {
   return (
-    <div className="rounded-[16px] border border-[#E8E4DF] bg-white px-4 py-4 shadow-[0_6px_20px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-[2px] hover:shadow-[0_12px_28px_rgba(15,23,42,0.08)]">
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] bg-[#FFF0D4] text-sm font-black text-[#D4881A]">
-          {number}
+      <div
+        className={`
+          relative z-10 min-h-[128px] min-w-[220px] rounded-[16px] border px-4 py-4 transition duration-200
+          ${isCurrent
+            ? 'border-[#F5A623] bg-[#FFF9EC] shadow-[0_6px_20px_rgba(15,23,42,0.04)]'
+            : 'border-[#E8E4DF] bg-white shadow-[0_6px_20px_rgba(15,23,42,0.06)] hover:-translate-y-[2px] hover:shadow-[0_12px_28px_rgba(15,23,42,0.10)]'}
+        `}
+      >
+      {isCompleted && (
+        <div className="absolute right-3 top-3 rounded-md border-2 border-green-500 bg-white/85 px-3 py-1 text-base font-black text-green-600 shadow-sm rotate-6">
+          完了！
         </div>
+      )}
+
+      <div className="mb-3 flex items-center gap-3 relative">
+      <div
+        className={`
+          flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] text-sm font-black
+          ${isCurrent
+            ? 'bg-[#F5A623] text-white'
+            : 'bg-[#FFF0D4] text-[#D4881A]'
+          }
+        `}
+      >
+        {number}
+      </div>
         <p className="text-sm font-bold text-[#1a1a2e]">{title}</p>
       </div>
       <p className="text-xs leading-6 text-[#5a5a7a]">{description}</p>
@@ -52,6 +77,7 @@ export type LessonOverviewCardProps = {
   totalFlowPoints: number
   flowPointsToNextRank: number
   targetLanguageLabel: string
+  currentStageIndex: number
 }
 
 /**
@@ -76,6 +102,7 @@ export function LessonOverviewCard({
   totalFlowPoints,
   flowPointsToNextRank,
   targetLanguageLabel,
+  currentStageIndex,
 }: LessonOverviewCardProps) {
   const uiText = copy.overviewCard
 
@@ -129,50 +156,38 @@ export function LessonOverviewCard({
     typeof overview.overviewBackgroundImageUrl === 'string' &&
     overview.overviewBackgroundImageUrl.trim().length > 0
       ? overview.overviewBackgroundImageUrl
-      : '/images/backgrounds/home.png'
+      : '/images/backgrounds/home_01.webp'
 
   const overviewStepCount =
     typeof overview.overviewStepCount === 'number' && overview.overviewStepCount > 0
       ? Math.floor(overview.overviewStepCount)
       : 5
 
+  const activeText = copy.activeCard
   const baseStages = [
     {
-      title: '聞く',
-      description: 'まずは今日の基本フレーズを聞いて、意味と音をつかみます。',
+      title: activeText.timelineListenRepeat,
+      description: uiText.stageListenRepeatDesc,
     },
     {
-      title: 'リピートする',
-      description: '声に出してまねしながら、自然な言い方を身体に入れます。',
+      title: uiText.stageScaffoldTitle,
+      description: uiText.stageScaffoldDesc,
     },
     {
-      title: 'AIの質問に答える',
-      description: '習った表現を使って、短く答える練習をします。',
+      title: activeText.timelineAiQuestion,
+      description: uiText.stageAiQuestionDesc,
     },
     {
-      title: 'タイピングする',
-      description: '実際に入力して、語順とスペルを定着させます。',
+      title: activeText.timelineTyping,
+      description: uiText.stageTypingDesc,
     },
     {
-      title: 'AIと会話する',
-      description: '今日の表現を使いながら、実践的なやり取りに進みます。',
+      title: activeText.timelineAiConversation,
+      description: uiText.stageAiConversationDesc,
     },
   ]
 
-  let stages = baseStages.slice(0, overviewStepCount)
-
-  if (overviewStepCount > baseStages.length) {
-    stages = [
-      ...baseStages,
-      ...Array.from(
-        { length: overviewStepCount - baseStages.length },
-        (_, index) => ({
-          title: `追加ステップ ${index + 1}`,
-          description: 'このレッスン内容に応じた追加練習が入ります。',
-        })
-      ),
-    ]
-  }
+  const stages = baseStages.slice(0, Math.min(overviewStepCount, baseStages.length))
 
   return (
     <div className="mt-8 space-y-5">
@@ -180,10 +195,21 @@ export function LessonOverviewCard({
         <span className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[rgba(245,166,35,0.10)]" />
         <span className="pointer-events-none absolute bottom-[-20px] right-[60px] h-24 w-24 rounded-full bg-[rgba(245,166,35,0.07)]" />
 
-        <div
-          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.14]"
-          style={{ backgroundImage: `url(${overviewBackgroundImageUrl})` }}
-        />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.14]">
+          <picture>
+            <source
+              media="(max-width: 768px)"
+              srcSet={overviewBackgroundImageUrl.endsWith('.webp')
+                ? overviewBackgroundImageUrl.replace('.webp', '_p.webp')
+                : overviewBackgroundImageUrl}
+            />
+            <img
+              src={overviewBackgroundImageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </picture>
+        </div>
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,249,236,0.92)_0%,rgba(255,255,255,0.90)_55%,rgba(255,253,248,0.94)_100%)]" />
         <div className="relative z-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_348px]">
           <div className="flex min-w-0 flex-col gap-4">
@@ -242,7 +268,7 @@ export function LessonOverviewCard({
           </div>
 
           <div className="relative z-10 flex h-full flex-col gap-5">
-            <div className="flex min-h-[168px] flex-col items-center justify-center rounded-[20px] border border-[#E8E4DF] bg-white px-4 py-5 shadow-[0_6px_20px_rgba(15,23,42,0.04)]">
+            <div className="flex min-h-[168px] flex-col items-center justify-center rounded-[20px] border border-[#E8E4DF] bg-white px-4 py-5 shadow-[0_6px_20px_rgba(15,23,42,0.06)]">
               <div className="relative h-[140px] w-[140px]">
                 <Image
                   src={overviewImageUrl}
@@ -256,7 +282,7 @@ export function LessonOverviewCard({
                 {overviewCharacterName}
               </p>
               <p className="mt-1 text-xs text-[#5a5a7a]">
-                {uiText.guideText}
+                {uiText.guideEncouragement}
               </p>
             </div>
 
@@ -293,7 +319,7 @@ export function LessonOverviewCard({
                   aria-label={uiText.startButton}
                   className="relative z-10 w-full cursor-pointer overflow-hidden rounded-[14px] bg-[#F5A623] py-4 text-base font-black tracking-wide text-white transition hover:-translate-y-px hover:bg-[#D4881A] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2"
                 >
-                  {uiText.startButton}
+                    {uiText.startButton}
                   <span
                     aria-hidden="true"
                     className="absolute right-5 top-1/2 -translate-y-1/2 text-sm opacity-70"
@@ -311,13 +337,15 @@ export function LessonOverviewCard({
         <p className="mb-3 pl-0.5 text-[13px] font-bold tracking-[0.04em] text-[#5a5a7a]">
           {uiText.stageSectionTitle}
         </p>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="relative flex gap-3 overflow-x-auto pb-2">
           {stages.map((stage, index) => (
             <StageCard
               key={`${stage.title}-${index}`}
               number={index + 1}
               title={stage.title}
               description={stage.description}
+              isCompleted={index < currentStageIndex}
+              isCurrent={index === currentStageIndex}
             />
           ))}
         </div>

@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   const { data: profileRow } = await supabaseServer
     .from('user_profiles')
-    .select('stripe_customer_id')
+    .select('stripe_customer_id, stripe_subscription_id')
     .eq('id', user.id)
     .maybeSingle()
 
@@ -91,6 +91,24 @@ export async function POST(req: NextRequest) {
     typeof profileRow?.stripe_customer_id === 'string'
       ? profileRow.stripe_customer_id.trim()
       : ''
+
+  // Cancel existing subscription before creating a new one
+  const existingSubId =
+    typeof profileRow?.stripe_subscription_id === 'string'
+      ? profileRow.stripe_subscription_id.trim()
+      : ''
+  if (existingSubId) {
+    try {
+      await stripe.subscriptions.cancel(existingSubId)
+      console.log('CANCELLED EXISTING SUBSCRIPTION:', existingSubId)
+    } catch (cancelErr) {
+      // Not fatal — subscription may already be cancelled or invalid
+      console.warn('Failed to cancel existing subscription (continuing)', {
+        subscriptionId: existingSubId,
+        message: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
+      })
+    }
+  }
 
   const customerEmail = (user.email ?? '').trim()
   if (!stripeCustomerId && !customerEmail) {

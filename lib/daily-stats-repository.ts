@@ -4,7 +4,9 @@
  */
 import type { PostgrestError } from '@supabase/supabase-js'
 import type { DailyStatRow } from './lesson-run-types'
-import { supabase } from './supabase'
+import { getSupabaseBrowserClient } from './supabase/browser-client'
+
+const supabase = getSupabaseBrowserClient()
 
 export type DailyStatsRepositoryResult<T> = {
   data: T | null

@@ -9,6 +9,7 @@ import type {
   LearnerStreakState,
 } from '@/lib/habit-retention-types'
 import { incrementDailyStats } from '@/lib/daily-stats-service'
+import { supabaseServer } from '@/lib/supabase-server'
 
 type CompleteConversationLessonRequestBody = {
   state: ConversationLessonFacadeState
@@ -249,6 +250,7 @@ export async function POST(
         const idempotencyKey = `${validated.data.userId}:${lessonId}:${validated.data.todayDate}`
 
         await incrementDailyStats(
+          supabaseServer,
           validated.data.userId,
           {
             lesson_runs_completed: 1,

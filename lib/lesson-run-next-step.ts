@@ -1,6 +1,6 @@
 /**
- * Executes one "next" step in a lesson run: persist item, update stats, increment daily stats,
- * and return the next progress and input value.
+ * Executes one "next" step in a lesson run: persist the current item,
+ * update lesson run stats, and return the next progress and input value.
  * Used by app/lesson/page.tsx handleNext; keeps page thin.
  * No React; orchestrates lesson-run-service and lesson-runtime.
  */
@@ -32,7 +32,7 @@ export type ExecuteNextStepResult = {
 }
 
 /**
- * Saves current item (if lessonRunId/userId), updates run stats, increments daily stats,
+ * Saves the current item (if lessonRunId/userId), updates lesson run stats,
  * then returns the next progress and input value from advanceRunState.
  * Async side effects are fired; return value is synchronous from advanceRunState.
  */

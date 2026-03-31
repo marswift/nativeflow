@@ -26,8 +26,9 @@ import {
   type LessonStageId,
 } from '../../lib/lesson-runtime'
 import { getLessonCopy, type LessonCopy } from '../../lib/lesson-copy'
-import { startLessonRun } from '../../lib/lesson-run-service'
-import { loadLessonPage } from '../../lib/lesson-page-loader'
+import { startLessonRun, saveLessonRunItem } from '../../lib/lesson-run-service'
+import { createReviewItemIfMissing, markReviewCorrect, markReviewWrong } from '../../lib/review-items-repository'
+import { loadLessonPage, hydrateLessonAudio } from '../../lib/lesson-page-loader'
 import { runLessonCompletionEffect } from '../../lib/lesson-run-effects'
 import { executeNextStep } from '../../lib/lesson-run-next-step'
 import type { LessonPageData } from '../../lib/lesson-page-data'
@@ -46,6 +47,7 @@ import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
 import { getUserRankProgress } from '../../lib/rank-service'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
+import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -141,6 +143,7 @@ function getPageErrorMessage(resultError: string | null, copy: LessonCopy): stri
 
 const STAGE_FLOW_POINT_MAP: Record<Exclude<LessonStageId, 'listen'>, number> = {
   repeat: 5,
+  scaffold_transition: 5,
   ai_question: 10,
   typing: 15,
   ai_conversation: 20,
@@ -176,9 +179,18 @@ function createUiProgressFromRuntime(
     currentBlockIndex: state.currentBlockIndex,
     currentItemIndex: 0, // 固定でOK（stageでUIを切り替えるため）
     checked: latestStageAnswer != null,
-    isCorrect: latestStageAnswer?.isCorrect ?? false,
+    isCorrect: latestStageAnswer != null ? (latestStageAnswer.isCorrect ?? false) : null,
     completed: state.isCompleted,
   }
+}
+
+const stageMap: Record<string, number> = {
+  listen: 0,
+  repeat: 0,
+  scaffold_transition: 1,
+  ai_question: 2,
+  typing: 3,
+  ai_conversation: 4,
 }
 
 function buildRuntimeStageSubmissionValue(input: {
@@ -192,6 +204,10 @@ function buildRuntimeStageSubmissionValue(input: {
 
   if (input.stageId === 'repeat') {
     return '[repeat-completed]'
+  }
+
+  if (input.stageId === 'scaffold_transition') {
+    return input.fallbackAnswer?.trim() || '[scaffold-transition-completed]'
   }
 
   if (input.stageId === 'ai_question') {
@@ -302,7 +318,222 @@ function LessonScoreChart({ items }: { items: ScoreHistoryItem[] }) {
   )
 }
 
+const REVIEW_INTERVAL_DAYS = [1, 3, 7, 14, 30, 60]
+
+async function handleBlockCompleted(params: {
+  completedBlockId: string
+  state: LessonRuntimeEngineState
+  sessionBlock: import('../../lib/lesson-engine').LessonBlock | null
+  sessionItem: import('../../lib/lesson-engine').LessonBlockItem | null
+  blockIndex: number
+  userId: string | null
+  lessonRunId: string | null
+}) {
+  const { completedBlockId, state, sessionBlock, sessionItem, blockIndex, userId, lessonRunId } = params
+  if (!userId) return
+
+  // Review block → score
+  if (completedBlockId.startsWith('review-')) {
+    const reviewItemId = completedBlockId.slice('review-'.length)
+    if (!reviewItemId) return
+
+    const typingAnswer = state.answers.find(
+      (a) => a.blockId === completedBlockId && a.stageId === 'typing'
+    )
+    const isCorrect = typingAnswer?.isCorrect === true
+
+    const { data: current } = await supabase
+      .from('review_items')
+      .select('correct_count, wrong_count')
+      .eq('id', reviewItemId)
+      .maybeSingle()
+    if (!current) return
+
+    if (isCorrect) {
+      const newCount = (current.correct_count ?? 0) + 1
+      const next = new Date()
+      next.setDate(next.getDate() + REVIEW_INTERVAL_DAYS[Math.min(newCount, REVIEW_INTERVAL_DAYS.length - 1)])
+      await markReviewCorrect(supabase, reviewItemId, {
+        correct_count: newCount,
+        next_review_at: next.toISOString(),
+      })
+    } else {
+      const newCount = (current.wrong_count ?? 0) + 1
+      const next = new Date()
+      next.setDate(next.getDate() + REVIEW_INTERVAL_DAYS[0])
+      await markReviewWrong(supabase, reviewItemId, {
+        wrong_count: newCount,
+        next_review_at: next.toISOString(),
+      })
+    }
+    return
+  }
+
+  // Normal block → persist item and seed review entry
+  if (!lessonRunId || !sessionBlock || !sessionItem) return
+
+  const { data: runItem } = await saveLessonRunItem(supabase, {
+    lesson_run_id: lessonRunId,
+    user_id: userId,
+    block: sessionBlock,
+    item: sessionItem,
+    block_index: blockIndex,
+    item_index: 0,
+    was_checked: true,
+    is_correct: null,
+    completed_at: new Date().toISOString(),
+  })
+
+  if (runItem?.id) {
+    await createReviewItemIfMissing(supabase, userId, runItem.id)
+  }
+}
+
+type OnboardingStep = 'explanation' | 'mini_experience' | 'done'
+
+function OnboardingExplanation({ onNext }: { onNext: () => void }) {
+  return (
+    <div className="mx-auto max-w-md px-6 py-16 text-center">
+      <h1 className="text-2xl font-black leading-snug text-[#1a1a2e]">
+        英語は&quot;聞いて真似する&quot;だけ
+      </h1>
+
+      <div className="mt-8 space-y-4 text-left text-[15px] leading-7 text-[#4a4a6a]">
+        <p className="flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 text-red-400">&#x2716;</span>
+          <span>日本語→英語にしません</span>
+        </p>
+        <p className="flex items-start gap-2">
+          <span className="mt-0.5 shrink-0 text-green-500">&#x2714;</span>
+          <span>音をそのまま真似します</span>
+        </p>
+        <p className="pl-7 text-sm text-[#7b7b94]">
+          最初は分からなくてOKです
+        </p>
+        <p className="pl-7 text-sm text-[#7b7b94]">
+          3回で分かるようになります
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onNext}
+        className="mt-10 w-full cursor-pointer rounded-[14px] bg-[#F5A623] py-4 text-base font-black tracking-wide text-white transition hover:-translate-y-px hover:bg-[#D4881A] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2"
+      >
+        体験してみる
+      </button>
+    </div>
+  )
+}
+
+function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
+  const [phase, setPhase] = useState<'idle' | 'playing' | 'played' | 'recording' | 'recorded' | 'feedback'>('idle')
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const synthRef = useRef<SpeechSynthesisUtterance | null>(null)
+
+  function handlePlay() {
+    setPhase('playing')
+    // Use Web Speech API for the tiny sample — no server round-trip needed
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      const utterance = new SpeechSynthesisUtterance('You can do it')
+      utterance.lang = 'en-US'
+      utterance.rate = 0.85
+      utterance.onend = () => setPhase('played')
+      utterance.onerror = () => setPhase('played')
+      synthRef.current = utterance
+      window.speechSynthesis.cancel()
+      window.speechSynthesis.speak(utterance)
+    } else {
+      // Fallback: skip to played after a short delay
+      setTimeout(() => setPhase('played'), 1200)
+    }
+  }
+
+  function handleRecord() {
+    setPhase('recording')
+    // Simulate a short recording period — onboarding must be guaranteed-success
+    setTimeout(() => setPhase('feedback'), 2000)
+  }
+
+  useEffect(() => {
+    if (phase === 'feedback') {
+      const timer = setTimeout(onComplete, 1800)
+      return () => clearTimeout(timer)
+    }
+  }, [phase, onComplete])
+
+  return (
+    <div className="mx-auto max-w-md px-6 py-16 text-center">
+      <p className="text-sm font-bold tracking-[0.08em] text-[#7b7b94]">
+        体験してみましょう
+      </p>
+
+      <h2 className="mt-4 text-3xl font-black text-[#1a1a2e]">
+        &quot;You can do it&quot;
+      </h2>
+
+      <p className="mt-2 text-sm text-[#7b7b94]">
+        あなたならできる
+      </p>
+
+      {phase === 'feedback' ? (
+        <div className="mt-12">
+          <p className="text-4xl font-black text-[#F5A623]">
+            いい感じ！
+          </p>
+          <p className="mt-3 text-sm text-[#7b7b94]">
+            レッスンを始めましょう
+          </p>
+        </div>
+      ) : (
+        <div className="mt-12 flex flex-col items-center gap-6">
+          {/* Play button */}
+          <button
+            type="button"
+            onClick={handlePlay}
+            disabled={phase === 'playing'}
+            className={`flex h-20 w-20 items-center justify-center rounded-full text-3xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 ${
+              phase === 'playing'
+                ? 'animate-pulse bg-[#FFF0D4] text-[#D4881A]'
+                : phase === 'played' || phase === 'recording' || phase === 'recorded'
+                  ? 'bg-[#E8E4DF] text-[#7b7b94] cursor-default'
+                  : 'cursor-pointer bg-[#F5A623] text-white hover:bg-[#D4881A]'
+            }`}
+          >
+            &#9654;
+          </button>
+          <p className="text-xs text-[#7b7b94]">
+            {phase === 'idle' && 'まず聞いてみましょう'}
+            {phase === 'playing' && '再生中…'}
+            {(phase === 'played' || phase === 'recording' || phase === 'recorded') && '聞けました！次は真似してみましょう'}
+          </p>
+
+          {/* Record button — appears after playback */}
+          {(phase === 'played' || phase === 'recording' || phase === 'recorded') && (
+            <button
+              type="button"
+              onClick={handleRecord}
+              disabled={phase === 'recording'}
+              className={`flex h-20 w-20 items-center justify-center rounded-full text-2xl transition focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 ${
+                phase === 'recording'
+                  ? 'animate-pulse bg-red-100 text-red-500'
+                  : 'cursor-pointer bg-red-500 text-white hover:bg-red-600'
+              }`}
+            >
+              &#9679;
+            </button>
+          )}
+          {phase === 'recording' && (
+            <p className="text-xs text-[#7b7b94]">聞こえています…</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function LessonPage() {
+  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()
   const router = useRouter()
 
   const [pageData, setPageData] = useState<LessonPageData | null>(null)
@@ -324,10 +555,13 @@ export default function LessonPage() {
   const [startBlockedReason, setStartBlockedReason] = useState<string | null>(null)
   const [earnedFlowPoints, setEarnedFlowPoints] = useState(0)
   const [hasFinalizedLessonRun, setHasFinalizedLessonRun] = useState(false)
+  const [isExtraSession, setIsExtraSession] = useState(false)
   const [scoreHistory, setScoreHistory] = useState<ScoreHistoryItem[]>([])
   const [repeatAutoStartNonce, setRepeatAutoStartNonce] = useState(0)
   const [showListenRepeatComplete, setShowListenRepeatComplete] = useState(false)
   const [listenResetNonce, setListenResetNonce] = useState(0)
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(null)
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null)
 
   const isStartingLessonRef = useRef(false)
   const latestTotalFlowPointsRef = useRef(0)
@@ -349,13 +583,23 @@ export default function LessonPage() {
     lessonAIMessages,
   } = getPageDataParts(pageData)
 
-  const { block, item } = getCurrentLessonPosition(lesson, progress)
+  const { block, item } = getCurrentLessonPosition(
+    lesson,
+    runtimeState
+      ? { ...progress, currentBlockIndex: runtimeState.currentBlockIndex }
+      : progress
+  )
 
   const showCompleted =
   started &&
   (runtimeState?.isCompleted === true ||
    progress.completed === true)
 
+  const currentStageIndex =
+  runtimeState != null
+  ? stageMap[runtimeState.currentStageId] ?? 0
+  : 0
+  
   const scoreSummary = useMemo(() => {
     if (scoreHistory.length === 0) {
       return null
@@ -441,7 +685,15 @@ export default function LessonPage() {
           setPageData(nextPageData)
           setUserId(nextUserId)
 
-          const flowPointResult = await getUserFlowPoints(nextUserId)
+
+          // Hydrate audio in background — don't block page render
+          hydrateLessonAudio(nextPageData.lesson).then((hydratedLesson) => {
+            if (isActive) {
+              setPageData((prev) => prev ? { ...prev, lesson: hydratedLesson } : prev)
+            }
+          })
+
+          const flowPointResult = await getUserFlowPoints(supabase, nextUserId)
           if (!isActive) return
 
           if (!flowPointResult.error) {
@@ -453,18 +705,12 @@ export default function LessonPage() {
 
           const persisted = readPersistedLessonState()
           const currentLessonId = getLessonStorageLessonId(nextPageData.lesson)
-          
-          // 🔥 URLに resume フラグがある場合のみ復元
-          const shouldResume =
-            typeof window !== 'undefined' &&
-            new URLSearchParams(window.location.search).get('resume') === 'true'
-          
+
           if (
             persisted &&
             persisted.userId === nextUserId &&
             persisted.lessonId === currentLessonId &&
-            persisted.started &&
-            shouldResume
+            persisted.started
           ) {
             setProgress(persisted.progress)
             setInputValue(persisted.inputValue)
@@ -496,11 +742,53 @@ export default function LessonPage() {
     }
   }, [router, refreshRankProgress])
 
+  // Check onboarding status after userId is available
   useEffect(() => {
     if (!userId) return
-  
     let isActive = true
-  
+
+    async function checkOnboarding() {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('onboarding_completed')
+        .eq('id', userId)
+        .single()
+
+      if (!isActive) return
+
+      const completed = data?.onboarding_completed === true
+      if (completed) {
+        setNeedsOnboarding(false)
+      } else {
+        setNeedsOnboarding(true)
+        setOnboardingStep('explanation')
+      }
+    }
+
+    checkOnboarding()
+
+    return () => {
+      isActive = false
+    }
+  }, [userId])
+
+  const handleOnboardingComplete = useCallback(async () => {
+    setOnboardingStep('done')
+    setNeedsOnboarding(false)
+
+    if (userId) {
+      await supabase
+        .from('user_profiles')
+        .update({ onboarding_completed: true })
+        .eq('id', userId)
+    }
+  }, [userId])
+
+  useEffect(() => {
+    if (!userId) return
+
+    let isActive = true
+
     async function fetchScoreHistory() {
       const { data, error } = await supabase
         .from('pronunciation_scores')
@@ -662,13 +950,14 @@ export default function LessonPage() {
       return
     }
 
-    const points = STAGE_FLOW_POINT_MAP[stageId] ?? 0
+    const basePoints = STAGE_FLOW_POINT_MAP[stageId] ?? 0
+    const points = isExtraSession ? Math.floor(basePoints * 0.5) : basePoints
     if (points <= 0) return
 
     awardedStageKeysRef.current.add(awardKey)
 
     const previousTotalFlowPoints = latestTotalFlowPointsRef.current
-    const awardResult = await awardLessonFlowPoints(userId, points)
+    const awardResult = await awardLessonFlowPoints(supabase, userId, points)
 
     if (awardResult.error || !awardResult.data) {
       awardedStageKeysRef.current.delete(awardKey)
@@ -713,12 +1002,6 @@ export default function LessonPage() {
   }
   
   function handleStartLesson() {
-    console.log('handleStartLesson', {
-      hasLesson: lesson != null,
-      userId,
-      started,
-      isStarting: isStartingLessonRef.current,
-    })
   
     if (lesson == null) {
       setStartBlockedReason('lesson が null のため開始できません。')
@@ -803,8 +1086,7 @@ export default function LessonPage() {
         userId,
       })
   
-      console.log('createLessonRuntimeStateFromSession success', nextRuntimeState)
-  
+      startLessonRunEffects(userId, lesson)
       setRuntimeState(nextRuntimeState)
       setStarted(true)
       setPageError(null)
@@ -824,6 +1106,24 @@ export default function LessonPage() {
       setRuntimeState(null)
       isStartingLessonRef.current = false
     }
+  }
+
+  function handleStartExtraSession() {
+    setIsExtraSession(true)
+    // Reload page data to get a fresh lesson
+    clearPersistedLessonState()
+    setStarted(false)
+    setRuntimeState(null)
+    setProgress(getInitialRunState().progress)
+    setInputValue('')
+    setCorrectTypingCount(0)
+    setEarnedFlowPoints(0)
+    setHasFinalizedLessonRun(false)
+    setShowListenRepeatComplete(false)
+    awardedStageKeysRef.current = new Set()
+    setPageData(null)
+    setPageError(null)
+    isStartingLessonRef.current = false
   }
 
   function handleStartRepeatFromListen() {
@@ -863,14 +1163,27 @@ export default function LessonPage() {
   function handleAdvanceFromListenRepeatComplete() {
     if (runtimeState == null) return
     if (runtimeState.currentStageId !== 'repeat') return
-  
-    const result = advanceLessonStage(runtimeState)
+
+    let state = runtimeState
+    if (!canAdvanceLessonStage(state)) {
+      const currentRuntimeBlock = getCurrentLessonRuntimeBlock(state)
+      state = submitLessonStageAnswer(state, {
+        stageId: 'repeat',
+        blockId: currentRuntimeBlock.id,
+        kind: 'repeat',
+        value: '[skipped]',
+        isCorrect: null,
+        feedback: null,
+      })
+    }
+
+    const result = advanceLessonStage(state)
     setRuntimeState(result.state)
     setInputValue('')
     setShowListenRepeatComplete(false)
   }
 
-  function handleNext() {
+  const handleNext = useCallback(() => {
     if (lesson == null || block == null || item == null) return
   
     if (runtimeState == null) {
@@ -924,18 +1237,54 @@ export default function LessonPage() {
         })
 
         void awardRuntimeStageFlowPointsIfNeeded(nextState, 'repeat')
-        setRuntimeState(nextState)
       }
 
-      setShowListenRepeatComplete(true)
+      if (canAdvanceLessonStage(nextState)) {
+        const result = advanceLessonStage(nextState)
+        setRuntimeState(result.state)
+        setInputValue('')
+      } else {
+        setRuntimeState(nextState)
+      }
       return
     }
   
-    // 3) 質問回答は1回のクリックで完了登録して次へ
+    // 3) 段階翻訳は1回のクリックで完了登録して次へ
+    if (currentStageId === 'scaffold_transition') {
+      if (!canAdvanceLessonStage(nextState)) {
+        const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
+
+        nextState = submitLessonStageAnswer(nextState, {
+          stageId: 'scaffold_transition',
+          blockId: currentRuntimeBlock.id,
+          kind: 'scaffold_transition',
+          value: buildRuntimeStageSubmissionValue({
+            stageId: 'scaffold_transition',
+            inputValue,
+            fallbackAnswer: item.answer ?? null,
+          }),
+          isCorrect: null,
+          feedback: null,
+        })
+
+        void awardRuntimeStageFlowPointsIfNeeded(nextState, 'scaffold_transition')
+      }
+
+      if (!canAdvanceLessonStage(nextState)) {
+        return
+      }
+
+      const result = advanceLessonStage(nextState)
+      setRuntimeState(result.state)
+      setInputValue('')
+      return
+    }
+
+    // 4) 質問回答は1回のクリックで完了登録して次へ
     if (currentStageId === 'ai_question') {
       if (!canAdvanceLessonStage(nextState)) {
         const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
-  
+    
         nextState = submitLessonStageAnswer(nextState, {
           stageId: 'ai_question',
           blockId: currentRuntimeBlock.id,
@@ -948,37 +1297,56 @@ export default function LessonPage() {
           isCorrect: null,
           feedback: null,
         })
-  
+    
         void awardRuntimeStageFlowPointsIfNeeded(nextState, 'ai_question')
       }
-  
+    
       if (!canAdvanceLessonStage(nextState)) {
         return
       }
-  
+    
       const result = advanceLessonStage(nextState)
       setRuntimeState(result.state)
       setInputValue('')
       return
     }
   
-    // 4) 書き取りはチェック完了まで進めない
+    // 5) typing はチェック完了後に次へ進める
     if (currentStageId === 'typing') {
       if (!canAdvanceLessonStage(nextState)) {
+        const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
+
+        nextState = submitLessonStageAnswer(nextState, {
+          stageId: 'typing',
+          blockId: currentRuntimeBlock.id,
+          kind: 'typing',
+          value: buildRuntimeStageSubmissionValue({
+            stageId: 'typing',
+            inputValue,
+            fallbackAnswer: item.answer ?? null,
+          }),
+          isCorrect: null,
+          feedback: null,
+        })
+
+        void awardRuntimeStageFlowPointsIfNeeded(nextState, 'typing')
+      }
+
+      if (!canAdvanceLessonStage(nextState)) {
         return
       }
-  
+
       const result = advanceLessonStage(nextState)
       setRuntimeState(result.state)
       setInputValue('')
       return
     }
-  
-    // 5) AI会話は完了登録してから完了へ
+
+    // 6) AI会話は完了登録してから完了へ
     if (currentStageId === 'ai_conversation') {
       if (!canAdvanceLessonStage(nextState)) {
         const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
-  
+
         nextState = submitLessonStageAnswer(nextState, {
           stageId: 'ai_conversation',
           blockId: currentRuntimeBlock.id,
@@ -991,31 +1359,52 @@ export default function LessonPage() {
           isCorrect: null,
           feedback: null,
         })
-  
+
         void awardRuntimeStageFlowPointsIfNeeded(nextState, 'ai_conversation')
       }
-  
-      if (!canAdvanceLessonStage(nextState)) {
-        return
-      }
-  
+
+      // allow progression even if typing is not perfectly correct
+
+      const completedRuntimeBlock = runtimeState.blocks[runtimeState.currentBlockIndex]
       const result = advanceLessonStage(nextState)
       setRuntimeState(result.state)
       setInputValue('')
+
+      const didMoveBlock =
+        runtimeState.currentBlockIndex !== result.state.currentBlockIndex
+
+      if ((didMoveBlock || result.completedLesson) && completedRuntimeBlock) {
+        void handleBlockCompleted({
+          completedBlockId: completedRuntimeBlock.id,
+          state: result.state,
+          sessionBlock: block,
+          sessionItem: item,
+          blockIndex: progress.currentBlockIndex,
+          userId,
+          lessonRunId,
+        })
+      }
     }
-  }
+  }, [lesson, block, item, runtimeState, progress, inputValue, lessonRunId, userId, correctTypingCount])
+
+  useEffect(() => {
+    const onNextStep = () => {
+      handleNext()
+    }
+  
+    window.addEventListener('next-step', onNextStep)
+  
+    return () => {
+      window.removeEventListener('next-step', onNextStep)
+    }
+  }, [handleNext])
 
   function handleCheck() {
     if (item == null) return
 
     if (runtimeState != null) {
-      if (runtimeState.currentStageId !== 'typing') {
-        return
-      }
-
-      if (canAdvanceLessonStage(runtimeState)) {
-        return
-      }
+      if (runtimeState.currentStageId !== 'typing') return
+      if (canAdvanceLessonStage(runtimeState)) return
 
       const result = checkTypingAnswer(inputValue, item.answer ?? '')
       const currentRuntimeBlock = getCurrentLessonRuntimeBlock(runtimeState)
@@ -1029,9 +1418,17 @@ export default function LessonPage() {
         feedback: result.isCorrect ? 'correct' : 'incorrect',
       })
 
-      setRuntimeState(nextState)
       applyTypingCheckResult(result.isCorrect, result.correctTypingDelta)
       void awardRuntimeStageFlowPointsIfNeeded(nextState, 'typing')
+
+      try {
+        const advanced = advanceLessonStage(nextState)
+        setRuntimeState(advanced.state)
+        setInputValue('')
+      } catch (e) {
+        console.error('[handleCheck] advance failed', e)
+        setRuntimeState(nextState)
+      }
       return
     }
 
@@ -1045,7 +1442,7 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -1066,12 +1463,33 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">エラー</h2>
             <p className="mt-3 text-sm text-[#4a4a6a]">{errorMessage}</p>
           </div>
+        </main>
+        <AppFooter />
+      </div>
+    )
+  }
+
+  // Onboarding gate — show before normal lesson flow
+  if (needsOnboarding === true && onboardingStep !== 'done') {
+    return (
+      <div
+        className={PAGE_SHELL_CLASS}
+        style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
+      >
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <main className="flex-1 flex items-center justify-center">
+          {onboardingStep === 'explanation' && (
+            <OnboardingExplanation onNext={() => setOnboardingStep('mini_experience')} />
+          )}
+          {onboardingStep === 'mini_experience' && (
+            <OnboardingMiniExperience onComplete={handleOnboardingComplete} />
+          )}
         </main>
         <AppFooter />
       </div>
@@ -1085,6 +1503,10 @@ export default function LessonPage() {
   const showStandaloneNextButton =
     runtimeState?.currentStageId !== 'listen' &&
     runtimeState?.currentStageId !== 'repeat' &&
+    runtimeState?.currentStageId !== 'scaffold_transition' &&
+    runtimeState?.currentStageId !== 'ai_question' &&
+    runtimeState?.currentStageId !== 'typing' &&
+    runtimeState?.currentStageId !== 'ai_conversation' &&
     !showListenRepeatComplete &&
     shouldShowStandaloneNextButton({
       runtimeState,
@@ -1101,7 +1523,7 @@ export default function LessonPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1">
           <div className={`${CONTAINER_CLASS} pt-8 sm:pt-10`}>
             {!showCompleted && !showListenRepeatComplete && block != null && item != null && (
@@ -1119,7 +1541,7 @@ export default function LessonPage() {
                   block={block}
                   item={item}
                   progress={progress}
-                  currentQuestionIndex={progress.currentBlockIndex ?? 0}
+                  currentQuestionIndex={runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0}
                   totalQuestions={lesson.blocks.length}
                   inputValue={inputValue}
                   onInputChange={setInputValue}
@@ -1132,7 +1554,12 @@ export default function LessonPage() {
                   copy={copy}
                   isLessonComplete={isLessonComplete}
                   targetLanguageLabel={targetLanguageLabel}
-                  scenarioLabel="ビジネス"
+                  scenarioLabel={block.description || lesson.overviewSceneLabel || 'レッスン'}
+                  previousPhrases={lesson.blocks
+                    .slice(0, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0)
+                    .map((b) => b.items[0]?.answer?.trim())
+                    .filter((a): a is string => !!a)}
+                  level={lesson.level}
                 />
               </>
             )}
@@ -1181,6 +1608,7 @@ export default function LessonPage() {
                 copy={copy}
                 totalFlowPoints={totalFlowPoints}
                 earnedFlowPoints={earnedFlowPoints}
+                onStartExtraSession={handleStartExtraSession}
               />
             )}
           </div>
@@ -1195,7 +1623,7 @@ export default function LessonPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage={pageData?.lessonInput?.targetLanguageCode ?? 'en'} onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
         {/* 発音スコア履歴 */}
@@ -1237,6 +1665,7 @@ export default function LessonPage() {
           </div>
         )}
           <LessonOverviewCard
+            currentStageIndex={currentStageIndex}
             lesson={lesson}
             copy={copy}
             getLevelLabel={getLevelLabel}

@@ -28,6 +28,7 @@ type UserProfileRow = {
   id: string
   ui_language_code?: string | null
   current_learning_language?: string | null
+  target_country_code?: string | null
 }
 
 type UserLearningProfileRow = {
@@ -49,6 +50,7 @@ export default function LearningSettingsPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [uiLanguageCode, setUiLanguageCode] = useState('')
   const [targetLanguageCode, setTargetLanguageCode] = useState('')
+  const [initialLanguageCode, setInitialLanguageCode] = useState('')
   const [targetCountryCode, setTargetCountryCode] = useState('')
   const [targetRegionSlug, setTargetRegionSlug] = useState('')
   const [currentLevel, setCurrentLevel] = useState<CurrentLevel | ''>('')
@@ -65,10 +67,15 @@ export default function LearningSettingsPage() {
       if (profile.ui_language_code != null) {
         setUiLanguageCode(profile.ui_language_code)
       }
-
+      
+      if (profile.target_country_code != null) {
+        setTargetCountryCode(profile.target_country_code)
+      }
+      
       const activeLanguageCode =
         learning?.language_code ?? profile.current_learning_language ?? 'en'
       setTargetLanguageCode(activeLanguageCode)
+      setInitialLanguageCode(activeLanguageCode)
 
       if (learning?.target_region_slug != null) {
         setTargetRegionSlug(learning.target_region_slug)
@@ -101,7 +108,7 @@ export default function LearningSettingsPage() {
 
         const { data: profileRow, error: profileError } = await supabase
           .from('user_profiles')
-          .select('id, ui_language_code, current_learning_language')
+          .select('id, ui_language_code, current_learning_language, target_country_code')
           .eq('id', session.user.id)
           .maybeSingle()
 
@@ -172,7 +179,6 @@ export default function LearningSettingsPage() {
     try {
       const profilePayload = {
         ui_language_code: uiLanguageCode || null,
-        current_learning_language: targetLanguage,
         target_language_code: targetLanguage,
         target_country_code: targetCountry,
       }
@@ -188,7 +194,36 @@ export default function LearningSettingsPage() {
           ? Math.max(0, parseInt(dailyStudyMinutesGoal, 10) || 0)
           : null,
       }
-
+      
+      if (targetLanguage !== initialLanguageCode) {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+      
+        const accessToken = session?.access_token
+      
+        if (sessionError || !accessToken) {
+          setError('学習言語の更新に必要な認証情報を取得できませんでした')
+          return
+        }
+      
+        const languageChangeRes = await fetch('/api/user/change-language', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ language: targetLanguage }),
+        })
+      
+        if (!languageChangeRes.ok) {
+          const data = await languageChangeRes.json().catch(() => null)
+          setError(data?.error || '学習言語の更新に失敗しました')
+          return
+        }
+      }
+      
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update(profilePayload)

@@ -4,7 +4,12 @@
  * These match the NativeFlow MVP database schema.
  */
 
-export type LessonBlockType = 'conversation' | 'review' | 'typing' | 'ai_conversation'
+export type LessonBlockType =
+  | 'conversation'
+  | 'review'
+  | 'scaffold_transition'
+  | 'typing'
+  | 'ai_conversation'
 
 export type LessonRunStatus = 'in_progress' | 'completed' | 'abandoned'
 

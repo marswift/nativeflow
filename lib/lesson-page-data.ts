@@ -504,7 +504,10 @@ function resolveOverviewImageUrl(
   emotion: LessonCharacterEmotion
 ): string {
   const filename = resolveCharacterAssetFilename(characterKey, emotion)
-  return `/images/characters/${characterKey}/${filename}`
+  if (filename === 'base.png') {
+    return `/images/characters/${characterKey}/base.png`
+  }
+  return `/images/characters/${characterKey}/expressions/${filename}`
 }
 
 function resolveOverviewBackgroundKey(sceneType: LessonSceneType): string {
@@ -532,7 +535,7 @@ function resolveOverviewBackgroundKey(sceneType: LessonSceneType): string {
     case 'question':
       return 'office'
     case 'support':
-      return 'company'
+      return 'office'
     case 'general':
     default:
       return 'home'
@@ -540,33 +543,17 @@ function resolveOverviewBackgroundKey(sceneType: LessonSceneType): string {
 }
 
 function resolveOverviewBackgroundImageUrl(backgroundKey: string): string {
-  return `/images/backgrounds/${backgroundKey}.png`
+  return `/images/backgrounds/${backgroundKey}_01.webp`
 }
 
 function resolveOverviewSceneDescription(params: {
-  profile: UserProfileRow
   sceneLabel: string
   estimatedMinutes: number
   stepCount: number
 }): string {
   const sceneLabel = params.sceneLabel
-  const targetOutcome =
-    typeof params.profile.target_outcome_text === 'string' &&
-    params.profile.target_outcome_text.trim().length > 0
-      ? params.profile.target_outcome_text.trim()
-      : '英語で自然に話せること'
 
-  const deadlineText =
-    typeof params.profile.speak_by_deadline_text === 'string' &&
-    params.profile.speak_by_deadline_text.trim().length > 0
-      ? params.profile.speak_by_deadline_text.trim()
-      : null
-
-  const deadlineSuffix = deadlineText
-    ? `目標時期は「${deadlineText}」です。`
-    : ''
-
-  return `今日は「${sceneLabel}」をテーマに、聞く・リピート→AIからの質問→タイピング→AIとの会話の4ステップで進みます。約${params.estimatedMinutes}分で、${targetOutcome}につながる実践練習を行います。${deadlineSuffix}`
+  return `今日は「${sceneLabel}」をテーマに、聞く・リピート→AIからの質問→タイピング→AIとの会話の4ステップで進みます。約${params.estimatedMinutes}分の実践練習です。`
 }
 
 function createStableLessonId(params: {
@@ -650,10 +637,15 @@ export type LessonPageData = {
 }
 
 function createLessonFromDraft(
-  draft: LessonDraftSession | null,
-  profile: UserProfileRow
+  draft: LessonDraftSession | null
 ): LessonSession {
-  return draft != null ? createSession(draft) : createSession(profile)
+  if (draft == null) {
+    throw new Error(
+      'createLessonFromDraft: draft session is required before runtime session creation.'
+    )
+  }
+
+  return createSession(draft)
 }
 
 /**
@@ -695,7 +687,7 @@ export function buildLessonPageData(profile: UserProfileRow): LessonPageData {
   const lessonAIMessages = createLessonAIMessages(lessonAIPromptPayload)
 
   // RUNTIME
-  const rawLesson = createLessonFromDraft(lessonDraftSession, profile)
+  const rawLesson = createLessonFromDraft(lessonDraftSession)
   const stableLessonId = createStableLessonId({
     profile,
     lesson: rawLesson,
@@ -716,7 +708,6 @@ export function buildLessonPageData(profile: UserProfileRow): LessonPageData {
   })
   const overviewSceneLabel = resolveOverviewSceneLabel(rawLesson)
   const overviewSceneDescription = resolveOverviewSceneDescription({
-    profile,
     sceneLabel: overviewSceneLabel,
     estimatedMinutes: overviewEstimatedMinutes,
     stepCount: overviewStepCount,

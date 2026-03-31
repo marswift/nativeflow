@@ -13,6 +13,7 @@ import {
   type CurrentLevel,
 } from '../../lib/constants'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
+import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -97,10 +98,12 @@ type ProfileRow = UserProfileRow & {
   username?: string | null
   age_group?: string | null
   origin_country?: string | null
+  current_learning_language?: string | null
 }
 
 export default function SettingsPage() {
   const router = useRouter()
+  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()  // ← 追加
   const [profile, setProfile] = useState<ProfileRow | null>(null)
   const [authEmail, setAuthEmail] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -289,7 +292,6 @@ export default function SettingsPage() {
         age_group: ageGroup || null,
         origin_country: originCountry.trim() || null,
         target_language_code: activeLanguageCode,
-        current_learning_language: activeLanguageCode,
         target_region_slug: targetLocale || null,
         current_level: currentLevel || null,
         speak_by_deadline_text: deadlineTrimmed || null,
@@ -363,7 +365,7 @@ export default function SettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -382,7 +384,7 @@ export default function SettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-sm text-[#4a4a6a]">{pageError || USER_FACING_ERROR}</p>
@@ -418,7 +420,7 @@ export default function SettingsPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage={profile?.target_language_code ?? 'en'} onChangeLanguage={() => {}} />
+      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
