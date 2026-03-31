@@ -32,8 +32,12 @@ function BillingRow({ label, value }: { label: string; value: string }) {
 }
 
 type BillingProfile = Pick<UserProfileRow,
-  'planned_plan_code' | 'subscription_status' | 'current_period_end' | 'cancel_at_period_end'
-> & { next_plan_code?: string | null }
+  'planned_plan_code' | 'subscription_status'
+> & {
+  subscription_current_period_end?: string | null
+  subscription_cancel_at_period_end?: boolean | null
+  next_plan_code?: string | null
+}
 
 function formatPlanLabel(plan: BillingProfile['planned_plan_code']): string {
   if (plan === 'yearly') return '年額プラン'
@@ -43,7 +47,7 @@ function formatPlanLabel(plan: BillingProfile['planned_plan_code']): string {
 
 function formatSubscriptionStatus(
   status: BillingProfile['subscription_status'],
-  cancelAtPeriodEnd: BillingProfile['cancel_at_period_end']
+  cancelAtPeriodEnd: BillingProfile['subscription_cancel_at_period_end']
 ): string {
   if (!status) return '未設定'
   if (cancelAtPeriodEnd) return '期間終了後に解約予定'
@@ -55,7 +59,7 @@ function formatSubscriptionStatus(
   return status
 }
 
-function formatPeriodEnd(value: BillingProfile['current_period_end']): string {
+function formatPeriodEnd(value: BillingProfile['subscription_current_period_end']): string {
   if (!value) return '未設定'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '未設定'
@@ -184,7 +188,7 @@ export default function BillingSettingsPage() {
         
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
-          .select('planned_plan_code, subscription_status, current_period_end, cancel_at_period_end, next_plan_code')
+          .select('planned_plan_code, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, next_plan_code')
           .eq('id', user.id)
           .maybeSingle()
   
@@ -257,9 +261,9 @@ export default function BillingSettingsPage() {
   const planLabel = formatPlanLabel(profile?.planned_plan_code ?? null)
   const statusLabel = formatSubscriptionStatus(
     profile?.subscription_status ?? null,
-    profile?.cancel_at_period_end ?? null
+    profile?.subscription_cancel_at_period_end ?? null
   )
-  const nextRenewalLabel = formatPeriodEnd(profile?.current_period_end ?? null)
+  const nextRenewalLabel = formatPeriodEnd(profile?.subscription_current_period_end ?? null)
   const canResumeSubscription =
     profile?.subscription_status === 'canceled' ||
     profile?.subscription_status === 'unpaid'
