@@ -117,6 +117,11 @@ export async function POST(req: NextRequest) {
         })
 
         if (!userId) {
+          console.error('WEBHOOK THROW [checkout.session.completed]: missing userId', {
+            sessionId: session.id,
+            metadata: session.metadata,
+            clientReferenceId: session.client_reference_id,
+          })
           throw new Error('checkout.session.completed missing userId')
         }
 
@@ -170,12 +175,24 @@ export async function POST(req: NextRequest) {
           .select('id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end')
 
         if (updateError) {
+          console.error('WEBHOOK THROW [checkout.session.completed]: Supabase updateError', {
+            userId,
+            message: updateError.message,
+            details: updateError.details,
+            hint: updateError.hint,
+            code: updateError.code,
+          })
           throw new Error(
             `FAILED TO UPDATE USER PROFILE FROM CHECKOUT SESSION: ${updateError.message}`
           )
         }
 
         if (!updatedRows || updatedRows.length === 0) {
+          console.error('WEBHOOK THROW [checkout.session.completed]: zero updatedRows', {
+            userId,
+            customerId,
+            subscriptionId,
+          })
           throw new Error(
             `No user_profiles row updated from checkout.session.completed. userId=${userId}`
           )
@@ -204,6 +221,12 @@ export async function POST(req: NextRequest) {
         })
 
         if (!userId) {
+          console.error('WEBHOOK THROW [subscription.created/updated]: resolveUserIdForSubscription returned null', {
+            eventType: event.type,
+            subscriptionId: sub.id,
+            customerId: sub.customer,
+            metadata: sub.metadata,
+          })
           throw new Error(
             `Could not resolve user for subscription event. type=${event.type}, subscriptionId=${sub.id}`
           )
@@ -253,12 +276,26 @@ export async function POST(req: NextRequest) {
           )
 
         if (updateError) {
+          console.error('WEBHOOK THROW [subscription.created/updated]: Supabase updateError', {
+            userId,
+            subscriptionId: sub.id,
+            message: updateError.message,
+            details: updateError.details,
+            hint: updateError.hint,
+            code: updateError.code,
+          })
           throw new Error(
             `FAILED TO UPDATE USER PROFILE FROM SUBSCRIPTION EVENT: ${updateError.message}`
           )
         }
 
         if (!updatedRows || updatedRows.length === 0) {
+          console.error('WEBHOOK THROW [subscription.created/updated]: zero updatedRows', {
+            userId,
+            subscriptionId: sub.id,
+            customerId,
+            storedSubId,
+          })
           throw new Error(
             `No user_profiles row updated from subscription event. userId=${userId}, subscriptionId=${sub.id}`
           )
@@ -284,6 +321,11 @@ export async function POST(req: NextRequest) {
         })
 
         if (!userId) {
+          console.error('WEBHOOK THROW [subscription.deleted]: resolveUserIdForSubscription returned null', {
+            subscriptionId: sub.id,
+            customerId: sub.customer,
+            metadata: sub.metadata,
+          })
           throw new Error(
             `Could not resolve user for subscription delete event. subscriptionId=${sub.id}`
           )
@@ -303,12 +345,25 @@ export async function POST(req: NextRequest) {
           )
 
         if (updateError) {
+          console.error('WEBHOOK THROW [subscription.deleted]: Supabase updateError', {
+            userId,
+            subscriptionId: sub.id,
+            message: updateError.message,
+            details: updateError.details,
+            hint: updateError.hint,
+            code: updateError.code,
+          })
           throw new Error(
             `FAILED TO UPDATE USER PROFILE FROM SUBSCRIPTION DELETE: ${updateError.message}`
           )
         }
 
         if (!updatedRows || updatedRows.length === 0) {
+          console.error('WEBHOOK THROW [subscription.deleted]: zero updatedRows', {
+            userId,
+            subscriptionId: sub.id,
+            customerId,
+          })
           throw new Error(
             `No user_profiles row updated from subscription delete. userId=${userId}, subscriptionId=${sub.id}`
           )
@@ -364,7 +419,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ received: true })
   } catch (err) {
-    console.error('Webhook handler error', err)
+    console.error('WEBHOOK CATCH — final error handler', {
+      eventType: event.type,
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    })
     return NextResponse.json({ error: 'Webhook error' }, { status: 500 })
   }
 }
