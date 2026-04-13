@@ -33,6 +33,8 @@ export type LessonSessionInput = {
   localeFocus: string | null
   targetLanguageCode: string
   speakByDeadline: string | null
+  /** Raw target region slug (e.g. 'en_us_general'). */
+  targetRegionSlug: string | null
 }
 
 const DEFAULT_THEME = 'Daily Conversation'
@@ -69,5 +71,6 @@ export function generateLessonSessionInput(
     localeFocus,
     targetLanguageCode: profile.target_language_code,
     speakByDeadline,
+    targetRegionSlug: profile.target_region_slug ?? null,
   }
 }

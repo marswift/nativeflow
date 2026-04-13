@@ -1,0 +1,187 @@
+{
+  "shared": {
+    "loading": "Loading...",
+    "error": "Error",
+    "or": "or",
+    "next": "Next",
+    "back": "Back",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "auth": {
+    "login": {
+      "title": "Log in",
+      "subtitle": "Choose your preferred login method.",
+      "googleButton": "Log in with Google",
+      "googleLoading": "Redirecting...",
+      "magicLinkLabel": "Email address",
+      "magicLinkButton": "Send login link",
+      "magicLinkSending": "Sending...",
+      "magicLinkSentTitle": "Login link sent",
+      "magicLinkSentBody": "Click the link in your email to log in.",
+      "magicLinkRetry": "Try a different email",
+      "passwordToggleOpen": "Log in with password",
+      "passwordToggleClose": "Hide password login",
+      "passwordLabel": "Password",
+      "passwordPlaceholder": "8+ characters",
+      "passwordButton": "Log in with password",
+      "passwordSubmitting": "Logging in...",
+      "forgotPassword": "Forgot your password?",
+      "signupPrompt": "Don't have an account?",
+      "signupLink": "Sign up",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "example@email.com",
+      "emailRequired": "Please enter your email address",
+      "emailInvalid": "Please enter a valid email address",
+      "passwordRequired": "Please enter your password",
+      "errorInvalidCredentials": "Incorrect email or password",
+      "errorEmailNotConfirmed": "Your email has not been verified.\nPlease check your inbox.",
+      "errorGeneric": "Login failed. Please try again later.",
+      "errorGoogleFailed": "Google login failed. Please try again later.",
+      "errorMagicLinkFailed": "Failed to send login link. Please try again later.",
+      "errorRateLimit": "Too many attempts. Please wait and try again.",
+      "bannerConfirmError": "Email verification failed. Please try again.",
+      "bannerConfirmed": "Email verified. Please log in.",
+      "bannerRegistered": "Account created. Please log in.",
+      "bannerReset": "Password has been reset. Please log in."
+    },
+    "signup": {
+      "title": "Sign up",
+      "subtitle": "Choose your preferred signup method.",
+      "googleButton": "Sign up with Google",
+      "googleLoading": "Redirecting...",
+      "magicLinkButton": "Send signup link",
+      "magicLinkSending": "Sending...",
+      "magicLinkSentTitle": "Signup link sent",
+      "magicLinkSentBody": "Click the link in your email to complete registration.",
+      "magicLinkRetry": "Try a different email",
+      "emailLabel": "Email address",
+      "emailPlaceholder": "example@email.com",
+      "emailRequired": "Please enter your email address",
+      "emailInvalid": "Please enter a valid email address",
+      "loginPrompt": "Already have an account?",
+      "loginLink": "Log in",
+      "errorGoogleFailed": "Google signup failed. Please try again later.",
+      "errorGeneric": "Registration failed. Please try again later.",
+      "errorAlreadyRegistered": "This email is already registered. Please log in instead.",
+      "errorSignupDisabled": "This signup method is currently unavailable.",
+      "errorInvalidEmail": "Please enter a valid email address",
+      "errorRateLimit": "Too many email requests.\nPlease wait and try again.",
+      "planBadge": "Selected plan",
+      "planMonthly": "Monthly plan",
+      "planYearly": "Annual plan",
+      "planYearlySaving": "Save ~33%!",
+      "planTrialNote": "Start with a free 7-day trial. Billing begins after the trial ends.",
+      "planChangeLink": "Change plan",
+      "noPlanTitle": "Start free trial",
+      "noPlanSubtitle": "7 days free",
+      "noPlanNote": "You can choose a plan after signing up.",
+      "noPlanLink": "View pricing",
+      "divider": "or"
+    }
+  },
+  "onboarding": {
+    "loading": "Loading...",
+    "badge": "First step",
+    "title": "Welcome to NativeFlow",
+    "intro": "Tell us a little about yourself so we can create a personalized learning plan.",
+    "requiredMark": "required",
+    "labels": {
+      "uiLanguage": "App display language",
+      "targetLanguage": "Language to learn",
+      "targetCountry": "Target country",
+      "regionOptional": "Target region (optional)",
+      "currentLevel": "Current level",
+      "speakByDeadline": "When do you want to be conversational?",
+      "targetOutcome": "Your goal"
+    },
+    "hints": {
+      "uiLanguage": "You can change this later in settings",
+      "targetCountry": "Content will reflect this region",
+      "region": "Content will reflect this region.",
+      "currentLevel": "Choose the closest match to your current ability.",
+      "speakByDeadline": "We'll calculate your daily study plan from this target.",
+      "targetOutcome": "One line is fine. e.g. daily conversation, work emails"
+    },
+    "placeholders": {
+      "select": "Select",
+      "region": "e.g. California, Osaka",
+      "speakByDeadline": "e.g. 3 months, 1 year",
+      "targetOutcome": "e.g. Hold everyday conversations, write work emails"
+    },
+    "errors": {
+      "validationRequired": "Please fill in all required fields.",
+      "loginRequired": "Please log in. Sign-in is required to save your profile.",
+      "saveFailed": "Failed to save.",
+      "saveError": "An error occurred while saving.",
+      "usernameTaken": "This username is already taken"
+    },
+    "buttons": {
+      "saving": "Saving...",
+      "save": "Save",
+      "createPlan": "Create my learning plan",
+      "startTrial": "Start 7-day free trial"
+    }
+  },
+  "lesson": {
+    "instructions": {
+      "listenFirst": "Let's listen first",
+      "playing": "Playing...",
+      "gotItRepeat": "Got it! Now try repeating",
+      "listening": "Listening..."
+    },
+    "buttons": {
+      "next": "Next",
+      "replay": "Replay",
+      "speak": "Speak",
+      "tryAgain": "Try again",
+      "send": "Send",
+      "done": "Done",
+      "slow": "Slow",
+      "normal": "Normal",
+      "continueNext": "Continue to next practice",
+      "viewPlans": "View plans"
+    },
+    "status": {
+      "recording": "Recording...",
+      "evaluating": "Evaluating...",
+      "sending": "Sending...",
+      "you": "You"
+    },
+    "placeholders": {
+      "replyInEnglish": "Reply in English",
+      "typeInEnglish": "Type in English"
+    },
+    "errors": {
+      "generic": "Error",
+      "subscriptionRequired": "A subscription is required to continue lessons",
+      "noReviewItems": "No review items available",
+      "failedStartReview": "Failed to start review",
+      "failedStartChallenge": "Failed to start the challenge",
+      "failedStartLesson": "Failed to start the lesson. Please check the data structure.",
+      "missingLessonData": "Cannot start: lesson data is missing.",
+      "missingUserId": "Cannot start: user ID is missing.",
+      "lessonStarting": "Lesson is starting...",
+      "startInProgress": "Cannot start: a previous start is still in progress."
+    },
+    "phases": {
+      "reviewSession": "Review Session",
+      "weeklyChallenge": "Weekly Review Challenge",
+      "listenRepeatComplete": "Listen & Repeat practice is complete",
+      "listenRepeatBody": "You practiced listening and repeating what you heard.",
+      "nextPractice": "Next, let's practice answering AI questions in English."
+    },
+    "onboarding": {
+      "headline": "Just listen and repeat",
+      "noTranslation": "No translation required",
+      "imitateSounds": "Imitate the sounds directly",
+      "okNotUnderstand": "It's OK not to understand at first",
+      "threeTriesLearn": "You'll get it after 3 tries",
+      "tryItOut": "Try it out",
+      "letsStart": "Let's start the lesson",
+      "youCanDoThis": "You can do this",
+      "nice": "Nice!",
+      "letsTry": "Let's try it"
+    }
+  }
+}

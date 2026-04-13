@@ -37,6 +37,7 @@ type BillingProfile = Pick<UserProfileRow,
   subscription_current_period_end?: string | null
   subscription_cancel_at_period_end?: boolean | null
   next_plan_code?: string | null
+  stripe_subscription_id?: string | null
 }
 
 function formatPlanLabel(plan: BillingProfile['planned_plan_code']): string {
@@ -188,7 +189,7 @@ export default function BillingSettingsPage() {
         
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
-          .select('planned_plan_code, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, next_plan_code')
+          .select('planned_plan_code, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, next_plan_code, stripe_subscription_id')
           .eq('id', user.id)
           .maybeSingle()
   
@@ -267,6 +268,7 @@ export default function BillingSettingsPage() {
   const canResumeSubscription =
     profile?.subscription_status === 'canceled' ||
     profile?.subscription_status === 'unpaid'
+  const hasNoSubscription = !profile?.subscription_status || !profile?.stripe_subscription_id
 
   return (
     <div
@@ -426,6 +428,45 @@ export default function BillingSettingsPage() {
                     className="inline-flex items-center justify-center rounded-[14px] border border-amber-300 bg-white px-5 py-3 text-sm font-black text-amber-700 transition hover:-translate-y-px hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
                     年額プランで再開
+                  </button>
+                </div>
+              </section>
+            )}
+
+            {hasNoSubscription && (
+              <section className={`${CARD_BASE} px-6 py-6 sm:px-7 sm:py-6`} aria-label="無料トライアル">
+                <div className="mb-5 border-b border-[#F0ECE6] pb-4">
+                  <p className="text-[13px] font-bold tracking-[0.04em] text-[#7b7b94]">
+                    FREE TRIAL
+                  </p>
+                  <h2 className="mt-2 text-[1.35rem] font-black leading-tight text-[#1a1a2e]">
+                    無料トライアルを始める
+                  </h2>
+                </div>
+
+                <p className="text-sm text-[#5a5a7a] leading-relaxed text-center">
+                  7日間の無料トライアルですべての機能をお試しいただけます。
+                  <br />
+                  トライアル期間中はいつでもキャンセルできます。
+                </p>
+
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => handleStartCheckout('monthly')}
+                    disabled={billingActionLoading}
+                    className="inline-flex items-center justify-center rounded-[14px] bg-[#F5A623] px-5 py-3 text-sm font-black text-white shadow-[0_10px_24px_rgba(245,166,35,0.28)] transition hover:-translate-y-px hover:bg-[#D4881A] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
+                  >
+                    月額プラン（¥2,480/月）
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleStartCheckout('yearly')}
+                    disabled={billingActionLoading}
+                    className="inline-flex items-center justify-center rounded-[14px] border border-amber-300 bg-white px-5 py-3 text-sm font-black text-amber-700 transition hover:-translate-y-px hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
+                  >
+                    年額プラン（¥19,800/年・33%お得）
                   </button>
                 </div>
               </section>

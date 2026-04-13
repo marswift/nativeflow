@@ -22,7 +22,8 @@ export type UserProfileRow = {
 
   /** Learning target */
   target_language_code: TargetLanguageCode
-  target_country_code: string | null
+  /** @deprecated Always NULL. Use target_region_slug instead. Kept for DB column compat. */
+  target_country_code?: string | null
   target_region_slug: string | null
 
   /** Learning state */
@@ -72,6 +73,13 @@ export type UserProfileRow = {
   flow_points?: number | null
   flow_points_total?: number | null
   total_flow_points: number | null
+  total_diamonds?: number | null
+  last_streak_restore_date?: string | null
+  diamond_boost_until?: string | null
+  streak_frozen_date?: string | null
+  streak_freeze_expiry?: string | null
+  weekly_challenge_unlocked_at?: string | null
+  weekly_challenge_completed_at?: string | null
   current_streak_days?: number | null
   best_streak_days?: number | null
   last_streak_date?: string | null
@@ -80,6 +88,13 @@ export type UserProfileRow = {
   avatar_level?: number | null
   avatar_image_url?: string | null
   avatar_badge_image_url?: string | null
+
+  /** Role / access */
+  role?: string | null
+  is_admin?: boolean | null
+  billing_exempt?: boolean | null
+  billing_exempt_until?: string | null
+  billing_exempt_reason?: string | null
 
   /** Data lifecycle */
   lesson_data_delete_at?: string | null

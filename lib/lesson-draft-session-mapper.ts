@@ -24,6 +24,7 @@ export type LessonDraftSessionItem = {
   structured_scaffold_steps: ScaffoldStep[] | null
   semantic_chunks: SemanticChunk[] | null
   image_url: string | null
+  typing_variations: string[] | null
 }
 
 export type DraftSessionBlockType = 'conversation' | 'review' | 'typing'
@@ -36,6 +37,10 @@ export type LessonDraftSessionBlock = {
   estimatedMinutes: number
   items: LessonDraftSessionItem[]
   image_prompt: string | null
+  sceneId: string | null
+  sceneCategory: string | null
+  region: string | null
+  ageGroup: string | null
 }
 
 export type LessonDraftSession = {
@@ -77,6 +82,7 @@ function mapDraftItemToSessionItem(
     structured_scaffold_steps: item.structured_scaffold_steps ?? null,
     semantic_chunks: item.semantic_chunks ?? null,
     image_url: item.image_url ?? null,
+    typing_variations: item.typing_variations ?? null,
   }
 }
 
@@ -95,6 +101,10 @@ function mapDraftBlockToSessionBlock(
       mapDraftItemToSessionItem(item, lessonId, blockIndex, itemIndex)
     ),
     image_prompt: block.image_prompt ?? null,
+    sceneId: block.sceneId ?? null,
+    sceneCategory: block.sceneCategory ?? null,
+    region: block.region ?? null,
+    ageGroup: block.ageGroup ?? null,
   }
 }
 

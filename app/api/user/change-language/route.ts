@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getRegionsForLanguage } from '@/lib/constants'
 
 type ChangeLanguageBody = {
   language?: string
@@ -46,10 +47,14 @@ export async function POST(req: Request) {
 
     const adminSupabase = createClient(supabaseUrl, serviceRoleKey)
 
+    // Sync both fields so target_language_code never drifts from current_learning_language.
+    // target_language_code is checked by profile-completion; current_learning_language is
+    // used by dashboard and lesson loader. Both must stay in sync.
     const { error: updateProfileError } = await adminSupabase
       .from('user_profiles')
       .update({
         current_learning_language: language,
+        target_language_code: language,
       })
       .eq('id', user.id)
 
@@ -72,12 +77,17 @@ export async function POST(req: Request) {
       }
       
       if (!existingLearningProfile) {
+        // Pick a safe default region: first enabled region for this language, or null
+        const enabledRegions = getRegionsForLanguage(language).filter((r) => r.enabled)
+        const defaultRegion = enabledRegions.length === 1 ? enabledRegions[0]!.code : null
+
         const { error: insertLearningProfileError } = await adminSupabase
           .from('user_learning_profiles')
           .insert({
             user_id: user.id,
             language_code: language,
             current_level: 'beginner',
+            ...(defaultRegion ? { target_region_slug: defaultRegion } : {}),
           })
       
         if (insertLearningProfileError) {

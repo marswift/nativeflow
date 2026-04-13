@@ -124,17 +124,33 @@ export async function POST(request: NextRequest) {
         ? languageValue.trim()
         : 'en'
 
-    const transcription = await transcribeAudio({
-      file,
-      language,
-      prompt: `
-Transcribe only the words that are actually spoken.
+    const modeValue = formData.get('mode')
+    const isRepeatMode = modeValue === 'repeat'
+
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.log('[pronunciation-score][debug-enter]', { mode: modeValue, isRepeatMode, expectedText: expectedText.slice(0, 50) })
+    }
+
+    // Repeat mode: stricter unbiased prompt to prevent ASR auto-correction
+    const transcriptionPrompt = isRepeatMode
+      ? `Transcribe EXACTLY what the speaker says, word for word.
+Do NOT correct, fix, or change any words.
+If the speaker says "yesterday", write "yesterday", not "today".
+If the speaker says "department", write "department", not "convenience".
+Do NOT use any reference text. Do NOT guess missing words.
+Transcribe the actual spoken words only.`
+      : `Transcribe only the words that are actually spoken.
 Do not use any reference sentence.
 Do not guess missing words.
 Do not fix grammar.
 If the audio is silent, unclear, or no speech is detected, return an empty transcript.
-Output only the spoken words.
-      `.trim(),
+Output only the spoken words.`
+
+    const transcription = await transcribeAudio({
+      file,
+      language,
+      prompt: transcriptionPrompt.trim(),
     })
 
     const rawTranscript = typeof transcription.text === 'string' ? transcription.text.trim() : ''
@@ -165,6 +181,15 @@ Output only the spoken words.
       transcriptText: rawTranscript,
       averageLogprob,
     })
+
+    if (process.env.NODE_ENV !== 'production' && isRepeatMode) {
+      // eslint-disable-next-line no-console
+      console.log('[pronunciation-score][repeat-debug]', {
+        mode: 'repeat', expectedText, rawTranscript, scoredTranscript: score.transcriptText,
+        wordMatch: score.breakdown.wordMatch, totalScore: score.totalScore,
+        matchedWords: score.matchedWords, missingWords: score.missingWords, averageLogprob,
+      })
+    }
 
     if (!score.transcriptText.trim()) {
       return zeroScoreResponse('', '音声が認識できませんでした。もう一度はっきり話してください。')

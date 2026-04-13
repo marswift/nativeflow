@@ -37,6 +37,7 @@ export type LessonRunRow = {
 
   started_at: string
   completed_at: string | null
+  abandoned_at: string | null
 
   created_at: string
   updated_at: string

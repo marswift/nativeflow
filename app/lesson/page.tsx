@@ -26,12 +26,18 @@ import {
   type LessonStageId,
 } from '../../lib/lesson-runtime'
 import { getLessonCopy, type LessonCopy } from '../../lib/lesson-copy'
+import { trackEvent } from '../../lib/analytics'
 import { startLessonRun, saveLessonRunItem } from '../../lib/lesson-run-service'
 import { createReviewItemIfMissing, markReviewCorrect, markReviewWrong } from '../../lib/review-items-repository'
+import { buildReviewItemInsert } from '../../lib/review-items'
 import { loadLessonPage, hydrateLessonAudio } from '../../lib/lesson-page-loader'
 import { runLessonCompletionEffect } from '../../lib/lesson-run-effects'
+import { getTodayStatDate } from '../../lib/daily-stats-service'
 import { executeNextStep } from '../../lib/lesson-run-next-step'
-import type { LessonPageData } from '../../lib/lesson-page-data'
+import { fetchReviewItemsWithContent, injectReviewBlocks } from '../../lib/review-injection'
+import { canStartLesson } from '../../lib/lesson-access'
+import { type LessonPageData } from '../../lib/lesson-page-data'
+import { DAILY_FLOW_BLOCKS } from '../../lib/daily-flow-config'
 import {
   CURRENT_LEVEL_OPTIONS,
   TARGET_LANGUAGE_FIXED,
@@ -48,6 +54,9 @@ import AppFooter from '@/components/footer/app-footer'
 import { getUserRankProgress } from '../../lib/rank-service'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
 import { useCurrentLanguage } from '@/lib/use-current-language'
+import DailyLanguagePicker from '@/components/daily-language-picker'
+import { isDailyLanguageLocked, setDailyLanguageLock, getDailyLockedLanguage } from '../../lib/daily-language-lock'
+import { getSelectedLanguages, type SelectedLanguage } from '../../lib/language-selection'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -55,6 +64,7 @@ const supabase = getSupabaseBrowserClient()
 
 const SHOW_DEBUG_PANELS = process.env.NEXT_PUBLIC_LESSON_DEBUG === 'true'
 const LESSON_RUNTIME_STORAGE_KEY = 'nativeflow:lesson-runtime-state'
+const NF_DAILY_FLOW_SELECTION_KEY = 'nf_daily_flow_selection'
 
 const PAGE_SHELL_CLASS = 'min-h-screen flex flex-col bg-[#f7f4ef]'
 const CONTAINER_CLASS = 'mx-auto w-full max-w-[1040px] px-6 py-10 sm:px-8 sm:py-12'
@@ -83,7 +93,8 @@ function readPersistedLessonState(): PersistedLessonState | null {
   if (typeof window === 'undefined') return null
 
   try {
-    const raw = window.sessionStorage.getItem(LESSON_RUNTIME_STORAGE_KEY)
+    // Use localStorage so lesson state survives logout/login
+    const raw = window.localStorage.getItem(LESSON_RUNTIME_STORAGE_KEY)
     if (!raw) return null
     return JSON.parse(raw) as PersistedLessonState
   } catch (error) {
@@ -94,16 +105,31 @@ function readPersistedLessonState(): PersistedLessonState | null {
 
 function clearPersistedLessonState() {
   if (typeof window === 'undefined') return
-  window.sessionStorage.removeItem(LESSON_RUNTIME_STORAGE_KEY)
+  window.localStorage.removeItem(LESSON_RUNTIME_STORAGE_KEY)
 }
 
 function writePersistedLessonState(value: PersistedLessonState) {
   if (typeof window === 'undefined') return
-  window.sessionStorage.setItem(LESSON_RUNTIME_STORAGE_KEY, JSON.stringify(value))
+  window.localStorage.setItem(LESSON_RUNTIME_STORAGE_KEY, JSON.stringify(value))
+}
+
+function clearDailyFlowSelection() {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(NF_DAILY_FLOW_SELECTION_KEY)
 }
 
 function getLevelLabel(level: CurrentLevel): string {
   return CURRENT_LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level
+}
+
+/** Resolve a localized scene label from DAILY_FLOW_BLOCKS by sceneId. */
+function getDailyFlowSceneLabel(sceneId: string | null | undefined, isJa: boolean): string | null {
+  if (!sceneId) return null
+  for (const block of DAILY_FLOW_BLOCKS) {
+    const choice = block.choices.find((c) => c.sceneId === sceneId)
+    if (choice) return isJa ? choice.label : choice.labelEn
+  }
+  return null
 }
 
 function getPageDataParts(pageData: LessonPageData | null) {
@@ -186,11 +212,11 @@ function createUiProgressFromRuntime(
 
 const stageMap: Record<string, number> = {
   listen: 0,
-  repeat: 0,
-  scaffold_transition: 1,
-  ai_question: 2,
-  typing: 3,
-  ai_conversation: 4,
+  repeat: 1,
+  scaffold_transition: 2,
+  ai_question: 3,
+  typing: 4,
+  ai_conversation: 5,
 }
 
 function buildRuntimeStageSubmissionValue(input: {
@@ -318,7 +344,7 @@ function LessonScoreChart({ items }: { items: ScoreHistoryItem[] }) {
   )
 }
 
-const REVIEW_INTERVAL_DAYS = [1, 3, 7, 14, 30, 60]
+import { computeForgettingCurveSchedule } from '../../lib/review-scheduling'
 
 async function handleBlockCompleted(params: {
   completedBlockId: string
@@ -349,28 +375,78 @@ async function handleBlockCompleted(params: {
       .maybeSingle()
     if (!current) return
 
-    if (isCorrect) {
-      const newCount = (current.correct_count ?? 0) + 1
-      const next = new Date()
-      next.setDate(next.getDate() + REVIEW_INTERVAL_DAYS[Math.min(newCount, REVIEW_INTERVAL_DAYS.length - 1)])
-      await markReviewCorrect(supabase, reviewItemId, {
-        correct_count: newCount,
-        next_review_at: next.toISOString(),
+    // Phase 6.4: Ebbinghaus-style forgetting curve scheduling
+    try {
+      const correctCount = current.correct_count ?? 0
+      const wrongCount = current.wrong_count ?? 0
+
+      // Fetch next_review_at for overdue detection
+      const { data: fullItem } = await supabase
+        .from('review_items')
+        .select('next_review_at')
+        .eq('id', reviewItemId)
+        .maybeSingle()
+
+      const outcome = isCorrect ? 'success' as const : 'failure' as const
+      const schedule = computeForgettingCurveSchedule({
+        correctCount,
+        wrongCount,
+        nextReviewAt: (fullItem?.next_review_at as string | null) ?? null,
+        outcome,
       })
-    } else {
-      const newCount = (current.wrong_count ?? 0) + 1
-      const next = new Date()
-      next.setDate(next.getDate() + REVIEW_INTERVAL_DAYS[0])
-      await markReviewWrong(supabase, reviewItemId, {
-        wrong_count: newCount,
-        next_review_at: next.toISOString(),
+
+      // eslint-disable-next-line no-console
+      console.log('[Phase6.4][forgetting-curve][review]', {
+        reviewItemId: reviewItemId.slice(0, 8),
+        outcome,
+        correctCount,
+        wrongCount,
+        derivedStage: schedule.derivedStage,
+        nextStage: schedule.nextStage,
+        intervalDays: schedule.intervalDays,
       })
+
+      if (isCorrect) {
+        await markReviewCorrect(supabase, reviewItemId, {
+          correct_count: correctCount + 1,
+          next_review_at: schedule.nextReviewAt,
+        })
+      } else {
+        await markReviewWrong(supabase, reviewItemId, {
+          wrong_count: wrongCount + 1,
+          next_review_at: schedule.nextReviewAt,
+        })
+      }
+    } catch {
+      // Fallback: simple +1 day on failure, +3 day on success
+      if (isCorrect) {
+        const next = new Date()
+        next.setDate(next.getDate() + 3)
+        await markReviewCorrect(supabase, reviewItemId, {
+          correct_count: (current.correct_count ?? 0) + 1,
+          next_review_at: next.toISOString(),
+        })
+      } else {
+        const next = new Date()
+        next.setDate(next.getDate() + 1)
+        await markReviewWrong(supabase, reviewItemId, {
+          wrong_count: (current.wrong_count ?? 0) + 1,
+          next_review_at: next.toISOString(),
+        })
+      }
     }
     return
   }
 
-  // Normal block → persist item and seed review entry
+  // Normal block → persist item and seed review entry with performance-based scheduling
   if (!lessonRunId || !sessionBlock || !sessionItem) return
+
+  // Extract performance from runtime state answers for this block
+  const blockAnswers = state.answers.filter((a) => a.blockId === completedBlockId)
+  const typingAnswer = blockAnswers.find((a) => a.stageId === 'typing')
+  const repeatAnswer = blockAnswers.find((a) => a.stageId === 'repeat')
+  const bestAnswer = typingAnswer ?? repeatAnswer ?? blockAnswers[blockAnswers.length - 1]
+  const isCorrect = bestAnswer?.isCorrect ?? null
 
   const { data: runItem } = await saveLessonRunItem(supabase, {
     lesson_run_id: lessonRunId,
@@ -380,12 +456,48 @@ async function handleBlockCompleted(params: {
     block_index: blockIndex,
     item_index: 0,
     was_checked: true,
-    is_correct: null,
+    is_correct: isCorrect,
     completed_at: new Date().toISOString(),
   })
 
   if (runItem?.id) {
-    await createReviewItemIfMissing(supabase, userId, runItem.id)
+    // Performance-based review scheduling
+    const reviewInsert = buildReviewItemInsert({
+      userId,
+      stageId: typingAnswer ? 'typing' : repeatAnswer ? 'repeat' : null,
+      result: bestAnswer
+        ? { isCorrect: bestAnswer.isCorrect, phrase: sessionItem.answer }
+        : null,
+      currentBlock: { answer: sessionItem.answer, title: sessionBlock.title },
+    })
+
+    if (reviewInsert) {
+      // Create review item with performance-based scheduling
+      const { data: reviewItem } = await createReviewItemIfMissing(supabase, userId, runItem.id)
+      if (reviewItem) {
+        // Apply scheduling based on performance
+        const { computeForgettingCurveSchedule } = await import('../../lib/review-scheduling')
+        const outcome = reviewInsert.difficulty === 'hard' ? 'failure' as const : 'weak' as const
+        const schedule = computeForgettingCurveSchedule({
+          correctCount: reviewItem.correct_count ?? 0,
+          wrongCount: reviewItem.wrong_count ?? 0,
+          nextReviewAt: reviewItem.next_review_at,
+          outcome,
+        })
+        if (outcome === 'failure') {
+          await markReviewWrong(supabase, reviewItem.id, {
+            wrong_count: (reviewItem.wrong_count ?? 0) + 1,
+            next_review_at: schedule.nextReviewAt,
+          })
+        } else {
+          await markReviewCorrect(supabase, reviewItem.id, {
+            correct_count: (reviewItem.correct_count ?? 0) + 1,
+            next_review_at: schedule.nextReviewAt,
+          })
+        }
+      }
+    }
+    // Strong performance (reviewInsert === null) → skip review item creation
   }
 }
 
@@ -395,23 +507,23 @@ function OnboardingExplanation({ onNext }: { onNext: () => void }) {
   return (
     <div className="mx-auto max-w-md px-6 py-16 text-center">
       <h1 className="text-2xl font-black leading-snug text-[#1a1a2e]">
-        英語は&quot;聞いて真似する&quot;だけ
+        Just listen and repeat
       </h1>
 
       <div className="mt-8 space-y-4 text-left text-[15px] leading-7 text-[#4a4a6a]">
         <p className="flex items-start gap-2">
           <span className="mt-0.5 shrink-0 text-red-400">&#x2716;</span>
-          <span>日本語→英語にしません</span>
+          <span>No translation required</span>
         </p>
         <p className="flex items-start gap-2">
           <span className="mt-0.5 shrink-0 text-green-500">&#x2714;</span>
-          <span>音をそのまま真似します</span>
+          <span>Imitate the sounds directly</span>
         </p>
         <p className="pl-7 text-sm text-[#7b7b94]">
-          最初は分からなくてOKです
+          It's OK not to understand at first
         </p>
         <p className="pl-7 text-sm text-[#7b7b94]">
-          3回で分かるようになります
+          You'll get it after 3 tries
         </p>
       </div>
 
@@ -420,7 +532,7 @@ function OnboardingExplanation({ onNext }: { onNext: () => void }) {
         onClick={onNext}
         className="mt-10 w-full cursor-pointer rounded-[14px] bg-[#F5A623] py-4 text-base font-black tracking-wide text-white transition hover:-translate-y-px hover:bg-[#D4881A] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2"
       >
-        体験してみる
+        Try it out
       </button>
     </div>
   )
@@ -465,7 +577,7 @@ function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="mx-auto max-w-md px-6 py-16 text-center">
       <p className="text-sm font-bold tracking-[0.08em] text-[#7b7b94]">
-        体験してみましょう
+        Let's try it
       </p>
 
       <h2 className="mt-4 text-3xl font-black text-[#1a1a2e]">
@@ -473,16 +585,16 @@ function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
       </h2>
 
       <p className="mt-2 text-sm text-[#7b7b94]">
-        あなたならできる
+        You can do this
       </p>
 
       {phase === 'feedback' ? (
         <div className="mt-12">
           <p className="text-4xl font-black text-[#F5A623]">
-            いい感じ！
+            Nice!
           </p>
           <p className="mt-3 text-sm text-[#7b7b94]">
-            レッスンを始めましょう
+            Let's start the lesson
           </p>
         </div>
       ) : (
@@ -503,9 +615,9 @@ function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
             &#9654;
           </button>
           <p className="text-xs text-[#7b7b94]">
-            {phase === 'idle' && 'まず聞いてみましょう'}
-            {phase === 'playing' && '再生中…'}
-            {(phase === 'played' || phase === 'recording' || phase === 'recorded') && '聞けました！次は真似してみましょう'}
+            {phase === 'idle' && "Let's listen first"}
+            {phase === 'playing' && 'Playing...'}
+            {(phase === 'played' || phase === 'recording' || phase === 'recorded') && 'Got it! Now try repeating'}
           </p>
 
           {/* Record button — appears after playback */}
@@ -524,7 +636,7 @@ function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
             </button>
           )}
           {phase === 'recording' && (
-            <p className="text-xs text-[#7b7b94]">聞こえています…</p>
+            <p className="text-xs text-[#7b7b94]">Listening...</p>
           )}
         </div>
       )}
@@ -539,6 +651,9 @@ export default function LessonPage() {
   const [pageData, setPageData] = useState<LessonPageData | null>(null)
   const [loading, setLoading] = useState(true)
   const [pageError, setPageError] = useState<string | null>(null)
+  const [needsLanguagePick, setNeedsLanguagePick] = useState(false)
+  const [selectedLanguages, setSelectedLanguages] = useState<SelectedLanguage[]>([])
+  const [audioReady, setAudioReady] = useState(false)
   const [started, setStarted] = useState(false)
   const [progress, setProgress] = useState<LessonProgressState>(() => getInitialRunState().progress)
   const [inputValue, setInputValue] = useState(() => getInitialRunState().inputValue)
@@ -557,17 +672,35 @@ export default function LessonPage() {
   const [hasFinalizedLessonRun, setHasFinalizedLessonRun] = useState(false)
   const [isExtraSession, setIsExtraSession] = useState(false)
   const [scoreHistory, setScoreHistory] = useState<ScoreHistoryItem[]>([])
+  const [dueReviewCount, setDueReviewCount] = useState(0)
+  const [completedDates, setCompletedDates] = useState<string[]>([])
   const [repeatAutoStartNonce, setRepeatAutoStartNonce] = useState(0)
   const [showListenRepeatComplete, setShowListenRepeatComplete] = useState(false)
+  const isWeeklyChallengeSessionRef = useRef(false)
+  const [wasWeeklyChallenge, setWasWeeklyChallenge] = useState(false)
+  const [weeklyHighlight, setWeeklyHighlight] = useState<{
+    highlight: string
+    encouragement: string
+    directions: { label: string; direction: string }[]
+    nextGoal: string | null
+  } | null>(null)
+  const lessonStartedAtRef = useRef<number>(0)
+  const studyMinutesRecordedRef = useRef<number>(0)
   const [listenResetNonce, setListenResetNonce] = useState(0)
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(null)
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null)
 
   const isStartingLessonRef = useRef(false)
+  const lastLoggedSessionIdRef = useRef<string | null>(null)
   const latestTotalFlowPointsRef = useRef(0)
   const awardedStageKeysRef = useRef<Set<string>>(new Set())
 
   const copy: LessonCopy = getLessonCopy(pageData?.uiLanguageCode)
+
+  const trialEndsAt = pageData?.profile?.trial_ends_at ?? null
+
+  const uiLanguageCode = pageData?.uiLanguageCode ?? 'ja'
+  const isJaUi = uiLanguageCode.startsWith('ja')
 
   const targetLanguageLabel =
     TARGET_LANGUAGE_OPTIONS.find((option) => option.value === pageData?.lessonInput?.targetLanguageCode)?.label ?? '英語'
@@ -622,9 +755,8 @@ export default function LessonPage() {
     }
   }, [])
 
-  function resetRunState() {
-    clearPersistedLessonState()
-
+  /** Reset in-memory UI state only (does NOT clear localStorage). Used by logout. */
+  function resetRunStateMemory() {
     const initial = getInitialRunState()
 
     setStarted(false)
@@ -640,8 +772,31 @@ export default function LessonPage() {
     setStartBlockedReason(null)
   }
 
+  /** Full reset: clears localStorage + in-memory state. Used by completion/new session. */
+  function resetRunState() {
+    clearPersistedLessonState()
+    clearDailyFlowSelection()
+    resetRunStateMemory()
+  }
+
+  async function handleDailyLanguageChosen(languageCode: string) {
+    try {
+      setDailyLanguageLock(languageCode)
+      // Switch current language if different
+      if (languageCode !== currentLanguage) {
+        await handleChangeLanguage(languageCode)
+      }
+      setNeedsLanguagePick(false)
+      setLoading(true)
+      // Reload to fetch lesson data for chosen language
+      window.location.reload()
+    } catch {
+      setNeedsLanguagePick(false)
+    }
+  }
+
   async function handleLogout() {
-    resetRunState()
+    resetRunStateMemory()
     await supabase.auth.signOut()
     router.replace('/login')
     router.refresh()
@@ -682,15 +837,50 @@ export default function LessonPage() {
           const nextPageData = result.data.pageData
           const nextUserId = result.data.userId
 
+          // Check if daily language picker is needed
+          try {
+            if (!isDailyLanguageLocked()) {
+              const langs = await getSelectedLanguages(supabase, nextUserId)
+              if (langs.length > 1) {
+                setSelectedLanguages(langs)
+                setNeedsLanguagePick(true)
+                setLoading(false)
+                return // Wait for language pick before continuing
+              }
+              // Single language — auto-lock
+              if (langs.length === 1) {
+                setDailyLanguageLock(langs[0].languageCode)
+              }
+            }
+          } catch { /* non-blocking — continue without lock */ }
+
+          // Clear any legacy daily flow selection from localStorage
+          clearDailyFlowSelection()
+
           setPageData(nextPageData)
           setUserId(nextUserId)
 
+          // Playtest: lesson start observation
+          try {
+            const lockedLang = getDailyLockedLanguage()
+            // eslint-disable-next-line no-console
+            console.log('[Playtest][lesson-start]', {
+              lessonId: (nextPageData.lesson?.sessionId ?? 'unknown').slice(0, 12),
+              targetLanguageCode: nextPageData.profile?.target_language_code ?? null,
+              lockedLanguageCode: lockedLang,
+              selectedLanguageCount: selectedLanguages.length || 1,
+            })
+          } catch { /* non-blocking */ }
 
-          // Hydrate audio in background — don't block page render
+          // Hydrate audio — mark ready when done so lesson start can proceed
+          setAudioReady(false)
           hydrateLessonAudio(nextPageData.lesson).then((hydratedLesson) => {
             if (isActive) {
               setPageData((prev) => prev ? { ...prev, lesson: hydratedLesson } : prev)
+              setAudioReady(true)
             }
+          }).catch(() => {
+            if (isActive) setAudioReady(true) // allow start even if hydration fails
           })
 
           const flowPointResult = await getUserFlowPoints(supabase, nextUserId)
@@ -772,6 +962,68 @@ export default function LessonPage() {
     }
   }, [userId])
 
+  // Fetch due review count (DB-backed, non-blocking)
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+
+    const now = new Date().toISOString()
+    supabase
+      .from('review_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .or(`next_review_at.is.null,next_review_at.lte.${now}`)
+      .then(({ count }: { count: number | null }) => {
+        if (!cancelled) setDueReviewCount(count ?? 0)
+      })
+      .catch(() => {})
+
+    // Fetch completed study days for this month's calendar
+    const d = new Date()
+    const monthStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+    supabase
+      .from('daily_stats')
+      .select('stat_date')
+      .eq('user_id', userId)
+      .gte('stat_date', monthStart)
+      .then(({ data }: { data: { stat_date: string }[] | null }) => {
+        if (!cancelled && data) {
+          setCompletedDates(data.map((r) => r.stat_date))
+        }
+      })
+      .catch(() => {})
+
+    return () => { cancelled = true }
+  }, [userId])
+
+  // Preload first 2 blocks immediately; lazy-load ahead as user progresses
+  const currentBlockIdx = runtimeState?.currentBlockIndex ?? 0
+
+  useEffect(() => {
+    if (!lesson) return
+    // Preload current block + next 2 blocks (lookahead window)
+    const startIdx = Math.max(0, currentBlockIdx)
+    const endIdx = Math.min(lesson.blocks.length, startIdx + 3)
+    const links: HTMLLinkElement[] = []
+
+    for (let i = startIdx; i < endIdx; i++) {
+      for (const item of lesson.blocks[i].items) {
+        const url = (item as Record<string, unknown>).audio_url as string | undefined
+          ?? (item as Record<string, unknown>).audioUrl as string | undefined
+        if (!url || document.querySelector(`link[href="${url}"]`)) continue
+        const link = document.createElement('link')
+        link.rel = 'preload'
+        link.as = 'fetch'
+        link.crossOrigin = 'anonymous'
+        link.href = url
+        document.head.appendChild(link)
+        links.push(link)
+      }
+    }
+
+    return () => { links.forEach((l) => l.remove()) }
+  }, [lesson, currentBlockIdx])
+
   const handleOnboardingComplete = useCallback(async () => {
     setOnboardingStep('done')
     setNeedsOnboarding(false)
@@ -835,6 +1087,7 @@ export default function LessonPage() {
   
     if (showCompleted && hasFinalizedLessonRun) {
       clearPersistedLessonState()
+      clearDailyFlowSelection()
     }
   }, [
     lesson,
@@ -857,12 +1110,71 @@ export default function LessonPage() {
 
     setHasFinalizedLessonRun(true)
 
+    // Playtest: lesson complete observation
+    try {
+      // eslint-disable-next-line no-console
+      console.log('[Playtest][lesson-complete]', {
+        lessonId: (pageData?.lesson?.sessionId ?? 'unknown').slice(0, 12),
+        completed: true,
+        targetLanguageCode: pageData?.profile?.target_language_code ?? null,
+      })
+    } catch { /* non-blocking */ }
+
+    // Mark study time as handled so unmount handler won't double-count
+    studyMinutesRecordedRef.current = 999999
+
     runLessonCompletionEffect(supabase, runId, uid)
       .then(async () => {
-        if (typeof window !== 'undefined') {
+        lessonStartedAtRef.current = 0
+
+        // Complete weekly challenge if this was a challenge session
+        if (isWeeklyChallengeSessionRef.current) {
+          isWeeklyChallengeSessionRef.current = false
+          try {
+            const { data: { session } } = await supabase.auth.getSession()
+            if (session?.access_token) {
+              await fetch('/api/diamonds/weekly-challenge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+                body: JSON.stringify({ action: 'complete' }),
+              })
+            }
+
+            // Compute weekly growth highlight with progression
+            const { computeWeeklyHighlight, buildWeeklySnapshot } = await import('../../lib/weekly-highlight')
+            const weekStart = (() => { const d = new Date(); const day = d.getDay(); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); return d.toISOString().slice(0, 10) })()
+            const prevWeekStart = (() => { const d = new Date(weekStart); d.setDate(d.getDate() - 7); return d.toISOString().slice(0, 10) })()
+
+            const [statsRes, pronRes, pronPrevRes, reviewRes, snapshotRes] = await Promise.all([
+              supabase.from('daily_stats').select('lesson_runs_completed, typing_items_correct').eq('user_id', uid).gte('stat_date', weekStart),
+              supabase.from('pronunciation_scores').select('total_score').eq('user_id', uid).gte('created_at', weekStart + 'T00:00:00'),
+              supabase.from('pronunciation_scores').select('total_score').eq('user_id', uid).gte('created_at', prevWeekStart + 'T00:00:00').lt('created_at', weekStart + 'T00:00:00'),
+              supabase.from('review_items').select('correct_count').eq('user_id', uid).gte('last_reviewed_at', weekStart + 'T00:00:00'),
+              supabase.from('user_profiles').select('weekly_snapshot').eq('id', uid).maybeSingle(),
+            ])
+
+            const lessonsCompleted = (statsRes.data ?? []).reduce((s: number, r: { lesson_runs_completed: number }) => s + (r.lesson_runs_completed ?? 0), 0)
+            const typingCorrect = (statsRes.data ?? []).reduce((s: number, r: { typing_items_correct: number }) => s + (r.typing_items_correct ?? 0), 0)
+            const pronScores = (pronRes.data ?? []).map((r: { total_score: number }) => r.total_score).filter((s: number) => s >= 0)
+            const pronPrevScores = (pronPrevRes.data ?? []).map((r: { total_score: number }) => r.total_score).filter((s: number) => s >= 0)
+            const pronAvg = pronScores.length > 0 ? pronScores.reduce((a: number, b: number) => a + b, 0) / pronScores.length : null
+            const pronPrevAvg = pronPrevScores.length > 0 ? pronPrevScores.reduce((a: number, b: number) => a + b, 0) / pronPrevScores.length : null
+            const reviewsCorrect = (reviewRes.data ?? []).filter((r: { correct_count: number }) => (r.correct_count ?? 0) > 0).length
+
+            const weeklyStats = { pronAvg, pronPrevAvg, typingCorrect, lessonsCompleted, reviewsCorrect }
+            const prevSnapshot = (snapshotRes.data?.weekly_snapshot as Record<string, unknown> | null) ?? null
+
+            setWeeklyHighlight(computeWeeklyHighlight(weeklyStats, prevSnapshot as import('../../lib/weekly-highlight').WeeklySnapshot | null))
+
+            // Save this week's snapshot for next week's comparison
+            await supabase.from('user_profiles').update({
+              weekly_snapshot: buildWeeklySnapshot(weeklyStats, weekStart),
+            }).eq('id', uid)
+          } catch { /* non-blocking */ }
         }
 
         clearPersistedLessonState()
+        clearDailyFlowSelection()
         setLessonRunId(null)
         await refreshRankProgress(uid)
       })
@@ -922,7 +1234,81 @@ export default function LessonPage() {
       events.forEach((event) => window.removeEventListener(event, resetTimer))
     }
   }, [userId])
-  
+
+  // ── Study time recording on page leave / lesson abandon ──
+  // Records elapsed study minutes when the user navigates away without formally completing.
+  // Uses refs to avoid stale closure issues with beforeunload.
+  const lessonRunIdRef = useRef<string | null>(null)
+  const userIdRef = useRef<string | null>(null)
+  const hasFinalizedRef = useRef(false)
+  const runtimeStageRef = useRef<string | null>(null)
+  const runtimeBlockIdxRef = useRef(0)
+  const abandonLoggedSessionRef = useRef<string | null>(null)
+
+  useEffect(() => { lessonRunIdRef.current = lessonRunId }, [lessonRunId])
+  useEffect(() => { userIdRef.current = userId }, [userId])
+  useEffect(() => { hasFinalizedRef.current = hasFinalizedLessonRun }, [hasFinalizedLessonRun])
+  useEffect(() => {
+    runtimeStageRef.current = runtimeState?.currentStageId ?? null
+    runtimeBlockIdxRef.current = runtimeState?.currentBlockIndex ?? 0
+  }, [runtimeState])
+
+  useEffect(() => {
+    function recordStudyTimeOnLeave() {
+      const startedAt = lessonStartedAtRef.current
+      const uid = userIdRef.current
+      const runId = lessonRunIdRef.current
+      if (!uid || !startedAt || startedAt === 0 || hasFinalizedRef.current) return
+
+      const MAX_SESSION_MINUTES = 60
+      const rawElapsed = Math.max(1, Math.floor((Date.now() - startedAt) / 60000))
+      const elapsedMinutes = Math.min(rawElapsed, MAX_SESSION_MINUTES)
+      const alreadyRecorded = studyMinutesRecordedRef.current
+      const delta = Math.max(0, elapsedMinutes - alreadyRecorded)
+      if (delta <= 0) return
+
+      // Use sendBeacon for reliability during page unload
+      const payload = JSON.stringify({
+        userId: uid,
+        lessonRunId: runId,
+        studyMinutes: delta,
+        statDate: getTodayStatDate(),
+      })
+      navigator.sendBeacon('/api/lesson/study-time', payload)
+      studyMinutesRecordedRef.current = elapsedMinutes
+
+      // Log lesson_abandoned_before_audio if lesson started but still on first listen
+      const startedSessionId = lastLoggedSessionIdRef.current
+      if (
+        startedSessionId &&
+        abandonLoggedSessionRef.current !== startedSessionId &&
+        runtimeStageRef.current === 'listen' &&
+        runtimeBlockIdxRef.current === 0
+      ) {
+        abandonLoggedSessionRef.current = startedSessionId
+        navigator.sendBeacon('/api/track', JSON.stringify({
+          event: 'lesson_abandoned_before_audio',
+          properties: {
+            user_id: uid,
+            lesson_run_id: runId,
+            session_id: startedSessionId,
+            stage_id: 'listen',
+            block_id: null,
+            scene_key: null,
+            occurred_at: new Date().toISOString(),
+          },
+        }))
+      }
+    }
+
+    window.addEventListener('beforeunload', recordStudyTimeOnLeave)
+    return () => {
+      window.removeEventListener('beforeunload', recordStudyTimeOnLeave)
+      // Also fire on component unmount (SPA navigation)
+      recordStudyTimeOnLeave()
+    }
+  }, [])
+
   function startLessonRunEffects(userId: string, lesson: NonNullable<LessonPageData['lesson']>) {
     startLessonRun(supabase, userId, lesson).then((result) => {
       if (result.error) {
@@ -1001,24 +1387,191 @@ export default function LessonPage() {
     }
   }
   
-  function handleStartLesson() {
-  
-    if (lesson == null) {
-      setStartBlockedReason('lesson が null のため開始できません。')
+  async function handleStartReview() {
+    if (!userId) return
+    if (started || isStartingLessonRef.current) return
+
+    // Billing gate
+    const access = canStartLesson(pageData?.profile ?? {})
+    if (!access.allowed) {
+      setStartBlockedReason('A subscription is required to continue lessons')
       return
     }
-  
+
+    isStartingLessonRef.current = true
+    setStartErrorMessage(null)
+    setStartBlockedReason(null)
+
+    try {
+      const sources = await fetchReviewItemsWithContent(supabase, userId)
+
+      if (sources.length === 0) {
+        setStartBlockedReason('No review items available')
+        isStartingLessonRef.current = false
+        return
+      }
+
+      clearPersistedLessonState()
+
+      const baseSession = {
+        theme: 'Review Session',
+        level: 'beginner' as const,
+        totalEstimatedMinutes: sources.length,
+        blocks: [],
+      }
+      const reviewSession = injectReviewBlocks(baseSession, sources)
+
+      const initial = getInitialRunState()
+      setProgress(initial.progress)
+      setInputValue('')
+      setCorrectTypingCount(initial.correctTypingCount)
+      setEarnedFlowPoints(0)
+      setHasFinalizedLessonRun(false)
+      setShowListenRepeatComplete(false)
+      awardedStageKeysRef.current = new Set()
+
+      const nextRuntimeState = createLessonRuntimeStateFromSession({
+        session: reviewSession,
+        userId,
+      })
+
+      // Cast to match startLessonRunEffects signature; startLessonRun only uses LessonSession fields
+      startLessonRunEffects(userId, reviewSession as unknown as NonNullable<LessonPageData['lesson']>)
+      setRuntimeState(nextRuntimeState)
+      lessonStartedAtRef.current = Date.now()
+      studyMinutesRecordedRef.current = 0
+      setStarted(true)
+      setPageError(null)
+      trackEvent('lesson_start', { blockCount: reviewSession.blocks.length })
+    } catch (error) {
+      console.error('Failed to start review', error)
+      setStartErrorMessage('Failed to start review')
+      setStarted(false)
+      setRuntimeState(null)
+    } finally {
+      isStartingLessonRef.current = false
+    }
+  }
+
+  async function handleStartWeeklyChallenge() {
+    if (!userId) return
+    if (started || isStartingLessonRef.current) return
+
+    isStartingLessonRef.current = true
+    setStartErrorMessage(null)
+    setStartBlockedReason(null)
+
+    try {
+      const sources = await fetchReviewItemsWithContent(supabase, userId, 3)
+
+      if (sources.length === 0) {
+        setStartBlockedReason('No review items available')
+        isStartingLessonRef.current = false
+        return
+      }
+
+      clearPersistedLessonState()
+
+      const baseSession = {
+        theme: 'Weekly Review Challenge',
+        level: 'beginner' as const,
+        totalEstimatedMinutes: sources.length,
+        blocks: [],
+      }
+      const reviewSession = injectReviewBlocks(baseSession, sources)
+
+      const initial = getInitialRunState()
+      setProgress(initial.progress)
+      setInputValue('')
+      setCorrectTypingCount(initial.correctTypingCount)
+      setEarnedFlowPoints(0)
+      setHasFinalizedLessonRun(false)
+      setShowListenRepeatComplete(false)
+      awardedStageKeysRef.current = new Set()
+      isWeeklyChallengeSessionRef.current = true
+      setWasWeeklyChallenge(true)
+
+      const nextRuntimeState = createLessonRuntimeStateFromSession({
+        session: reviewSession,
+        userId,
+      })
+
+      startLessonRunEffects(userId, reviewSession as unknown as NonNullable<LessonPageData['lesson']>)
+      setRuntimeState(nextRuntimeState)
+      lessonStartedAtRef.current = Date.now()
+      studyMinutesRecordedRef.current = 0
+      setStarted(true)
+      setPageError(null)
+      trackEvent('lesson_start', { blockCount: reviewSession.blocks.length })
+    } catch (error) {
+      console.error('Failed to start weekly challenge', error)
+      setStartErrorMessage('Failed to start the challenge')
+      setStarted(false)
+      setRuntimeState(null)
+    } finally {
+      isStartingLessonRef.current = false
+    }
+  }
+
+  /** Fire lesson_start_clicked exactly once per logical session (dedup by session_id). */
+  function logLessonStartClicked() {
+    const sessionId = lesson?.id ?? (lesson as Record<string, unknown> | null)?.sessionId as string ?? ''
+    if (!sessionId || lastLoggedSessionIdRef.current === sessionId) return
+    lastLoggedSessionIdRef.current = sessionId
+
+    const payload = {
+      event: 'lesson_start_clicked',
+      properties: {
+        user_id: userId ?? null,
+        lesson_run_id: lessonRunId ?? null,
+        session_id: sessionId,
+        stage_id: runtimeState?.currentStageId ?? null,
+        block_id: runtimeState?.blocks?.[runtimeState?.currentBlockIndex ?? 0]?.id ?? null,
+        scene_key: block?.sceneId ?? null,
+        occurred_at: new Date().toISOString(),
+      },
+    }
+
+    try {
+      fetch('/api/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {})
+    } catch { /* fire-and-forget */ }
+  }
+
+  function handleStartLesson() {
+
+    // Billing gate
+    const access = canStartLesson(pageData?.profile ?? {})
+    if (!access.allowed) {
+      setStartBlockedReason('A subscription is required to continue lessons')
+      return
+    }
+
+    if (lesson == null) {
+      setStartBlockedReason('Cannot start: lesson data is missing.')
+      return
+    }
+
     if (userId == null) {
-      setStartBlockedReason('userId が null のため開始できません。')
+      setStartBlockedReason('Cannot start: user ID is missing.')
       return
     }
   
     if (started || isStartingLessonRef.current) {
-      setStartBlockedReason('レッスン開始中です')
+      setStartBlockedReason('Lesson is starting...')
       return
     }
-  
+
+    // Audio preloading is non-blocking — lesson starts immediately
+    // Audio element uses preload="auto" to ensure instant playback when user presses play
+
     if (runtimeState != null && !showCompleted) {
+      if (lessonStartedAtRef.current === 0) lessonStartedAtRef.current = Date.now()
+      logLessonStartClicked()
       setStarted(true)
       setShowListenRepeatComplete(false)
       setStartErrorMessage(null)
@@ -1045,22 +1598,25 @@ export default function LessonPage() {
       setEarnedFlowPoints(persisted.earnedFlowPoints)
       setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
       awardedStageKeysRef.current = new Set(persisted.awardedStageKeys)
+      if (lessonStartedAtRef.current === 0) lessonStartedAtRef.current = Date.now()
+      studyMinutesRecordedRef.current = 0
+      logLessonStartClicked()
       setStarted(true)
       setShowListenRepeatComplete(false)
       setStartErrorMessage(null)
       setStartBlockedReason(null)
-  
+
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href)
         url.searchParams.set('resume', 'true')
         window.history.replaceState(null, '', url.toString())
       }
-  
+
       return
     }
   
     if (isStartingLessonRef.current) {
-      setStartBlockedReason('開始処理中フラグが残っているため開始できません。')
+      setStartBlockedReason('Cannot start: a previous start is still in progress.')
       return
     }
   
@@ -1088,8 +1644,12 @@ export default function LessonPage() {
   
       startLessonRunEffects(userId, lesson)
       setRuntimeState(nextRuntimeState)
+      lessonStartedAtRef.current = Date.now()
+      studyMinutesRecordedRef.current = 0
+      logLessonStartClicked()
       setStarted(true)
       setPageError(null)
+      trackEvent('lesson_start', { blockCount: lesson.blocks.length })
   
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href)
@@ -1101,7 +1661,7 @@ export default function LessonPage() {
       isStartingLessonRef.current = false
       console.error('Failed to start lesson', error)
       setPageError('load_failed')
-      setStartErrorMessage('レッスンの開始に失敗しました。データ構造を確認してください。')
+      setStartErrorMessage('Failed to start the lesson. Please check the data structure.')
       setStarted(false)
       setRuntimeState(null)
       isStartingLessonRef.current = false
@@ -1112,6 +1672,7 @@ export default function LessonPage() {
     setIsExtraSession(true)
     // Reload page data to get a fresh lesson
     clearPersistedLessonState()
+    clearDailyFlowSelection()
     setStarted(false)
     setRuntimeState(null)
     setProgress(getInitialRunState().progress)
@@ -1159,7 +1720,41 @@ export default function LessonPage() {
     setShowListenRepeatComplete(false)
     setListenResetNonce((prev) => prev + 1)
   }
-  
+
+  function handleRetryListenFromScaffold() {
+    if (runtimeState == null) return
+    if (runtimeState.currentStageId !== 'scaffold_transition') return
+
+    const currentBlock = runtimeState.blocks[runtimeState.currentBlockIndex]
+    if (!currentBlock) return
+
+    setRuntimeState({
+      ...runtimeState,
+      currentStageId: 'repeat',
+      answers: runtimeState.answers.filter(
+        (answer) =>
+          !(
+            answer.blockId === currentBlock.id &&
+            (answer.stageId === 'repeat' || answer.stageId === 'scaffold_transition')
+          )
+      ),
+    })
+
+    setInputValue('')
+    setShowListenRepeatComplete(false)
+    // Trigger repeat state reset in the active card
+    setListenResetNonce((prev) => prev + 1)
+  }
+
+  function handleGoBackToStage(targetStageId: 'scaffold_transition' | 'ai_question' | 'typing' | 'ai_conversation') {
+    if (runtimeState == null) return
+    setRuntimeState({
+      ...runtimeState,
+      currentStageId: targetStageId,
+    })
+    setInputValue('')
+  }
+
   function handleAdvanceFromListenRepeatComplete() {
     if (runtimeState == null) return
     if (runtimeState.currentStageId !== 'repeat') return
@@ -1436,6 +2031,25 @@ export default function LessonPage() {
     applyTypingCheckResult(result.isCorrect, result.correctTypingDelta)
   }
 
+  // Daily language picker — shown when multiple languages selected and no lock yet
+  if (needsLanguagePick && selectedLanguages.length > 1) {
+    return (
+      <div
+        className={PAGE_SHELL_CLASS}
+        style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
+      >
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} />
+        <main className="flex-1 flex items-center justify-center">
+          <DailyLanguagePicker
+            selectedLanguages={selectedLanguages}
+            onChoose={handleDailyLanguageChosen}
+          />
+        </main>
+        <AppFooter />
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div
@@ -1466,7 +2080,7 @@ export default function LessonPage() {
         <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
-            <h2 className="text-lg font-semibold text-[#1a1a2e]">エラー</h2>
+            <h2 className="text-lg font-semibold text-[#1a1a2e]">Error</h2>
             <p className="mt-3 text-sm text-[#4a4a6a]">{errorMessage}</p>
           </div>
         </main>
@@ -1534,7 +2148,7 @@ export default function LessonPage() {
                     onClick={handleBackToOverview}
                     className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
                   >
-                    ← レッスン案内へ戻る
+                    {copy.activeCard.backToOverview}
                   </button>
                 </div>
                 <LessonActiveCard
@@ -1548,18 +2162,22 @@ export default function LessonPage() {
                   onCheck={handleCheck}
                   onStartRepeatFromListen={handleStartRepeatFromListen}
                   onRetryListenFromRepeat={handleRetryListenFromRepeat}
+                  onRetryListenFromScaffold={handleRetryListenFromScaffold}
+                  onGoBackToStage={handleGoBackToStage}
                   repeatAutoStartNonce={repeatAutoStartNonce}
                   listenResetNonce={listenResetNonce}
                   currentStageId={runtimeState?.currentStageId ?? null}
                   copy={copy}
                   isLessonComplete={isLessonComplete}
                   targetLanguageLabel={targetLanguageLabel}
-                  scenarioLabel={block.description || lesson.overviewSceneLabel || 'レッスン'}
+                  scenarioLabel={block.description?.trim() || getDailyFlowSceneLabel(block.sceneId, isJaUi) || lesson.overviewSceneLabel || copy.overviewCard.defaultSceneLabel}
                   previousPhrases={lesson.blocks
                     .slice(0, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0)
                     .map((b) => b.items[0]?.answer?.trim())
                     .filter((a): a is string => !!a)}
                   level={lesson.level}
+                  lessonSessionId={lesson.sessionId ?? lesson.id ?? ''}
+                  responseStage={pageData?.languageLearningMode?.responseStage ?? 'typing'}
                 />
               </>
             )}
@@ -1581,12 +2199,12 @@ export default function LessonPage() {
                     LISTEN & REPEAT COMPLETE
                   </p>
                   <h2 className="mt-3 text-2xl font-black tracking-tight text-[#1a1a2e]">
-                    今日の聞き取り・リピート練習は完了です
+                    Listen & Repeat practice is complete
                   </h2>
                   <p className="mt-4 text-sm leading-7 text-[#5a5a7a]">
-                    ここまでで、耳で聞いた音をそのまま口に出す練習ができました。
+                    You practiced listening and repeating what you heard.
                     <br />
-                    次は、AIからの質問に英語で返す練習へ進みましょう。
+                    Next, let's practice answering AI questions in English.
                   </p>
 
                   <div className="mt-6 flex justify-center">
@@ -1595,9 +2213,42 @@ export default function LessonPage() {
                       onClick={handleAdvanceFromListenRepeatComplete}
                       className="cursor-pointer rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]"
                     >
-                      次の練習に進む
+                      Continue to next practice
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {showCompleted && wasWeeklyChallenge && (
+              <div className="mb-4 rounded-2xl border border-purple-200 bg-gradient-to-b from-purple-50 to-white px-5 py-5 text-center">
+                <p className="text-lg font-black text-purple-700">🎯 復習チャレンジ達成！</p>
+                {weeklyHighlight ? (
+                  <>
+                    <p className="mt-2 text-sm font-bold text-purple-600">✨ {weeklyHighlight.highlight}</p>
+                    {weeklyHighlight.directions.length > 0 && (
+                      <div className="mx-auto mt-2 flex justify-center gap-3">
+                        {weeklyHighlight.directions.map((d) => (
+                          <span key={d.label} className="text-xs text-purple-500">
+                            {d.label} {d.direction}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-1.5 text-xs text-purple-400">{weeklyHighlight.encouragement}</p>
+                    {weeklyHighlight.nextGoal && (
+                      <p className="mt-1 text-[10px] text-purple-300">{weeklyHighlight.nextGoal}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-2 text-sm text-purple-600">今週の弱い部分をしっかり復習しました</p>
+                    <p className="mt-1 text-xs text-purple-400">この調子で続けていきましょう</p>
+                  </>
+                )}
+                <div className="mx-auto mt-3 flex items-center justify-center gap-1.5">
+                  <img src="/images/branding/diamond.svg" alt="" className="h-4 w-4" />
+                  <span className="text-sm font-bold text-[#92400E]">+5 ダイヤ獲得！</span>
                 </div>
               </div>
             )}
@@ -1626,46 +2277,10 @@ export default function LessonPage() {
       <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
-        {/* 発音スコア履歴 */}
-        {scoreHistory.length > 0 && scoreSummary != null && (
-          <div className="mb-6 rounded-2xl border border-[#ede9e2] bg-white px-6 py-5 shadow-sm">
-            <h3 className="mb-3 text-base font-bold text-[#1a1a2e]">
-              発音スコア履歴
-            </h3>
 
-            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-[#4a4a6a]">
-              <div>
-                最新: <span className="font-bold">{scoreSummary.latest}</span>
-              </div>
-              <div>
-                最高: <span className="font-bold">{scoreSummary.max}</span>
-              </div>
-              <div>
-                平均: <span className="font-bold">{scoreSummary.avg}</span>
-              </div>
-            </div>
-
-            <LessonScoreChart items={scoreHistory} />
-
-            <div className="mt-4 space-y-2">
-              {scoreHistory.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex justify-between border-b pb-1 text-sm"
-                >
-                  <span className="text-[#6b7280]">
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </span>
-                  <span className="font-bold text-[#1a1a2e]">
-                    {item.total_score}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
           <LessonOverviewCard
             currentStageIndex={currentStageIndex}
+            currentBlockIndex={runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0}
             lesson={lesson}
             copy={copy}
             getLevelLabel={getLevelLabel}
@@ -1674,6 +2289,23 @@ export default function LessonPage() {
             totalFlowPoints={totalFlowPoints}
             flowPointsToNextRank={flowPointsToNextRank}
             targetLanguageLabel={targetLanguageLabel}
+            targetRegionSlug={pageData?.profile?.target_region_slug ?? null}
+            speakByDeadlineText={pageData?.profile?.speak_by_deadline_text ?? null}
+            ageGroup={(pageData?.profile as Record<string, unknown>)?.age_group as string | null ?? null}
+            dueReviewCount={dueReviewCount}
+            completedDates={completedDates}
+            onStartReview={handleStartReview}
+            trialEndsAt={trialEndsAt}
+            totalDiamonds={pageData?.profile?.total_diamonds ?? 0}
+            currentStreakDays={pageData?.profile?.current_streak_days ?? 0}
+            lastStreakDate={(pageData?.profile?.last_streak_date as string) ?? null}
+            lastStreakRestoreDate={(pageData?.profile?.last_streak_restore_date as string) ?? null}
+            diamondBoostUntil={(pageData?.profile?.diamond_boost_until as string) ?? null}
+            streakFrozenDate={(pageData?.profile?.streak_frozen_date as string) ?? null}
+            streakFreezeExpiry={(pageData?.profile?.streak_freeze_expiry as string) ?? null}
+            weeklyChallengeUnlockedAt={(pageData?.profile?.weekly_challenge_unlocked_at as string) ?? null}
+            weeklyChallengeCompletedAt={(pageData?.profile?.weekly_challenge_completed_at as string) ?? null}
+            onStartWeeklyChallenge={handleStartWeeklyChallenge}
           />
 
           {startErrorMessage && (
@@ -1685,6 +2317,11 @@ export default function LessonPage() {
           {startBlockedReason && (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {startBlockedReason}
+              {startBlockedReason.includes('subscription') && (
+                <a href="/settings/billing" className="mt-2 block text-center text-sm font-bold text-amber-800 underline underline-offset-2">
+                  View plans
+                </a>
+              )}
             </div>
           )}
 

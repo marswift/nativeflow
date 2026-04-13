@@ -10,6 +10,8 @@
 
 import type { CurrentLevel } from './constants'
 import type { LessonSessionFactoryOutput } from './lesson-session-factory'
+import { getSceneImagePath, isSceneMapped } from './scene-image-map'
+import { selectDailyFlowScenes, getDailyFlowLabel } from './daily-timeline'
 
 export type LessonBlueprintBlockType =
   | 'conversation'
@@ -22,14 +24,22 @@ export type LessonBlueprintBlock = {
   title: string
   goal: string
   scenarioLabel: string
+  /** Short noun for title composition (e.g. "友人" not "友人との会話"). */
+  sceneTitleLabel: string
   image_prompt: string | null
   image_url: string | null
+  /** Scene category for image resolution (e.g. 'daily-flow', 'social'). */
+  sceneCategory: string
 }
 
 export type LessonBlueprint = {
   theme: string
   level: CurrentLevel
   blocks: LessonBlueprintBlock[]
+  /** Scene category for image resolution (e.g. 'daily-flow'). */
+  sceneCategory: string
+  /** Target region slug for locale-aware content (e.g. 'en_us_general'). */
+  targetRegionSlug: string | null
 }
 
 // ——— Scene label & image prompt helpers ———
@@ -201,6 +211,40 @@ export function buildScenarioLabel(sceneKey: string): string {
   return SCENE_LABEL_JA[sceneKey] ?? sceneKey.replace(/_/g, ' ')
 }
 
+/**
+ * Short noun form for title composition (e.g. "友人" not "友人との会話").
+ * Falls back to scenarioLabel when no dedicated short form exists.
+ */
+const SCENE_TITLE_NOUN: Record<string, string> = {
+  talk_with_friends: 'friends',
+  greet_coworkers: 'coworkers',
+  talk_with_a_manager: 'manager',
+  talk_with_a_teacher: 'teacher',
+  talk_with_siblings: 'siblings',
+  talk_with_grandparents: 'grandparents',
+  talk_with_locals: 'locals',
+  station_conversation: 'station',
+}
+
+const SCENE_TITLE_NOUN_JA: Record<string, string> = {
+  talk_with_friends: '友人',
+  greet_coworkers: '同僚',
+  talk_with_a_manager: '上司',
+  talk_with_a_teacher: '先生',
+  talk_with_siblings: '兄弟',
+  talk_with_grandparents: '祖父母',
+  talk_with_locals: '現地の人',
+  station_conversation: '駅',
+}
+
+export function buildSceneTitleLabel(sceneKey: string): string {
+  return SCENE_TITLE_NOUN_JA[sceneKey] ?? buildScenarioLabel(sceneKey)
+}
+
+export function buildSceneTitleLabelEn(sceneKey: string): string {
+  return SCENE_TITLE_NOUN[sceneKey] ?? sceneKey.replace(/_/g, ' ')
+}
+
 /** Optional image generation prompt for a scene. */
 function buildImagePrompt(sceneKey: string): string | null {
   return SCENE_IMAGE_PROMPT[sceneKey] ?? null
@@ -295,21 +339,34 @@ const SCENE_IMAGE_URL: Record<string, string> = {
   mentor_conversation: '/images/backgrounds/cafe_01.webp',
 }
 
-/** Static image URL for a scene, or null if unmapped. */
+/** Static image URL for a scene, or null if unmapped.
+ *  Prefers the scene-image-map (exact match, no wrong fallback).
+ *  If scene is managed by scene-image-map but has status 'missing',
+ *  returns null (no image) — never falls back to a generic image.
+ *  Legacy SCENE_IMAGE_URL is only used for scenes NOT in scene-image-map.
+ */
 function buildImageUrl(sceneKey: string): string | null {
+  // If scene is managed by scene-image-map, use it exclusively
+  if (isSceneMapped(sceneKey)) {
+    return getSceneImagePath(sceneKey) // null for status:'missing'
+  }
+  // Legacy fallback for non-Daily-Flow scenes only
   return SCENE_IMAGE_URL[sceneKey] ?? null
 }
 
 function createBlock(
   type: LessonBlueprintBlockType,
   title: string,
-  goal: string
+  goal: string,
+  sceneCategory: string
 ): LessonBlueprintBlock {
   return {
     type,
     title,
     goal,
+    sceneCategory,
     scenarioLabel: buildScenarioLabel(goal),
+    sceneTitleLabel: buildSceneTitleLabel(goal),
     image_prompt: buildImagePrompt(goal),
     image_url: buildImageUrl(goal),
   }
@@ -515,16 +572,59 @@ function selectScenes(input: LessonSessionFactoryOutput, count: number): string[
 export function createLessonBlueprint(
   input: LessonSessionFactoryOutput
 ): LessonBlueprint {
-  const scenes = selectScenes(input, 4)
+  // Daily timeline: select 4 scenes following the daily flow order
+  const seed = hashString(`${input.theme}::${input.level}`)
+  const ageGroup = (input as { ageGroup?: string }).ageGroup ?? null
+  const dailyScenes = selectDailyFlowScenes(4, ageGroup, seed)
+
+  // Use daily flow scene keys, with daily flow labels as block descriptions
+  const scenes = dailyScenes.map((s) => s.sceneKey)
 
   return {
     theme: input.theme,
     level: input.level,
+    sceneCategory: 'daily-flow',
+    targetRegionSlug: input.targetRegionSlug ?? null,
     blocks: [
-      createBlock('conversation', '聞き取りとリピート', scenes[0]),
-      createBlock('typing', '書き取り', scenes[1]),
-      createBlock('review', '復習', scenes[2]),
-      createBlock('ai_conversation', 'AI会話', scenes[3]),
+      createBlock('conversation', '聞き取りとリピート', scenes[0], 'daily-flow'),
+      createBlock('typing', '書き取り', scenes[1], 'daily-flow'),
+      createBlock('review', '復習', scenes[2], 'daily-flow'),
+      createBlock('ai_conversation', 'AI会話', scenes[3], 'daily-flow'),
     ],
+  }
+}
+
+/**
+ * Builds a lesson blueprint from user-selected scenes (Daily Flow mode).
+ * Accepts any number of scenes; assigns block types cyclically.
+ */
+export function createLessonBlueprintFromScenes(
+  scenes: string[],
+  level: CurrentLevel,
+  theme: string,
+  targetRegionSlug: string | null = null
+): LessonBlueprint {
+  const blockTypes: LessonBlueprintBlockType[] = [
+    'conversation', 'typing', 'review', 'ai_conversation',
+  ]
+  const titles = [
+    '聞き取りとリピート', '書き取り', '復習', 'AI会話',
+  ]
+
+  return {
+    theme,
+    level,
+    sceneCategory: 'daily-flow',
+    targetRegionSlug,
+    blocks: scenes.map((scene, i) => {
+      const blockType = blockTypes[i % blockTypes.length]
+      const isConversation = blockType === 'ai_conversation'
+      return createBlock(
+        blockType,
+        titles[i % titles.length],
+        scene,
+        isConversation ? 'social' : 'daily-flow'
+      )
+    }),
   }
 }

@@ -110,9 +110,6 @@ export default function ContactPage() {
   return (
     <div style={styles.wrap}>
       <div style={styles.inner}>
-        <Link href="/" style={styles.back}>
-          ← トップへ戻る
-        </Link>
         <h1 style={styles.title}>お問い合わせ</h1>
         <p style={styles.intro}>
           サービスに関するご質問・ご要望は、以下のフォームよりお送りください。

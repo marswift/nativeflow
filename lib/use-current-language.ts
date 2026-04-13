@@ -19,9 +19,13 @@ export function useCurrentLanguage() {
     let isActive = true
 
     async function fetchLang() {
+      // Use getSession() instead of getUser() to avoid auth token lock contention.
+      // getSession() reads from local cache; getUser() makes a network call that
+      // acquires a lock and can conflict with other concurrent auth operations.
       const {
-        data: { user },
-      } = await supabase.auth.getUser()
+        data: { session },
+      } = await supabase.auth.getSession()
+      const user = session?.user
       if (!user || !isActive) return
 
       setUserId(user.id)

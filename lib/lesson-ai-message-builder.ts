@@ -5,6 +5,7 @@
  */
 
 import type { LessonAIPromptPayload } from './lesson-ai-prompt-builder'
+import { buildRegionPromptContext } from './lesson-run-service'
 
 export type LessonAIMessage = {
   role: 'system' | 'user'
@@ -26,7 +27,10 @@ function createUserMessage(content: string): LessonAIMessage {
 }
 
 function buildSystemContent(payload: LessonAIPromptPayload): string {
-  return `[schemaVersion]\n${payload.schemaVersion}\n\n[systemPurpose]\n${payload.systemPurpose}`
+  const base = `[schemaVersion]\n${payload.schemaVersion}\n\n[systemPurpose]\n${payload.systemPurpose}`
+  const regionPrompt = buildRegionPromptContext(payload.lessonInput.targetRegionSlug)
+  if (!regionPrompt) return base
+  return `${base}\n\n[regionContext]\n${regionPrompt}`
 }
 
 function buildUserContent(payload: LessonAIPromptPayload): string {

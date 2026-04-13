@@ -23,6 +23,8 @@ export type LessonSessionFactoryOutput = {
   reviewFocus: string
   typingFocus: string
   localeFocus: string | null
+  /** Raw target region slug for catalog resolution. */
+  targetRegionSlug: string | null
 }
 
 /**
@@ -41,5 +43,6 @@ export function createLessonSessionConfig(
     reviewFocus: input.learnerGoal,
     typingFocus: input.theme,
     localeFocus: input.localeFocus,
+    targetRegionSlug: input.targetRegionSlug ?? null,
   }
 }

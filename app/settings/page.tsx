@@ -11,9 +11,11 @@ import {
   TARGET_LANGUAGE_OPTIONS,
   CURRENT_LEVEL_OPTIONS,
   type CurrentLevel,
+  getRegionsForLanguage,
 } from '../../lib/constants'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
 import { useCurrentLanguage } from '@/lib/use-current-language'
+import { isDailyLanguageLocked, getDailyLockedLanguage } from '../../lib/daily-language-lock'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -42,14 +44,6 @@ const DEADLINE_OPTIONS = [
   { value: '3年以上', label: '3年以上' },
 ] as const
 
-const ENGLISH_LOCALE_OPTIONS = [
-  { value: '', label: '選択してください' },
-  { value: 'en_us_ny', label: 'アメリカ / ニューヨーク' },
-  { value: 'en_us_la', label: 'アメリカ / ロサンゼルス' },
-  { value: 'en_gb_london', label: 'イギリス / ロンドン' },
-  { value: 'en_au', label: 'オーストラリア' },
-  { value: 'en_ca', label: 'カナダ' },
-] as const
 
 const AGE_GROUP_OPTIONS = [
   { value: '', label: '選択してください' },
@@ -91,9 +85,6 @@ const ENGLISH_LANGUAGE_VALUE =
   TARGET_LANGUAGE_OPTIONS[0]?.value ??
   'english'
 
-const ENGLISH_LANGUAGE_LABEL =
-  TARGET_LANGUAGE_OPTIONS.find((opt) => opt.value === ENGLISH_LANGUAGE_VALUE)?.label ?? '英語'
-
 type ProfileRow = UserProfileRow & {
   username?: string | null
   age_group?: string | null
@@ -116,15 +107,31 @@ export default function SettingsPage() {
   const [ageGroup, setAgeGroup] = useState('')
   const [originCountry, setOriginCountry] = useState('')
   const [uiLanguageCode, setUiLanguageCode] = useState('ja')
-  const [targetLocale, setTargetLocale] = useState('')
   const [newEmail, setNewEmail] = useState('')
   const [showEmailChangeForm, setShowEmailChangeForm] = useState(false)
   const [emailChangeStatus, setEmailChangeStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [emailChangeMessage, setEmailChangeMessage] = useState('')
 
-  const [currentLevel, setCurrentLevel] = useState<CurrentLevel | ''>('')
-  const [speakByDeadlineText, setSpeakByDeadlineText] = useState('')
-  const [targetOutcomeText, setTargetOutcomeText] = useState('')
+  const [selectedLangCodes, setSelectedLangCodes] = useState<string[]>([])
+  const [langSaveStatus, setLangSaveStatus] = useState<'idle' | 'saving'>('idle')
+  const [langModalOpen, setLangModalOpen] = useState(false)
+  const [langModalDraft, setLangModalDraft] = useState<string[]>([])
+
+  // Per-language learning profiles
+  type LangProfile = {
+    level: CurrentLevel | ''
+    region: string
+    goal: string
+    deadline: string
+  }
+  const [langProfiles, setLangProfiles] = useState<Record<string, LangProfile>>({})
+
+  function updateLangProfile(code: string, field: keyof LangProfile, value: string) {
+    setLangProfiles((prev) => ({
+      ...prev,
+      [code]: { ...(prev[code] ?? { level: '', region: '', goal: '', deadline: '' }), [field]: value },
+    }))
+  }
 
   useEffect(() => {
     let isActive = true
@@ -193,17 +200,41 @@ export default function SettingsPage() {
             } as ProfileRow)
           : profileRow
 
+        // Fetch all selected learning languages with full profiles
+        try {
+          const { data: allLangs } = await supabase
+            .from('user_learning_profiles')
+            .select('language_code, current_level, target_region_slug, target_outcome_text, speak_by_deadline_text')
+            .eq('user_id', session.user.id)
+            .limit(2)
+          if (isActive && allLangs) {
+            const codes = allLangs.map((r: { language_code: string }) => r.language_code)
+            setSelectedLangCodes(codes)
+            const profiles: Record<string, LangProfile> = {}
+            for (const r of allLangs as Array<{
+              language_code: string
+              current_level: string | null
+              target_region_slug: string | null
+              target_outcome_text: string | null
+              speak_by_deadline_text: string | null
+            }>) {
+              profiles[r.language_code] = {
+                level: (r.current_level as CurrentLevel) ?? '',
+                region: r.target_region_slug ?? '',
+                goal: r.target_outcome_text ?? '',
+                deadline: r.speak_by_deadline_text ?? '',
+              }
+            }
+            setLangProfiles(profiles)
+          }
+        } catch { /* non-blocking */ }
+
         if (isActive) {
           setProfile(mergedProfile)
           const rawUsername = mergedProfile.username != null ? String(mergedProfile.username).trim() : ''
           setUsername(rawUsername === sessionEmail ? '' : rawUsername)
           setAgeGroup(mergedProfile.age_group ?? '')
           setOriginCountry(mergedProfile.origin_country?.trim() ?? '')
-          setTargetLocale(mergedProfile.target_region_slug?.trim() ?? '')
-          setCurrentLevel((mergedProfile.current_level as CurrentLevel) ?? '')
-          const deadline = mergedProfile.speak_by_deadline_text?.trim() ?? ''
-          setSpeakByDeadlineText(DEADLINE_OPTIONS.some((o) => o.value === deadline) ? deadline : '')
-          setTargetOutcomeText(mergedProfile.target_outcome_text?.trim() ?? '')
           if (isActive && mergedProfile.ui_language_code) {
             setUiLanguageCode(mergedProfile.ui_language_code)
           }
@@ -275,28 +306,12 @@ export default function SettingsPage() {
     setSaveStatus('saving')
     setSaveMessage('')
     try {
-      const deadlineTrimmed = speakByDeadlineText.trim()
-      const dailyStudyMinutesGoal =
-        currentLevel && deadlineTrimmed
-          ? computeStudyPlan({
-              deadlineText: deadlineTrimmed,
-              currentLevel: currentLevel as CurrentLevel,
-            }).recommendedDailyMinutes
-          : null
-
-      const activeLanguageCode =
-        profile.target_language_code || ENGLISH_LANGUAGE_VALUE
-
+      // Save only non-language profile fields (username, age, country, UI language)
+      // Per-language settings are saved via per-language save buttons
       const payload = {
         username: username.trim() || null,
         age_group: ageGroup || null,
         origin_country: originCountry.trim() || null,
-        target_language_code: activeLanguageCode,
-        target_region_slug: targetLocale || null,
-        current_level: currentLevel || null,
-        speak_by_deadline_text: deadlineTrimmed || null,
-        target_outcome_text: targetOutcomeText.trim() || null,
-        daily_study_minutes_goal: dailyStudyMinutesGoal,
         ui_language_code: uiLanguageCode,
       }
       const { error: updateError } = await supabase
@@ -309,29 +324,37 @@ export default function SettingsPage() {
         return
       }
 
-      const { error: learningProfileError } = await supabase
-        .from('user_learning_profiles')
-        .upsert(
-          {
-            user_id: profile.id,
-            language_code: activeLanguageCode,
-            target_region_slug: payload.target_region_slug,
-            current_level: payload.current_level,
-            speak_by_deadline_text: payload.speak_by_deadline_text,
-            target_outcome_text: payload.target_outcome_text,
-            daily_study_minutes_goal: payload.daily_study_minutes_goal,
-          },
-          { onConflict: 'user_id,language_code' }
-        )
+      // Save all per-language profiles
+      for (const langCode of selectedLangCodes) {
+        const lp = langProfiles[langCode]
+        if (!lp) continue
+        try {
+          const langEnabledRegions = getRegionsForLanguage(langCode).filter((r) => r.enabled)
+          const regionSlug = lp.region || (langEnabledRegions.length === 1 ? langEnabledRegions[0].code : null)
+          const dailyMin = lp.level && lp.deadline
+            ? computeStudyPlan({ deadlineText: lp.deadline, currentLevel: lp.level as CurrentLevel }).recommendedDailyMinutes
+            : null
 
-      if (learningProfileError) {
-        setSaveStatus('error')
-        setSaveMessage(learningProfileError.message || '学習プロフィールの保存に失敗しました')
-        return
+          const { error: lpError } = await supabase
+            .from('user_learning_profiles')
+            .upsert({
+              user_id: profile.id,
+              language_code: langCode,
+              current_level: lp.level || null,
+              target_region_slug: regionSlug,
+              target_outcome_text: lp.goal.trim() || null,
+              speak_by_deadline_text: lp.deadline || null,
+              daily_study_minutes_goal: dailyMin,
+            }, { onConflict: 'user_id,language_code' })
+
+          if (lpError) console.error(`Language profile save error (${langCode}):`, lpError)
+        } catch (err) {
+          console.error(`Language profile save exception (${langCode}):`, err)
+        }
       }
 
       setSaveStatus('saved')
-      setSaveMessage('プロフィールを更新しました')
+      setSaveMessage('設定を保存しました')
       setProfile((prev) =>
         prev
           ? ({
@@ -339,12 +362,6 @@ export default function SettingsPage() {
               username: payload.username,
               age_group: payload.age_group,
               origin_country: payload.origin_country,
-              target_language_code: payload.target_language_code,
-              target_region_slug: payload.target_region_slug,
-              current_level: payload.current_level,
-              speak_by_deadline_text: payload.speak_by_deadline_text,
-              target_outcome_text: payload.target_outcome_text,
-              daily_study_minutes_goal: payload.daily_study_minutes_goal,
             } as ProfileRow)
           : null
       )
@@ -400,21 +417,6 @@ export default function SettingsPage() {
     )
   }
 
-  const currentLevelLabel =
-    CURRENT_LEVEL_OPTIONS.find((opt) => opt.value === currentLevel)?.label ?? '未設定'
-
-  // Display-only preview: recompute from level + deadline when both set; else use saved value
-  const deadlineTrimmed = speakByDeadlineText.trim()
-  const dailyStudyMinutesDisplay =
-    currentLevel && deadlineTrimmed
-      ? computeStudyPlan({
-          deadlineText: deadlineTrimmed,
-          currentLevel: currentLevel as CurrentLevel,
-        }).recommendedDailyMinutes
-      : null
-  const dailyStudyMinutesDisplayValue =
-    dailyStudyMinutesDisplay ?? profile.daily_study_minutes_goal ?? null
-
   return (
     <div
       className={PAGE_SHELL_CLASS}
@@ -446,23 +448,12 @@ export default function SettingsPage() {
                 NativeFlowがあなたに合った学習ペースを自動で提案します
               </p>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-[#D9E8FF] bg-[#EEF6FF] px-3 py-1 text-xs font-bold text-[#2563EB]">
-                  学習言語: {ENGLISH_LANGUAGE_LABEL}
-                </span>
-                <span className="rounded-full border border-[#E8E4DF] bg-white px-3 py-1 text-xs text-[#5a5a7a]">
-                  レベル: <strong className="text-[#1a1a2e]">{currentLevelLabel}</strong>
-                </span>
-                <span className="rounded-full border border-[#E8E4DF] bg-white px-3 py-1 text-xs text-[#5a5a7a]">
-                  1日の目標レッスン時間: <strong className="text-[#1a1a2e]">{dailyStudyMinutesDisplayValue != null ? `${dailyStudyMinutesDisplayValue}分` : '未設定'}</strong>
-                </span>
-              </div>
             </div>
           </section>
 
           {/* Main detail: 2 columns — Profile (left), Learning (right) */}
           <form onSubmit={handleSaveProfile} className="mt-8 space-y-6 md:space-y-8">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch lg:gap-8">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:items-start lg:gap-8">
               {/* Profile card */}
               <section className={`${CARD_BASE} px-6 py-6 sm:px-7 sm:py-6 flex flex-col`} aria-label="プロフィール">
                 <div className="mb-5 border-b border-[#F0ECE6] pb-4">
@@ -620,76 +611,243 @@ export default function SettingsPage() {
                 <div className="space-y-4 flex-1 min-h-0">
                   <div>
                     <span className={LABEL_CLASS}>学習する言語</span>
-                    <p className={READONLY_VALUE_CLASS} aria-readonly="true">
-                      {ENGLISH_LANGUAGE_LABEL}
-                    </p>
+                    <p className="mt-1 text-xs text-[#7c7c7c]">学習したい言語を最大2つまで選べます</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {selectedLangCodes.length === 0 && (
+                        <span className="text-sm text-[#7b7b94]">まだ選択されていません</span>
+                      )}
+                      {selectedLangCodes.map((code) => {
+                        const langLabel = TARGET_LANGUAGE_OPTIONS.find((o) => o.value === code)?.label ?? code
+                        return (
+                          <span key={code} className="inline-flex items-center gap-1.5 rounded-xl border-2 border-blue-400 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700">
+                            {langLabel} ✓
+                          </span>
+                        )
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => { setLangModalDraft([...selectedLangCodes]); setLangModalOpen(true) }}
+                        className="rounded-xl border border-[#E8E4DF] bg-[#FFF9EC] px-4 py-2 text-sm font-bold text-[#B7791F] transition hover:bg-[#FFF2D9] focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+                      >
+                        変更する
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label htmlFor="targetLocale" className={LABEL_CLASS}>学習したい地域・ローカル表現</label>
-                    <select
-                      id="targetLocale"
-                      value={targetLocale}
-                      onChange={(e) => setTargetLocale(e.target.value)}
-                      className={SELECT_CLASS}
-                    >
-                      {ENGLISH_LOCALE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-[#7c7c7c]">
-                      会話の雰囲気、よく使われる表現、文化背景に反映されます。
-                    </p>
-                  </div>
-                  <div>
-                    <label htmlFor="currentLevel" className={LABEL_CLASS}>現在のレベル</label>
-                    <select
-                      id="currentLevel"
-                      value={currentLevel}
-                      onChange={(e) => setCurrentLevel(e.target.value as CurrentLevel)}
-                      className={SELECT_CLASS}
-                    >
-                      <option value="">選択してください</option>
-                      {CURRENT_LEVEL_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="targetOutcome" className={LABEL_CLASS}>学習目標</label>
-                    <input
-                      id="targetOutcome"
-                      type="text"
-                      value={targetOutcomeText}
-                      onChange={(e) => setTargetOutcomeText(e.target.value)}
-                      className={INPUT_CLASS}
-                      placeholder="例：仕事で英語を使えるようになりたい"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="speakByDeadline" className={LABEL_CLASS}>話せるようになりたい期間</label>
-                    <select
-                      id="speakByDeadline"
-                      value={speakByDeadlineText}
-                      onChange={(e) => setSpeakByDeadlineText(e.target.value)}
-                      className={SELECT_CLASS}
-                    >
-                      {DEADLINE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <span className={LABEL_CLASS}>1日の目標レッスン時間</span>
-                    <p className={READONLY_VALUE_CLASS} aria-readonly="true">
-                      {dailyStudyMinutesDisplayValue != null ? `${dailyStudyMinutesDisplayValue}分` : '—'}
-                    </p>
-                    <p className="mt-1 text-xs text-[#7c7c7c]">
-                      レッスンプランに基づいて自動計算されています。
-                    </p>
-                  </div>
+                  {/* Per-language settings blocks */}
+                  {selectedLangCodes.map((langCode) => {
+                    const lp = langProfiles[langCode] ?? { level: '', region: '', goal: '', deadline: '' }
+                    const langLabel = TARGET_LANGUAGE_OPTIONS.find((o) => o.value === langCode)?.label ?? langCode
+                    const langRegions = getRegionsForLanguage(langCode)
+                    const enabledRegions = langRegions.filter((r) => r.enabled)
+                    return (
+                      <div key={langCode} className="rounded-xl border border-[#E8E4DF] bg-[#faf8f5] p-4 space-y-3">
+                        <h3 className="text-sm font-bold text-[#1a1a2e]">📚 {langLabel} の設定</h3>
+
+                        {/* Region — dynamic from REGION_MASTER */}
+                        {enabledRegions.length > 1 && (
+                          <div>
+                            <label className={LABEL_CLASS}>地域・ローカル表現</label>
+                            <select
+                              value={lp.region}
+                              onChange={(e) => updateLangProfile(langCode, 'region', e.target.value)}
+                              className={SELECT_CLASS}
+                            >
+                              <option value="">選択してください</option>
+                              {enabledRegions.map((r) => (
+                                <option key={r.code} value={r.code}>{r.displayLabel}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        {enabledRegions.length === 1 && (
+                          <div>
+                            <span className={LABEL_CLASS}>地域</span>
+                            <p className={READONLY_VALUE_CLASS}>{enabledRegions[0].displayLabel}</p>
+                          </div>
+                        )}
+                        {enabledRegions.length === 0 && langRegions.length > 0 && (
+                          <div>
+                            <span className={LABEL_CLASS}>地域</span>
+                            <p className={READONLY_VALUE_CLASS + ' text-[#8b8ba3]'}>準備中</p>
+                          </div>
+                        )}
+                        <div className="space-y-0.5">
+                          <p className="text-xs leading-relaxed text-[#5a5a7a]">地域ごとの自然な言い回しや会話スタイルを学べます</p>
+                          <p className="text-[11px] leading-relaxed text-[#8b8ba3]">※アクセントやイントネーションは参考レベルです</p>
+                        </div>
+
+                        {/* Level */}
+                        <div>
+                          <label className={LABEL_CLASS}>現在のレベル</label>
+                          <select
+                            value={lp.level}
+                            onChange={(e) => updateLangProfile(langCode, 'level', e.target.value)}
+                            className={SELECT_CLASS}
+                          >
+                            <option value="">選択してください</option>
+                            {CURRENT_LEVEL_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Goal */}
+                        <div>
+                          <label className={LABEL_CLASS}>学習目標</label>
+                          <input
+                            type="text"
+                            value={lp.goal}
+                            onChange={(e) => updateLangProfile(langCode, 'goal', e.target.value)}
+                            className={INPUT_CLASS}
+                            placeholder={langCode === 'ko' ? '例：韓国ドラマを字幕なしで見たい' : '例：仕事で英語を使えるようになりたい'}
+                          />
+                        </div>
+
+                        {/* Deadline */}
+                        <div>
+                          <label className={LABEL_CLASS}>話せるようになりたい期間</label>
+                          <select
+                            value={lp.deadline}
+                            onChange={(e) => updateLangProfile(langCode, 'deadline', e.target.value)}
+                            className={SELECT_CLASS}
+                          >
+                            {DEADLINE_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                      </div>
+                    )
+                  })}
+
                 </div>
               </section>
             </div>
+
+            {/* Language selection modal */}
+            {langModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setLangModalOpen(false)}>
+                <div
+                  className="mx-4 flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border border-[#E8E4DF] bg-white shadow-[0_16px_40px_rgba(15,23,42,0.12)]"
+                  onClick={(e) => e.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="学習する言語を選択"
+                >
+                  {/* Modal header */}
+                  <div className="shrink-0 border-b border-[#F0ECE6] px-6 py-5">
+                    <h3 className="text-lg font-black text-[#1a1a2e]">学習する言語を選択</h3>
+                    <p className="mt-1 text-xs text-[#7c7c7c]">最大2つまで選択できます</p>
+                  </div>
+                  {/* Modal body — scrollable */}
+                  <div className="flex-1 overflow-y-auto px-6 py-4">
+                    <div className="space-y-2">
+                      {TARGET_LANGUAGE_OPTIONS.map((opt) => {
+                        const isAvailable = opt.hasConversationContent
+                        const isDraftSelected = langModalDraft.includes(opt.value)
+                        const lockedLang = getDailyLockedLanguage()
+                        const isLocked = lockedLang === opt.value && isDailyLanguageLocked()
+                        const atMax = langModalDraft.length >= 2 && !isDraftSelected
+                        const disabled = !isAvailable || (isLocked && isDraftSelected) || atMax
+
+                        return (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => {
+                              if (disabled || !isAvailable) return
+                              setLangModalDraft((prev) =>
+                                isDraftSelected ? prev.filter((c) => c !== opt.value) : [...prev, opt.value]
+                              )
+                            }}
+                            className={`flex w-full items-center justify-between rounded-xl border-2 px-4 py-3 text-sm font-bold transition ${
+                              !isAvailable
+                                ? 'border-dashed border-[#E8E4DF] bg-[#faf8f5] text-[#b0b0b0] cursor-default'
+                                : isDraftSelected
+                                  ? 'border-blue-400 bg-blue-50 text-blue-700'
+                                  : disabled
+                                    ? 'border-[#E8E4DF] bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    : 'border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'
+                            }`}
+                          >
+                            <span>
+                              {opt.label}
+                              {isAvailable && isDraftSelected && isLocked && ' 🔒'}
+                            </span>
+                            <span>
+                              {isAvailable && isDraftSelected && !isLocked && (
+                                <span className="text-blue-500">✓</span>
+                              )}
+                              {isAvailable && !isDraftSelected && (
+                                <span className="text-[11px] font-medium text-emerald-600">利用可能</span>
+                              )}
+                              {!isAvailable && (
+                                <span className="text-[11px] font-medium text-[#b0b0b0]">準備中</span>
+                              )}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {langModalDraft.length >= 2 && TARGET_LANGUAGE_OPTIONS.some((o) => o.hasConversationContent && !langModalDraft.includes(o.value)) && (
+                      <p className="mt-3 text-xs text-amber-600">他の言語を選ぶには、いずれか1つの選択を外してください</p>
+                    )}
+                    {getDailyLockedLanguage() && isDailyLanguageLocked() && (
+                      <p className="mt-2 text-xs text-[#7c7c7c]">🔒 今日の学習中の言語は完了まで外せません</p>
+                    )}
+                  </div>
+                  {/* Modal footer */}
+                  <div className="shrink-0 flex items-center justify-end gap-3 border-t border-[#F0ECE6] px-6 py-4">
+                    <button
+                      type="button"
+                      onClick={() => setLangModalOpen(false)}
+                      className="rounded-xl border border-[#E8E4DF] bg-white px-5 py-2.5 text-sm font-bold text-[#5a5a7a] transition hover:bg-[#FAF8F5]"
+                    >
+                      閉じる
+                    </button>
+                    <button
+                      type="button"
+                      disabled={langSaveStatus === 'saving'}
+                      onClick={async () => {
+                        const userId = profile?.id
+                        if (!userId) return
+                        try {
+                          setLangSaveStatus('saving')
+                          // Remove deselected languages
+                          const removed = selectedLangCodes.filter((c) => !langModalDraft.includes(c))
+                          for (const code of removed) {
+                            await supabase.from('user_learning_profiles').delete().eq('user_id', userId).eq('language_code', code)
+                          }
+                          // Add newly selected languages
+                          const added = langModalDraft.filter((c) => !selectedLangCodes.includes(c))
+                          for (const code of added) {
+                            const addedRegions = getRegionsForLanguage(code).filter((r) => r.enabled)
+                            const defaultRegion = addedRegions.length === 1 ? addedRegions[0].code : undefined
+                            await supabase.from('user_learning_profiles').upsert({
+                              user_id: userId,
+                              language_code: code,
+                              current_level: 'beginner',
+                              ...(defaultRegion ? { target_region_slug: defaultRegion } : {}),
+                            }, { onConflict: 'user_id,language_code' })
+                          }
+                          setSelectedLangCodes([...langModalDraft])
+                          setLangModalOpen(false)
+                        } catch (err) {
+                          console.error('Language save error:', err)
+                        } finally {
+                          setLangSaveStatus('idle')
+                        }
+                      }}
+                      className="rounded-xl bg-[#F5A623] px-5 py-2.5 text-sm font-bold text-white shadow-[0_4px_12px_rgba(245,166,35,0.25)] transition hover:bg-[#D4881A] disabled:opacity-70"
+                    >
+                      {langSaveStatus === 'saving' ? '保存中...' : '保存する'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Save action area */}
             <div className="flex flex-col items-center justify-center gap-4 pt-4 pb-2">

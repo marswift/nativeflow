@@ -5,7 +5,9 @@
  */
 import { getSupabaseBrowserClient } from './supabase/browser-client'
 import type { UserProfileRow } from './types'
-import { buildLessonPageData, type LessonPageData } from './lesson-page-data'
+import { buildLessonPageData, enrichWithCorpusSelection, type LessonPageData } from './lesson-page-data'
+import { applyCorpusToListen } from './corpus/apply-corpus-listen'
+import { applyCorpusToAiConversation } from './corpus/apply-corpus-ai-conversation'
 import type { LessonBlock, LessonBlockItem } from './lesson-engine'
 import { fetchReviewItemsWithContent, injectReviewBlocks } from './review-injection'
 import pLimit from 'p-limit'
@@ -41,12 +43,18 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
   const { data: userRow } = await supabase
     .from('user_profiles')
     .select(
-      'id, ui_language_code, current_learning_language, planned_plan_code, subscription_status, preferred_session_length, enable_dating_contexts, total_flow_points'
+      'id, ui_language_code, current_learning_language, planned_plan_code, subscription_status, preferred_session_length, enable_dating_contexts, total_flow_points, total_diamonds, diamond_boost_until, streak_frozen_date, streak_freeze_expiry, weekly_challenge_unlocked_at, weekly_challenge_completed_at, current_streak_days, last_streak_date, last_streak_restore_date, role, is_admin, billing_exempt, billing_exempt_until, trial_ends_at'
     )
     .eq('id', session.user.id)
     .single()
 
-  const currentLang = userRow?.current_learning_language ?? 'en'
+  // Daily language lock takes precedence over profile setting
+  let currentLang = userRow?.current_learning_language ?? 'en'
+  try {
+    const { getDailyLockedLanguage } = await import('./daily-language-lock')
+    const lockedLang = getDailyLockedLanguage()
+    if (lockedLang) currentLang = lockedLang
+  } catch { /* non-blocking */ }
 
   const { data: row, error: fetchError } = await supabase
     .from('user_learning_profiles')
@@ -66,7 +74,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
       id: session.user.id,
       ui_language_code: userRow?.ui_language_code ?? 'ja',
       target_language_code: currentLang,
-      target_country_code: null,
+      // target_country_code: deprecated — omitted (always null)
       target_region_slug: null,
       current_level: 'beginner',
       target_outcome_text: null,
@@ -80,7 +88,11 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
       current_period_end: null,
       cancel_at_period_end: null,
     }
-    const fallbackPageData = buildLessonPageData(fallbackProfile)
+    let fallbackPageData = buildLessonPageData(fallbackProfile)
+    fallbackPageData = await enrichWithCorpusSelection(fallbackPageData)
+    fallbackPageData = await applyCorpusToListen(fallbackPageData)
+    fallbackPageData = await applyCorpusToAiConversation(fallbackPageData)
+    logCorpusSelection(fallbackPageData)
     const fallbackReviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
     if (fallbackReviewSources.length > 0) {
       const injected = injectReviewBlocks(fallbackPageData.lesson, fallbackReviewSources)
@@ -113,7 +125,11 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     cancel_at_period_end: null,
   }
   
-  const pageData = buildLessonPageData(profile)
+  let pageData = buildLessonPageData(profile)
+  pageData = await enrichWithCorpusSelection(pageData)
+  pageData = await applyCorpusToListen(pageData)
+  pageData = await applyCorpusToAiConversation(pageData)
+  logCorpusSelection(pageData)
 
   const reviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
   if (reviewSources.length > 0) {
@@ -129,49 +145,102 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
   }
 }
 
-async function hydrateAudioForText(text: string): Promise<string | null> {
-  if (!text || text.trim() === '') return null
+/** Log corpus selection metadata (shared between both loader paths). */
+function logCorpusSelection(data: LessonPageData): void {
+  const cs = data.corpusSelection
+  if (!cs) return
+  // eslint-disable-next-line no-console
+  console.log('[corpus-selection]', {
+    targetDifficulty: cs.targetDifficulty,
+    candidateCount: cs.candidateCount,
+    sequenceLength: cs.summary.count,
+    minDifficulty: cs.summary.minDifficulty,
+    maxDifficulty: cs.summary.maxDifficulty,
+    avgDifficulty: cs.summary.avgDifficulty,
+    selectedAt: cs.selectedAt,
+  })
+}
+
+/** Timeout for a single audio generation request (15 seconds). */
+const AUDIO_FETCH_TIMEOUT_MS = 15_000
+
+async function fetchAudioOnce(text: string, speed?: number): Promise<string | null> {
+  // Always use relative URL in browser; absolute only for SSR
+  const baseUrl = typeof window !== 'undefined' ? '' : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000')
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), AUDIO_FETCH_TIMEOUT_MS)
+
+  const body: Record<string, unknown> = { text }
+  if (typeof speed === 'number') body.speed = speed
 
   try {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (typeof window !== 'undefined' ? '' : 'http://localhost:3000')
-
     const res = await fetch(`${baseUrl}/api/audio/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(body),
       cache: 'no-store',
+      signal: controller.signal,
     })
+    clearTimeout(timer)
 
     if (!res.ok) return null
-
     const data = await res.json()
     return data.audio_url ?? null
-  } catch (e) {
-    console.error('audio hydrate error', e)
+  } catch {
+    clearTimeout(timer)
     return null
   }
+}
+
+type AudioHydrateResult = {
+  audioUrl: string | null
+  audioStatus: 'ok' | 'fallback' | 'failed'
+}
+
+async function hydrateAudioForText(text: string, speed?: number): Promise<AudioHydrateResult> {
+  if (!text || text.trim() === '') return { audioUrl: null, audioStatus: 'failed' }
+
+  // Attempt 1
+  let url = await fetchAudioOnce(text, speed)
+  if (url) return { audioUrl: url, audioStatus: 'ok' }
+
+  // Attempt 2 — retry once
+  url = await fetchAudioOnce(text, speed)
+  if (url) return { audioUrl: url, audioStatus: 'ok' }
+
+  return { audioUrl: null, audioStatus: 'failed' }
+}
+
+/** TTS speed by level. Beginner gets slower speech for better comprehension. */
+function getAudioSpeedForLevel(level: string): number | undefined {
+  if (level === 'beginner') return 0.85
+  return undefined // default (1.0)
 }
 
 export async function hydrateLessonAudio(
   session: HydratableLessonSession
 ): Promise<HydratableLessonSession> {
+  const speed = getAudioSpeedForLevel(session.level)
+
   const newBlocks = await Promise.all(
     session.blocks.map(async (block: LessonBlock) => {
       const newItems = await Promise.all(
         block.items.map((item: LessonBlockItem) =>
           limit(async () => {
+            const itemWithText = item as LessonBlockItem & { text?: string }
             const sourceText =
+              itemWithText.text?.trim() ||
               item.answer?.trim() ||
               item.prompt?.trim() ||
               ''
 
-            const audioUrl = await hydrateAudioForText(sourceText)
+            const result = await hydrateAudioForText(sourceText, speed)
 
             return {
               ...item,
-              audio_url: audioUrl,
+              audio_url: result.audioUrl,
+              audio_status: result.audioStatus,
             }
           })
         )

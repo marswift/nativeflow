@@ -12,13 +12,15 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
-import { ONBOARDING_COPY_JA } from '../../lib/onboarding-copy'
+import AppHeader from '@/components/header/app-header'
+import { getOnboardingCopy } from '../../lib/onboarding-copy'
+import { readUiLanguageFromStorage, writeUiLanguageToStorage } from '@/lib/auth-copy'
 import type { PartialUserProfileRow } from '../../lib/types'
 import {
-  UI_LANGUAGE_FIXED,
   UI_LANGUAGE_OPTIONS,
-  TARGET_LANGUAGE_OPTIONS,
+  ENABLED_TARGET_LANGUAGE_OPTIONS,
   CURRENT_LEVEL_OPTIONS,
+  getRegionsForLanguage,
   type CurrentLevel,
 } from '../../lib/constants'
 import { computeStudyPlan } from '../../lib/study-plan-service'
@@ -27,7 +29,7 @@ import {
   isUserProfileOnboardingComplete,
 } from '@/lib/profile-completion'
 
-const AFTER_SAVE_REDIRECT = '/dashboard'
+const AFTER_SAVE_REDIRECT = '/lesson'
 
 /** API may return url or checkoutUrl; we accept both. */
 type CheckoutResponse = { url?: string; checkoutUrl?: string; message?: string; error?: string }
@@ -48,8 +50,11 @@ async function requestCheckout(accessToken: string, plan: string): Promise<{ url
   return { error: data.message ?? data.error ?? CHECKOUT_ERROR_FALLBACK }
 }
 
-const UI_LANGUAGE_LABEL =
-  UI_LANGUAGE_OPTIONS.find((o) => o.value === UI_LANGUAGE_FIXED)?.label ?? '日本語'
+/** UI languages available for onboarding display switching. Only production-verified languages. Korean copy exists but is hidden until human-reviewed. */
+const ONBOARDING_UI_LANGUAGES = UI_LANGUAGE_OPTIONS.filter((o) => o.value === 'ja' || o.value === 'en')
+
+/** Learning languages with production-ready content (catalog, corpus, AI prompts). Korean is enabled in constants but has no content yet. */
+const PRODUCTION_READY_LANGUAGES = ENABLED_TARGET_LANGUAGE_OPTIONS.filter((o) => o.value === 'en')
 const DEADLINE_OPTIONS = [
   '6ヶ月',
   '1年',
@@ -72,13 +77,10 @@ const PLANNED_PLAN_OPTIONS = [
   { value: 'yearly', label: '年額プラン' },
 ] as const
 
-const LOCAL_EXPRESSION_OPTIONS = [
-  { value: 'en_us_ny', label: 'アメリカ / ニューヨーク' },
-  { value: 'en_us_la', label: 'アメリカ / ロサンゼルス' },
-  { value: 'en_gb_london', label: 'イギリス / ロンドン' },
-  { value: 'en_au', label: 'オーストラリア' },
-  { value: 'en_ca', label: 'カナダ' },
-] as const
+/** Region options derived from REGION_MASTER, filtered by language and enabled flag. */
+function getEnabledRegionOptions(languageCode: string) {
+  return getRegionsForLanguage(languageCode).filter((r) => r.enabled)
+}
 
 const ORIGIN_COUNTRY_OPTIONS = [
   { value: 'JP', label: '日本' },
@@ -106,6 +108,18 @@ const ORIGIN_COUNTRY_OPTIONS = [
 ] as const
 
 type PlannedPlanCode = (typeof PLANNED_PLAN_OPTIONS)[number]['value']
+
+/** Derive native language code from origin country. Used to auto-populate native_language_code. */
+function deriveNativeLanguageCode(countryCode: string): string {
+  const map: Record<string, string> = {
+    JP: 'ja', US: 'en', GB: 'en', AU: 'en', CA: 'en',
+    KR: 'ko', TW: 'zh', CN: 'zh', HK: 'zh', SG: 'en',
+    FR: 'fr', IT: 'it', DE: 'de', ES: 'es',
+    BR: 'pt', MX: 'es', IN: 'hi', TH: 'th',
+    VN: 'vi', PH: 'tl', ID: 'id',
+  }
+  return map[countryCode] ?? 'other'
+}
 
 function getPlannedPlanSummary(plan: PlannedPlanCode): { label: string; priceText: string } {
   return plan === 'yearly'
@@ -177,14 +191,14 @@ const supabase = getSupabaseBrowserClient()
 
 export default function OnboardingPage() {
   const router = useRouter()
-  const copy = ONBOARDING_COPY_JA
+  const [uiLanguage, setUiLanguage] = useState(() => readUiLanguageFromStorage() ?? 'ja')
+  const copy = getOnboardingCopy(uiLanguage)
   const [username, setUsername] = useState('')
   const [ageGroup, setAgeGroup] = useState('')
   const [plannedPlanCode, setPlannedPlanCode] = useState<PlannedPlanCode>('monthly')
   const [targetLanguageCode, setTargetLanguageCode] = useState('en')
   const [targetRegionSlug, setTargetRegionSlug] = useState('')
   const [originCountryCode, setOriginCountryCode] = useState('')
-  const [nativeLanguageCode, setNativeLanguageCode] = useState('')
   const [currentLevel, setCurrentLevel] = useState<CurrentLevel | ''>('')
   const [speakByDeadlineText, setSpeakByDeadlineText] = useState('')
   const [targetOutcomeText, setTargetOutcomeText] = useState('')
@@ -211,9 +225,6 @@ export default function OnboardingPage() {
       if (profile.target_outcome_text != null) setTargetOutcomeText(profile.target_outcome_text)
       const initialPlan = resolveInitialPlan(profile.planned_plan_code, metaPlan)
       setPlannedPlanCode(initialPlan)
-      if ((profile as any).native_language_code != null) {
-        setNativeLanguageCode((profile as any).native_language_code)
-      }
     }
 
     async function loadProfile() {
@@ -289,7 +300,6 @@ export default function OnboardingPage() {
     if (!ageGroup) errors.age_group = FIELD_ERROR_SELECT
     if (!targetRegionSlug) errors.target_region_slug = FIELD_ERROR_SELECT
     if (!originCountryCode) errors.origin_country = FIELD_ERROR_SELECT
-    if (!nativeLanguageCode) errors.native_language_code = FIELD_ERROR_SELECT
     if (!currentLevel) errors.current_level = FIELD_ERROR_SELECT
     if (!speakByDeadlineText.trim()) errors.speak_by_deadline = FIELD_ERROR_SELECT
     if (!targetOutcomeText.trim()) errors.target_outcome_text = FIELD_ERROR_REQUIRED
@@ -311,6 +321,25 @@ export default function OnboardingPage() {
         return
       }
 
+      // ── Username uniqueness check (exclude own profile) ──
+      const trimmedUsername = username.trim()
+      const { data: existingUser, error: usernameCheckError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('username', trimmedUsername)
+        .neq('id', user.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (usernameCheckError) {
+        console.warn('Username uniqueness check failed', usernameCheckError)
+        // Non-blocking: if the check itself fails, let submission proceed
+        // rather than blocking users due to a transient query error
+      } else if (existingUser) {
+        setFieldErrors({ username: 'このユーザー名は既に使われています' })
+        return
+      }
+
       const studyPlan = computeStudyPlan({
         deadlineText: speakByDeadlineText.trim(),
         currentLevel: currentLevel as CurrentLevel,
@@ -320,10 +349,15 @@ export default function OnboardingPage() {
         id: user.id,
         email: user.email,
       })
+      // App-level trial: 7 days from signup
+      const trialStart = new Date()
+      const trialEnd = new Date(trialStart)
+      trialEnd.setDate(trialEnd.getDate() + 7)
+
       const payload = {
         id: user.id,
-        ui_language_code: UI_LANGUAGE_FIXED,
-        native_language_code: nativeLanguageCode,
+        ui_language_code: uiLanguage,
+        native_language_code: deriveNativeLanguageCode(originCountryCode),
         target_language_code: targetLanguageCode,
         current_learning_language: targetLanguageCode,
         target_region_slug: targetRegionSlug,
@@ -335,6 +369,8 @@ export default function OnboardingPage() {
         username: username.trim(),
         age_group: ageGroup,
         planned_plan_code: plannedPlanCode || 'monthly',
+        trial_start_at: trialStart.toISOString(),
+        trial_ends_at: trialEnd.toISOString(),
       }
 
       const { error: upsertError } = await supabase
@@ -392,17 +428,9 @@ export default function OnboardingPage() {
         setFormError(copy.errors.loginRequired)
         return
       }
-      setCheckoutLaunching(true)
-      try {
-        const result = await requestCheckout(accessToken, plannedPlanCode || 'monthly')
-        if (result.url) {
-          window.location.assign(result.url)
-          return
-        }
-        setFormError(result.error ?? CHECKOUT_ERROR_FALLBACK)
-      } finally {
-        setCheckoutLaunching(false)
-      }
+      // Skip Stripe checkout — let user experience lessons first.
+      // Payment is requested later via paywall or billing page.
+      window.location.assign('/lesson')
     } catch (error) {
       console.warn('Onboarding submit handled exception', error)
       setFormError(getRuntimeErrorMessage(error, copy.errors.saveError))
@@ -417,13 +445,7 @@ export default function OnboardingPage() {
         className="min-h-screen flex flex-col bg-[#f7f4ef]"
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-          <div className="mx-auto flex h-16 max-w-[960px] items-center px-6 sm:px-10">
-            <Link href="/" className="flex items-center" aria-label="NativeFlow トップへ">
-              <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
-            </Link>
-          </div>
-        </header>
+        <AppHeader />
         <main className="flex-1 flex items-center justify-center">
           <p className="text-[#4a4a6a] font-medium">{copy.loading}</p>
         </main>
@@ -446,13 +468,7 @@ export default function OnboardingPage() {
       className="min-h-screen flex flex-col bg-[#f7f4ef] text-[#1a1a2e]"
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-        <div className="mx-auto flex h-16 max-w-[960px] items-center px-6 sm:px-10">
-          <Link href="/" className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg" aria-label="NativeFlow トップへ">
-            <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
-          </Link>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
@@ -474,10 +490,24 @@ export default function OnboardingPage() {
           <form onSubmit={handleSubmit} className={CARD_CLASS}>
             <div className="space-y-6">
               <div>
-                <span className={LABEL_CLASS}>{copy.labels.uiLanguage}</span>
-                <div className="mt-2 rounded-xl border border-[#ede9e2] bg-[#faf9f7] px-4 py-3 text-[#1a1a2e]">
-                  {UI_LANGUAGE_LABEL}
-                </div>
+                <label htmlFor="ui_language_code" className={LABEL_CLASS}>{copy.labels.uiLanguage}</label>
+                <select
+                  id="ui_language_code"
+                  value={uiLanguage}
+                  onChange={(e) => {
+                    setUiLanguage(e.target.value)
+                    writeUiLanguageToStorage(e.target.value)
+                  }}
+                  className={INPUT_CLASS}
+                  disabled={loading || checkoutLaunching}
+                >
+                  {ONBOARDING_UI_LANGUAGES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+                {copy.hints.uiLanguage && (
+                  <p className="mt-1.5 text-xs text-[#9ca3af]">{copy.hints.uiLanguage}</p>
+                )}
               </div>
 
               <div>
@@ -487,11 +517,14 @@ export default function OnboardingPage() {
                 <select
                   id="target_language_code"
                   value={targetLanguageCode}
-                  onChange={(e) => setTargetLanguageCode(e.target.value)}
+                  onChange={(e) => {
+                    setTargetLanguageCode(e.target.value)
+                    setTargetRegionSlug('')
+                  }}
                   className={INPUT_CLASS}
                   disabled={loading || checkoutLaunching}
                 >
-                  {TARGET_LANGUAGE_OPTIONS.map((option) => (
+                  {PRODUCTION_READY_LANGUAGES.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -550,7 +583,7 @@ export default function OnboardingPage() {
                 </div>
               </div>
               <div>
-                <label htmlFor="target_country_code" className={LABEL_CLASS}>
+                <label htmlFor="target_region_slug" className={LABEL_CLASS}>
                   学習したい地域・ローカル表現 <span className="ml-1 text-xs font-medium text-amber-600">{copy.requiredMark}</span>
                 </label>
                 <select
@@ -561,9 +594,9 @@ export default function OnboardingPage() {
                   disabled={loading || checkoutLaunching}
                 >
                   <option value="">{copy.placeholders.select}</option>
-                  {LOCAL_EXPRESSION_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                  {getEnabledRegionOptions(targetLanguageCode).map((r) => (
+                    <option key={r.code} value={r.code}>
+                      {r.displayLabel}
                     </option>
                   ))}
                 </select>
@@ -595,40 +628,6 @@ export default function OnboardingPage() {
                 )}
               </div>
 
-              <div>
-                <label htmlFor="native_language_code" className={LABEL_CLASS}>
-                  母国語 <span className="ml-1 text-xs font-medium text-amber-600">{copy.requiredMark}</span>
-                </label>
-                <select
-                  id="native_language_code"
-                  value={nativeLanguageCode}
-                  onChange={(e) => setNativeLanguageCode(e.target.value)}
-                  className={INPUT_CLASS}
-                  disabled={loading || checkoutLaunching}
-                >
-                  <option value="">選択してください</option>
-                  <option value="ja">日本語</option>
-                  <option value="en">英語</option>
-                  <option value="ko">韓国語</option>
-                  <option value="zh">中国語</option>
-                  <option value="es">スペイン語</option>
-                  <option value="fr">フランス語</option>
-                  <option value="de">ドイツ語</option>
-                  <option value="it">イタリア語</option>
-                  <option value="pt">ポルトガル語</option>
-                  <option value="ru">ロシア語</option>
-                  <option value="ar">アラビア語</option>
-                  <option value="hi">ヒンディー語</option>
-                  <option value="th">タイ語</option>
-                  <option value="vi">ベトナム語</option>
-                  <option value="id">インドネシア語</option>
-                  <option value="tl">タガログ語</option>
-                  <option value="other">その他</option>
-                </select>
-                {fieldErrors.native_language_code && (
-                  <p className="mt-1.5 text-sm text-red-600">{fieldErrors.native_language_code}</p>
-                )}
-              </div>
 
               <div>
                 <label htmlFor="current_level" className={LABEL_CLASS}>
@@ -715,43 +714,21 @@ export default function OnboardingPage() {
             )}
 
             <div className="mt-6 rounded-xl border-2 border-amber-200/70 bg-amber-50/40 px-4 py-4 sm:px-5 sm:py-5">
-              <h3 className="text-sm font-bold text-[#1a1a2e] mb-3">無料トライアルと解約について</h3>
+              <h3 className="text-sm font-bold text-[#1a1a2e] mb-3">ご利用について</h3>
               <ul className="space-y-1.5 text-sm text-[#2a2a4a] leading-relaxed list-none">
                 <li className="flex gap-2">
                   <span className="text-amber-600 shrink-0">・</span>
-                  <span>このあと表示される決済画面で、7日間無料トライアル開始のためのクレジットカード登録を行いますが、無料期間終了までは決済されませんのでご安心ください</span>
+                  <span>まずは無料でレッスンをお試しいただけます</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-amber-600 shrink-0">・</span>
-                  <span>無料期間中は料金は発生しません</span>
+                  <span>無料期間終了後、続けるにはプラン登録が必要です</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-amber-600 shrink-0">・</span>
-                  <span>無料期間中に解約した場合、料金は請求されません</span>
+                  <span>プラン登録はアプリ内の「お支払い」画面からいつでも行えます</span>
                 </li>
-                <li className="flex gap-2">
-                  <span className="text-amber-600 shrink-0">・</span>
-                  <span>無料期間終了後に自動で課金が開始されます</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-amber-600 shrink-0">・</span>
-                  <span>{plannedPlanCode === 'yearly' ? '年額プランは毎年自動更新です' : '月額プランは毎月自動更新です'}</span>
-                </li>
-                <li className="flex gap-2">
-                <span className="text-amber-600 shrink-0">・</span>
-                <span>
-                  無料期間中の解約は、
-                  <Link
-                    href="/contact"
-                    className="font-semibold text-amber-700 underline underline-offset-2 hover:text-amber-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded"
-                  >
-                    お問い合わせページ
-                  </Link>
-                  からご連絡ください
-                </span>
-              </li>
               </ul>
-
             </div>
             <button
               type="submit"

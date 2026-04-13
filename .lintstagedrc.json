@@ -1,0 +1,3 @@
+{
+  "messages/*.json": ["npx tsx scripts/validate-messages.ts"]
+}

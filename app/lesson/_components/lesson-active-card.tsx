@@ -1,12 +1,81 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getEmmaHint, getLessonCopy, type EmmaHintStage } from '../../../lib/lesson-copy'
+import { generateConversation, evaluateConversationAnswer, type ConversationPromptSpec } from '../../../lib/ai-question-conversation-engine'
+import { generateExtendedConversation, evaluateExtendedAnswer } from '../../../lib/ai-conversation-extended-engine'
+import { trackEvent } from '../../../lib/analytics'
+import { evaluateRepeat } from '../../../lib/repeat-evaluator'
+import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
 import type { LessonCopy } from '../../../lib/lesson-copy'
 import type { LessonBlock, LessonBlockItem } from '../../../lib/lesson-engine'
 import type { SemanticChunk } from '../../../lib/lesson-blueprint-adapter'
 import type { LessonProgressState } from '../../../lib/lesson-progress'
 import type { LessonStageId } from '../../../lib/lesson-runtime'
 import type { CurrentLevel } from '../../../lib/constants'
+import AudioChoiceStage from './audio-choice-stage'
+import type { AudioChoiceItem } from '../../../lib/audio-choice-types'
+import { buildFallbackEvaluation, incrementAiCallCount, isAiLimitReached } from '../../../lib/ai-conversation-fallback'
+import { getRegionContext } from '../../../lib/daily-timeline'
+import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
+import { resolveSceneConversation } from '../../../lib/conversation-resolver'
+
+// ── Button class constants (design system) ──
+const BTN_PRIMARY = 'rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600'
+const BTN_ACTION = 'rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]'
+const BTN_SECONDARY = 'rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]'
+const BTN_STOP = 'rounded-xl bg-gray-400 px-6 py-3 text-sm font-bold text-white transition hover:bg-gray-500'
+const BTN_DISABLED = 'rounded-xl bg-gray-300 px-6 py-3 text-sm font-bold text-white cursor-not-allowed'
+
+/** Debug logger — only outputs in development, silent in production */
+const debugLog = process.env.NODE_ENV === 'production'
+  ? (() => {}) as (...args: unknown[]) => void
+  // eslint-disable-next-line no-console
+  : (tag: string, data?: unknown) => console.log(tag, data)
+
+// ── Challenge audio cache + prefetch (shared across SoundGame / QuickResponseGame) ──
+const challengeAudioCache = new Map<string, string>()
+const challengeAudioInflight = new Map<string, Promise<string | null>>()
+
+function challengeAudioKey(text: string, speed: number): string {
+  return `${text.trim().toLowerCase()}|${speed}`
+}
+
+async function ensureChallengeAudioUrl(text: string, speed: number): Promise<string | null> {
+  const key = challengeAudioKey(text, speed)
+  const cached = challengeAudioCache.get(key)
+  if (cached) return cached
+  const inflight = challengeAudioInflight.get(key)
+  if (inflight) return inflight
+  const promise = fetch('/api/audio/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, speed }),
+  }).then(async (res) => {
+    if (res.ok) {
+      const data = await res.json()
+      const url = data.audio_url as string | undefined
+      if (url) { challengeAudioCache.set(key, url); return url }
+    }
+    return null
+  }).catch(() => null).finally(() => {
+    challengeAudioInflight.delete(key)
+  })
+  challengeAudioInflight.set(key, promise)
+  return promise
+}
+
+/** Flavor context for AI conversation prompts. Matches AiConversationFlavorContext in ai-conversation-prompt.ts. */
+type FlavorContext = {
+  sceneId?: string
+  region?: string
+  ageGroup?: string
+  topics?: string[]
+  references?: string[]
+  cultureNotes?: string[]
+  setting?: string
+  lifestyle?: string[]
+}
 
 /** Mirrors AiConversationEvaluation from lib/ai-conversation-prompt.ts (client-safe) */
 type ConvEvalDetail = {
@@ -16,6 +85,8 @@ type ConvEvalDetail = {
   score: number
   feedback: string
   correction: string | null
+  naturalAlternative: string | null
+  followUp: string | null
 }
 
 const LESSON_STAGE_ORDER: LessonStageId[] = [
@@ -26,7 +97,8 @@ const LESSON_STAGE_ORDER: LessonStageId[] = [
   'ai_conversation',
 ]
 
-/** Reusable scene image block — consistent styling across stages. */
+/** Reusable scene image block — consistent styling across stages.
+ *  Scene assets are 1:1 — same file on desktop and mobile, no _p variant. */
 function LessonSceneImage({
   src,
   alt,
@@ -36,27 +108,17 @@ function LessonSceneImage({
   alt: string
   caption?: string
 }) {
-  const mobileSrc = src.endsWith('.webp')
-    ? src.replace('.webp', '_p.webp')
-    : src
-
   return (
-    <div>
-      <div className="overflow-hidden rounded-[18px] border border-[#DBEAFE] bg-white shadow-[0_4px_16px_rgba(37,99,235,0.06)]">
-        <picture>
-          <source
-            media="(max-width: 768px)"
-            srcSet={mobileSrc}
-          />
-          <img
-            src={src}
-            alt={alt}
-            className="h-[200px] w-full object-cover"
-          />
-        </picture>
+    <div className="mx-auto w-full max-w-[270px] md:max-w-[324px]">
+      <div className="w-full aspect-square flex items-center justify-center overflow-hidden rounded-[18px] border border-[#DBEAFE] bg-[#f8fafc] shadow-[0_4px_16px_rgba(37,99,235,0.06)]">
+        <img
+          src={src}
+          alt={alt}
+          className="h-full w-full object-contain"
+        />
       </div>
       {caption && (
-        <p className="mt-2 mb-2 text-center text-sm text-[#6b7280]">{caption}</p>
+        <p className="mt-1 mb-0.5 text-center text-xs text-[#6b7280]">{caption}</p>
       )}
     </div>
   )
@@ -65,6 +127,18 @@ function LessonSceneImage({
 function getSceneCaption(input: { scenarioLabel: string; dynamicConversationHeading: string }): string {
   const s = input.scenarioLabel.trim()
   return s || input.dynamicConversationHeading
+}
+
+/** Paths that should NOT be rendered as lesson images (placeholders only). */
+const INVALID_IMAGE_PATHS = [
+  '/images/lesson-scene-placeholder',
+]
+
+function isValidLessonImage(url: string | null | undefined): url is string {
+  if (!url) return false
+  const trimmed = url.trim()
+  if (!trimmed) return false
+  return !INVALID_IMAGE_PATHS.some((prefix) => trimmed.startsWith(prefix))
 }
 
 function getItemAudioUrl(item: LessonBlockItem): string {
@@ -115,6 +189,157 @@ function buildMixedText(nativeText: string, targetText: string): string {
   return `${firstWord} ... ${nativeText}`
 }
 
+const SUBJECT_PRONOUNS = new Set(['i', 'you', 'we', 'they', 'he', 'she', 'it'])
+const TIME_WORDS = new Set([
+  'today', 'yesterday', 'tomorrow', 'tonight', 'now',
+  'later', 'soon', 'already', 'again', 'everyday',
+])
+const SPLIT_PREPS = new Set([
+  'with', 'to', 'at', 'in', 'on', 'from', 'for', 'about',
+  'by', 'into', 'after', 'before', 'through',
+])
+
+/** Lightweight tense/form normalization for chunk matching. */
+function normalizeForChunkMatch(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, '')
+    // Past tense → base
+    .replace(/\b(talked|talking)\b/g, 'talk')
+    .replace(/\b(went|going)\b/g, 'go')
+    .replace(/\b(took|taking)\b/g, 'take')
+    .replace(/\b(made|making)\b/g, 'make')
+    .replace(/\b(got|getting)\b/g, 'get')
+    .replace(/\b(had|having)\b/g, 'have')
+    .replace(/\b(came|coming)\b/g, 'come')
+    .replace(/\b(ran|running)\b/g, 'run')
+    .replace(/\b(met|meeting)\b/g, 'meet')
+    .replace(/\b(woke|waking)\b/g, 'wake')
+    .replace(/\b(ate|eating)\b/g, 'eat')
+    .replace(/\b(drank|drinking)\b/g, 'drink')
+    .replace(/\b(slept|sleeping)\b/g, 'sleep')
+    .replace(/\b(bought|buying)\b/g, 'buy')
+    .replace(/\b(said|saying)\b/g, 'say')
+    // Common -ed regular verbs → strip -ed
+    .replace(/\b(\w{3,})ed\b/g, '$1')
+    // Strip articles for looser matching
+    .replace(/\b(a|an|the|my|your|his|her)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Extract semantic (verb-centered) chunks from a sentence.
+ *
+ * Strategy:
+ *  1. Strip leading subject pronoun
+ *  2. Strip trailing time word
+ *  3. Short core (≤4 words) → 1 chunk
+ *  4. Medium core (5–6 words) → split at last prep → 2 chunks
+ *  5. Long core (7+ words) → split at first AND last prep → up to 3 chunks
+ *  Max 3 semantic chunks + optional time chunk.
+ *
+ * "I talked with my friend today"
+ *   → ["talked with my friend", "today"]
+ *
+ * "I went to the store with my friend yesterday"
+ *   → ["went to the store", "with my friend", "yesterday"]
+ *
+ * "I am looking for a new apartment in Tokyo"
+ *   → ["looking for", "a new apartment", "in Tokyo"]
+ */
+function extractSemanticChunks(
+  sentence: string | null | undefined,
+  catalogChunks?: SemanticChunk[] | null
+): SemanticChunk[] | null {
+  if (!sentence) return null
+  const words = sentence.replace(/[.,!?;:]+$/g, '').split(/\s+/).filter(Boolean)
+  if (words.length === 0) return null
+
+  let start = 0
+  let end = words.length
+
+  // Strip leading subject pronoun
+  if (SUBJECT_PRONOUNS.has(words[0].toLowerCase())) {
+    start = 1
+  }
+
+  // Strip trailing time word
+  let timeChunk: string | null = null
+  if (end - start > 2 && TIME_WORDS.has(words[end - 1].toLowerCase())) {
+    timeChunk = words[end - 1]
+    end -= 1
+  }
+
+  const core = words.slice(start, end)
+  const chunks: SemanticChunk[] = []
+  const mkChunk = (text: string) => ({ chunk: text, meaning: '', type: 'phrase' as const })
+
+  if (core.length === 0) {
+    // nothing
+  } else if (core.length <= 4) {
+    // Short → single chunk
+    chunks.push(mkChunk(core.join(' ')))
+  } else {
+    // Find all preposition positions (index ≥ 1 to avoid splitting at start)
+    const prepPositions: number[] = []
+    for (let i = 1; i < core.length; i++) {
+      if (SPLIT_PREPS.has(core[i].toLowerCase())) {
+        prepPositions.push(i)
+      }
+    }
+
+    if (prepPositions.length >= 2 && core.length >= 7) {
+      // 3-way split: verb phrase | object | location
+      const first = prepPositions[0]
+      const last = prepPositions[prepPositions.length - 1]
+      if (last > first + 1) {
+        chunks.push(mkChunk(core.slice(0, first).join(' ') + ' ' + core[first]))
+        chunks.push(mkChunk(core.slice(first + 1, last).join(' ')))
+        chunks.push(mkChunk(core.slice(last).join(' ')))
+      } else {
+        // Preps too close — fall back to 2-way at last prep
+        chunks.push(mkChunk(core.slice(0, last).join(' ')))
+        chunks.push(mkChunk(core.slice(last).join(' ')))
+      }
+    } else if (prepPositions.length >= 1) {
+      // 2-way split at last preposition
+      const splitAt = prepPositions[prepPositions.length - 1]
+      if (splitAt >= 2) {
+        chunks.push(mkChunk(core.slice(0, splitAt).join(' ')))
+        chunks.push(mkChunk(core.slice(splitAt).join(' ')))
+      } else {
+        chunks.push(mkChunk(core.join(' ')))
+      }
+    } else {
+      // No preposition → single chunk
+      chunks.push(mkChunk(core.join(' ')))
+    }
+  }
+
+  // Trailing time as optional extra chunk
+  if (timeChunk) {
+    chunks.push({ chunk: timeChunk, meaning: '', type: 'word' })
+  }
+
+  // Attach meanings from catalog via tense-normalized includes matching
+  if (catalogChunks && catalogChunks.length > 0) {
+    for (const c of chunks) {
+      if (c.meaning) continue
+      const norm = normalizeForChunkMatch(c.chunk)
+      const match = catalogChunks.find((cat) => {
+        const base = normalizeForChunkMatch(cat.chunk)
+        return norm.includes(base) || base.includes(norm)
+      })
+      if (match?.meaning) {
+        c.meaning = match.meaning
+      }
+    }
+  }
+
+  return chunks.length > 0 ? chunks : null
+}
+
 function getScaffoldSteps(item: LessonBlockItem): string[] {
   const customSteps = Array.isArray(item.scaffold_steps)
     ? item.scaffold_steps.map((step) => step.trim()).filter(Boolean)
@@ -157,20 +382,19 @@ type PronunciationScoreApiResponse = {
 
 /**
  * Returns a single short improvement tip based on score breakdown and missing words.
- * Prioritizes the weakest metric. Always encouraging, never harsh.
+ * Prioritizes the weakest metric. All text from copy system.
  */
 function getRepeatTip(
   breakdown: RepeatScoreBreakdown | null,
   missingWords: string[],
-  score: number | null
+  score: number | null,
+  uiText: LessonCopy['activeCard']
 ): string | null {
   if (score === null) return null
 
-  // Perfect or near-perfect → pure encouragement
-  if (score >= 90) return 'リズムは良いです。この調子です'
+  if (score >= 90) return uiText.repeatTipPerfect
 
   if (breakdown) {
-    // Find weakest metric
     const metrics = [
       { key: 'completeness', value: breakdown.completeness },
       { key: 'wordMatch', value: breakdown.wordMatch },
@@ -181,26 +405,25 @@ function getRepeatTip(
 
     if (weakest.key === 'completeness' && weakest.value < 70) {
       return missingWords.length > 0
-        ? `「${missingWords[0]}」を意識して最後まで言い切ると良くなります`
-        : '最後まで言い切ると伝わりやすくなります'
+        ? uiText.repeatTipCompletenessMissing.replace('{word}', missingWords[0])
+        : uiText.repeatTipCompleteness
     }
     if (weakest.key === 'wordMatch' && weakest.value < 70) {
       return missingWords.length > 0
-        ? `「${missingWords[0]}」の音をもう少し意識してみましょう`
-        : 'もう一度聞いて音の違いを確認してみましょう'
+        ? uiText.repeatTipWordMatchMissing.replace('{word}', missingWords[0])
+        : uiText.repeatTipWordMatch
     }
     if (weakest.key === 'clarity' && weakest.value < 70) {
-      return 'もう少しゆっくり話すと伝わりやすいです'
+      return uiText.repeatTipClarity
     }
     if (weakest.key === 'rhythm' && weakest.value < 70) {
-      return '語尾を少しはっきり言うともっと良くなります'
+      return uiText.repeatTipRhythm
     }
   }
 
-  // Generic tip for moderate scores
-  if (score < 70) return 'もう一度聞いてから真似するとさらに良くなります'
+  if (score < 70) return uiText.repeatTipGenericLow
 
-  return 'いい感じです。繰り返すほど自然になります'
+  return uiText.repeatTipGenericGood
 }
 
 function getStageTone(input: {
@@ -254,8 +477,9 @@ function getStageTone(input: {
 function getStageLabel(stage: LessonStageId | null, uiText: LessonCopy['activeCard']): string {
   switch (stage) {
     case 'listen':
+      return uiText.stageListenLabel
     case 'repeat':
-      return uiText.stageListenRepeatLabel
+      return uiText.stageRepeatLabel
     case 'scaffold_transition':
       return uiText.stageScaffoldLabel
     case 'ai_question':
@@ -267,6 +491,44 @@ function getStageLabel(stage: LessonStageId | null, uiText: LessonCopy['activeCa
     default:
       return uiText.stageDefaultLabel
   }
+}
+
+/** Next stage name for CTA label. Returns null for the final stage. */
+const NEXT_STAGE: Record<string, LessonStageId> = {
+  listen: 'repeat',
+  repeat: 'scaffold_transition',
+  scaffold_transition: 'ai_question',
+  ai_question: 'typing',
+  typing: 'ai_conversation',
+}
+
+/**
+ * Builds the CTA button label for the current stage.
+ * Final state: "View results". Otherwise: "{nextStage}へ進む".
+ */
+function getCtaLabel(
+  currentStageId: LessonStageId | null,
+  isLastBlock: boolean,
+  uiText: LessonCopy['activeCard']
+): string {
+  // Final state: last block + ai_conversation
+  if (isLastBlock && currentStageId === 'ai_conversation') {
+    return uiText.ctaViewResults
+  }
+
+  // If we're at ai_conversation but not last block, next is "listen" of next block
+  if (currentStageId === 'ai_conversation') {
+    return uiText.ctaAdvanceTemplate.replace('{stage}', uiText.stageListenLabel)
+  }
+
+  // Normal: advance to next stage within block
+  const nextId = currentStageId ? NEXT_STAGE[currentStageId] : null
+  if (nextId) {
+    const nextLabel = getStageLabel(nextId, uiText)
+    return uiText.ctaAdvanceTemplate.replace('{stage}', nextLabel)
+  }
+
+  return uiText.scaffoldNextButton
 }
 
 function stopMediaStream(stream: MediaStream | null) {
@@ -310,14 +572,31 @@ function formatCopy(
   }, template)
 }
 
+/** Map runtime stage to Emma hint stage key. */
+function toEmmaStage(stageId: LessonStageId | null): EmmaHintStage | null {
+  switch (stageId) {
+    case 'listen': return 'listen'
+    case 'repeat': return 'repeat'
+    case 'scaffold_transition': return 'scaffold'
+    case 'ai_question': return 'aiQuestion'
+    case 'typing': return 'typing'
+    default: return null
+  }
+}
+
 function getGuideCharacter(input: {
   currentStageId: LessonStageId | null
   isRecordingRepeat: boolean
   isListenPlaying: boolean
   isCorrect: boolean | null
   uiText: LessonCopy['activeCard']
+  level?: string | null
+  uiLang?: string | null
 }) {
-  const { currentStageId, isRecordingRepeat, isListenPlaying, isCorrect, uiText } = input
+  const { currentStageId, isRecordingRepeat, isListenPlaying, isCorrect, uiText, level, uiLang } = input
+  const emmaStage = toEmmaStage(currentStageId)
+  const emmaLevel = (level === 'beginner' || level === 'intermediate' || level === 'advanced') ? level : 'beginner'
+  const emmaHint = emmaStage ? getEmmaHint(emmaStage, emmaLevel, uiLang) : ''
 
   if (currentStageId === 'listen') {
     return {
@@ -349,15 +628,15 @@ function getGuideCharacter(input: {
       imageSrc: '/images/characters/emma/expressions/gentle.png',
       title: uiText.guideEmmaTitle,
       messagePrimary: uiText.scaffoldPrimary,
-      messageSecondary: uiText.scaffoldSecondary,
+      messageSecondary: emmaHint || uiText.scaffoldSecondary,
     }
   }
 
   if (currentStageId === 'ai_question') {
     return {
-      name: 'Emma',
-      imageSrc: '/images/characters/emma/expressions/gentle.png',
-      title: uiText.guideEmmaTitle,
+      name: 'Alex',
+      imageSrc: '/images/characters/alex/expressions/thinking.png',
+      title: uiText.guideAlexTitle,
       messagePrimary: uiText.aiQuestionPrimary,
       messageSecondary: uiText.aiQuestionSecondary,
     }
@@ -365,14 +644,14 @@ function getGuideCharacter(input: {
 
   if (currentStageId === 'typing') {
     return {
-      name: 'Emma',
+      name: 'Alex',
       imageSrc:
         isCorrect === true
-          ? '/images/characters/emma/expressions/happy.png'
+          ? '/images/characters/alex/expressions/happy.png'
           : isCorrect === false
-            ? '/images/characters/emma/expressions/thinking.png'
-            : '/images/characters/emma/expressions/neutral.png',
-      title: uiText.guideEmmaTitle,
+            ? '/images/characters/alex/expressions/thinking.png'
+            : '/images/characters/alex/expressions/neutral.png',
+      title: uiText.guideAlexTitle,
       messagePrimary:
         isCorrect === true
           ? uiText.typingCorrectPrimary
@@ -385,9 +664,9 @@ function getGuideCharacter(input: {
 
   if (currentStageId === 'ai_conversation') {
     return {
-      name: 'Emma',
-      imageSrc: '/images/characters/emma/expressions/happy.png',
-      title: uiText.guideEmmaTitle,
+      name: 'Alex',
+      imageSrc: '/images/characters/alex/expressions/speaking.png',
+      title: uiText.guideAlexTitle,
       messagePrimary: uiText.aiConversationPrimary,
       messageSecondary: uiText.aiConversationSecondary,
     }
@@ -434,7 +713,8 @@ function StageProgressBar({
   label: string
 }) {
   const safeTotal = Math.max(1, totalBlocks)
-  const percent = Math.round(((currentBlockIndex + 1) / safeTotal) * 100)
+  const completedCount = Math.max(0, currentBlockIndex)
+  const percent = Math.round((completedCount / safeTotal) * 100)
 
   return (
     <div className="mb-4">
@@ -468,6 +748,8 @@ export type LessonActiveCardProps = {
   onCheck: () => void
   onStartRepeatFromListen: () => void
   onRetryListenFromRepeat: () => void
+  onRetryListenFromScaffold?: () => void
+  onGoBackToStage?: (stageId: 'scaffold_transition' | 'ai_question' | 'typing' | 'ai_conversation') => void
   repeatAutoStartNonce: number
   listenResetNonce: number
   currentStageId: LessonStageId | null
@@ -477,16 +759,151 @@ export type LessonActiveCardProps = {
   scenarioLabel: string
   previousPhrases?: string[]
   level?: CurrentLevel
+  /** Stable lesson session identifier for analytics dedup */
+  lessonSessionId?: string
+  /** Language-aware response mode (typing vs audio_choice) */
+  responseStage?: 'typing' | 'audio_choice'
 }
 
 // ——— AI Conversation (4-turn conversation with feedback) ———
 
-type ConvTurn = { aiMessage: string; userReply: string; hint: string | null; nextPrompt: string | null; reaction: string }
+type ConvTurn = { aiMessage: string; userReply: string; hint: string | null; nextPrompt: string | null; reaction: string; eval?: ConvTurnScoring | null }
+
+// ── Conversation scoring (invisible during conversation, soft at end) ──
+
+type ConvTurnScoring = {
+  semanticScore: number
+  continuityScore: number
+  languageScore: number
+  speechScore: number
+  weightedScore: number
+}
+
+type ConvSessionResult = {
+  finalScore: number
+  finalEvaluation: 'good' | 'ok' | 'retry'
+  summary: string
+  improvementHint: string
+}
+
+function scoreTurn(evalDetail: ConvEvalDetail | null, transcript: string, prevReplies: string[] = []): ConvTurnScoring {
+  if (!evalDetail || !transcript.trim()) {
+    return { semanticScore: 0, continuityScore: 0, languageScore: 0, speechScore: 0, weightedScore: 0 }
+  }
+  const words = transcript.trim().split(/\s+/).length
+  const replyLower = transcript.trim().toLowerCase()
+
+  // semanticScore — unchanged, relies on API relevance judgment
+  const semanticScore = evalDetail.isRelevant ? Math.min(evalDetail.score, 100) : Math.min(evalDetail.score * 0.5, 40)
+
+  // continuityScore — prioritize conversational fit over length
+  let continuityScore = evalDetail.isRelevant
+    ? (words >= 2 ? Math.min(75 + Math.min(words, 6) * 3, 100) : 60)
+    : (words >= 3 ? 40 : 20)
+
+  // Repetition penalty: if this reply is near-identical to a recent reply, reduce continuity
+  // Only penalize same-pattern spam, not short-but-varied answers
+  if (prevReplies.length > 0) {
+    const lastReply = prevReplies[prevReplies.length - 1]?.trim().toLowerCase() ?? ''
+    const isSameAsLast = replyLower === lastReply
+    const isMinimalRepeat = words <= 2 && lastReply.split(/\s+/).length <= 2 && replyLower === lastReply
+    if (isSameAsLast || isMinimalRepeat) {
+      continuityScore = Math.max(continuityScore - 15, 0)
+    }
+  }
+
+  // languageScore — unchanged
+  const languageScore = evalDetail.isNatural ? Math.min(evalDetail.score + 10, 100) : Math.min(evalDetail.score * 0.7, 50)
+
+  // speechScore — binary usability: empty vs usable vs broken
+  // Short but clear answers should not be penalized
+  const speechScore = words >= 1 ? (evalDetail.isRelevant ? 80 : 50) : 0
+
+  const weightedScore = Math.round(
+    semanticScore * 0.45 + continuityScore * 0.30 + languageScore * 0.15 + speechScore * 0.10
+  )
+  return { semanticScore, continuityScore, languageScore, speechScore, weightedScore }
+}
+
+function summarizeSession(turns: ConvTurn[], isJa: boolean, lessonPhrase?: string): ConvSessionResult {
+  const scored = turns.filter((t) => t.eval && t.eval.weightedScore > 0)
+  if (scored.length === 0) {
+    return {
+      finalScore: 0,
+      finalEvaluation: 'retry',
+      summary: isJa ? '大丈夫です。次回は一言だけでも声に出してみましょう！' : "No worries — next time, try saying even one word!",
+      improvementHint: isJa ? '短くても大丈夫なので、まず一つ答えてみましょう' : 'Even a short answer is great. Try saying just one thing.',
+    }
+  }
+
+  const finalScore = Math.round(scored.reduce((s, t) => s + (t.eval?.weightedScore ?? 0), 0) / scored.length)
+  const finalEvaluation: 'good' | 'ok' | 'retry' = finalScore >= 80 ? 'good' : finalScore >= 55 ? 'ok' : 'retry'
+
+  // Find weakest dimension
+  const avgSemantic = scored.reduce((s, t) => s + (t.eval?.semanticScore ?? 0), 0) / scored.length
+  const avgContinuity = scored.reduce((s, t) => s + (t.eval?.continuityScore ?? 0), 0) / scored.length
+  const avgLanguage = scored.reduce((s, t) => s + (t.eval?.languageScore ?? 0), 0) / scored.length
+  const avgSpeech = scored.reduce((s, t) => s + (t.eval?.speechScore ?? 0), 0) / scored.length
+  const weakest = Math.min(avgSemantic, avgContinuity, avgLanguage, avgSpeech)
+
+  // Summary — clearly differentiated, all gentle
+  let summary: string
+  if (finalEvaluation === 'good') {
+    summary = isJa
+      ? '会話がしっかり続けられていました！相手の話にも自然に返せています。'
+      : 'You had a real conversation! Your replies felt natural and connected.'
+  } else if (finalEvaluation === 'ok') {
+    summary = isJa
+      ? '相手の話に答えられていました。この調子で続けていきましょう。'
+      : 'You responded well to the conversation. Keep practicing like this.'
+  } else {
+    summary = isJa
+      ? '会話に参加できました。短くても声に出すことが大切です。'
+      : 'You joined the conversation. Speaking up, even briefly, is what matters.'
+  }
+
+  // Improvement hint — one short line only
+  let improvementHint: string
+  if (weakest === avgSemantic) {
+    improvementHint = isJa ? '相手の質問に一言で答えてみましょう' : 'Try answering the question directly.'
+  } else if (weakest === avgContinuity) {
+    improvementHint = isJa ? 'もう一言だけ足すと、もっと自然です' : 'Try adding one small detail to your answer.'
+  } else if (weakest === avgLanguage) {
+    improvementHint = isJa ? '一文で答えてみましょう' : 'Try saying it as a full sentence.'
+  } else {
+    improvementHint = isJa ? 'もう一言だけ足すと、もっと自然です' : 'Try adding one small detail to your answer.'
+  }
+
+  return { finalScore, finalEvaluation, summary, improvementHint }
+}
 
 function buildConversationTurns(currentAnswer: string, _previousPhrases: string[]): ConvTurn[] {
+  // Turn 2: concrete scene-related question, NOT "How do you say X in English?"
+  const lower = currentAnswer.toLowerCase()
+  let turn2: string
+  if (/woke up|wake up|get up|sleepy|morning/i.test(lower)) {
+    turn2 = 'What time did you wake up today?'
+  } else if (/breakfast|cook|eat|dinner|lunch/i.test(lower)) {
+    turn2 = 'What did you have?'
+  } else if (/work|office|meeting|coworker/i.test(lower)) {
+    turn2 = 'How was work today?'
+  } else if (/home|back|return/i.test(lower)) {
+    turn2 = 'What did you do when you got home?'
+  } else if (/bed|sleep|tired|bath/i.test(lower)) {
+    turn2 = 'What time do you usually go to bed?'
+  } else if (/store|shop|supermarket|buy/i.test(lower)) {
+    turn2 = 'What did you buy?'
+  } else if (/friend|talk|chat/i.test(lower)) {
+    turn2 = 'What did you talk about?'
+  } else if (/video|watch|youtube/i.test(lower)) {
+    turn2 = 'What kind of stuff do you watch?'
+  } else {
+    turn2 = 'Do you do that every day?'
+  }
+
   const messages = [
     'Hey! How are you doing today?',
-    `So today you learned: ${currentAnswer}. When do you usually do that?`,
+    turn2,
     'How was today\'s lesson for you?',
     'Great talking with you! See you next time!',
   ]
@@ -681,23 +1098,67 @@ function AiConversationPlayer({
   previousPhrases = [],
   onInputChange,
   isLastBlock = false,
+  flavorContext = null,
+  ctaLabel,
+  level,
+  onGuideMessageChange,
+  problemNumber = 1,
 }: {
   item: LessonBlockItem
   uiText: LessonCopy['activeCard']
   previousPhrases?: string[]
   onInputChange: (value: string) => void
   isLastBlock?: boolean
+  flavorContext?: FlavorContext | null
+  ctaLabel?: string
+  level?: string
+  onGuideMessageChange?: (message: string | null) => void
+  problemNumber?: number
 }) {
   const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
-  const turnTemplates = useMemo(
-    () => buildConversationTurns(currentAnswer, previousPhrases),
-    [currentAnswer, previousPhrases]
-  )
-  const aiMessages = useMemo(() => turnTemplates.map((t) => t.aiMessage), [turnTemplates])
+  const nativeHintForRecall = (item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null
+
+  // ── Slot extraction for extended engine ──
+  const convSlots = useMemo(() => {
+    const words = currentAnswer.split(/\s+/)
+    let personSlot = ''
+    for (let i = 0; i < words.length; i++) {
+      if (/^(with|to|about)$/i.test(words[i]) && words[i + 1]) {
+        personSlot = words.slice(i + 1, i + 3).join(' ').replace(/[.,!?]/g, '')
+        break
+      }
+    }
+    const lastWord = words[words.length - 1]?.replace(/[.,!?]/g, '') ?? ''
+    const timeSlot = /^(today|yesterday|tomorrow|tonight|now)$/i.test(lastWord) ? lastWord : ''
+    const timeAlt = timeSlot.toLowerCase() === 'today' ? 'yesterday' : 'today'
+    const personAlts = ['my teacher', 'my boss', 'my coworker', 'my neighbor']
+    const personAlt = personSlot
+      ? personAlts.find((p) => p.toLowerCase() !== personSlot.toLowerCase()) ?? 'my teacher'
+      : ''
+    return { personSlot, personAlt, timeSlot, timeAlt }
+  }, [currentAnswer])
+
+  // ── Dynamic conversation — opener from engine, rest from AI API ──
+  const [openerMessage] = useState(() => {
+    const greetings = [
+      'Hi! How are you today?',
+      'Hey! How\'s your day going?',
+      'Hi! Nice to talk with you today.',
+    ]
+    return greetings[Math.floor(Math.random() * greetings.length)]
+  })
+  // Current AI message for the active turn
+  const [currentAiMessage, setCurrentAiMessage] = useState(openerMessage)
+
+  // Greeting (0) + Main conversation (1-3) + Closing (4)
+  const MAX_TURNS = 5
 
   const [turn, setTurn] = useState(0)
   const [started, setStarted] = useState(false)
   const [allDone, setAllDone] = useState(false)
+  const [soundGameDone, setSoundGameDone] = useState(false)
+  const [quickResponseDone, setQuickResponseDone] = useState(false)
+  const [recallDone, setRecallDone] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [transcript, setTranscript] = useState('')
@@ -708,35 +1169,156 @@ function AiConversationPlayer({
   const [history, setHistory] = useState<ConvTurn[]>([])
   const [aiSpeaking, setAiSpeaking] = useState(false)
   const [aiThinking, setAiThinking] = useState(false)
+  const [showPaywall, setShowPaywall] = useState(false)
+  const paywallShownRef = useRef(false)
+  const [streakCount, setStreakCount] = useState(0)
+  const [boostWasActive, setBoostWasActive] = useState(false)
+  const [showReviewScreen, setShowReviewScreen] = useState(false)
+  const [showChallengeComplete, setShowChallengeComplete] = useState(false)
+  const [showConvSilent, setShowConvSilent] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // Stores the API-generated AI reply for the next turn
   const nextAiReplyRef = useRef<string | null>(null)
-  // Tracks the displayed AI message per turn (fixed for turn 0, API-generated for 1-3)
-  const displayedAiMessagesRef = useRef<string[]>([...aiMessages])
+
+  // Update guide character message based on current sub-phase
+  useEffect(() => {
+    if (!onGuideMessageChange) return
+    if (showReviewScreen) {
+      // Listening phase = SoundGame active, Speaking phase = QuickResponseGame active
+      if (!soundGameDone) {
+        onGuideMessageChange(uiText.challengeListeningPrimary)
+      } else if (!quickResponseDone) {
+        onGuideMessageChange(uiText.challengeSpeakingPrimary)
+      } else {
+        onGuideMessageChange(null) // reset to default
+      }
+    } else {
+      onGuideMessageChange(null) // conversation phase uses default
+    }
+  }, [showReviewScreen, soundGameDone, quickResponseDone, onGuideMessageChange, uiText])
 
   const CONV_RECORDING_MAX_MS = 8000
 
-  const totalTurns = aiMessages.length
+  // Show paywall + fetch streak from DB once when conversation completes
+  useEffect(() => {
+    if (allDone && !paywallShownRef.current) {
+      paywallShownRef.current = true
+      setShowPaywall(true)
+      // Fetch server-driven streak (not localStorage)
+      const sb = getSupabaseBrowserClient()
+      sb.auth.getSession().then(({ data: { session } }: { data: { session: { user: { id: string } } | null } }) => {
+        if (!session?.user) return
+        sb.from('user_profiles')
+          .select('current_streak_days, diamond_boost_until')
+          .eq('id', session.user.id)
+          .maybeSingle()
+          .then(({ data }: { data: { current_streak_days: number | null; diamond_boost_until: string | null } | null }) => {
+            setStreakCount(data?.current_streak_days ?? 0)
+            if (data?.diamond_boost_until && new Date(data.diamond_boost_until) > new Date()) {
+              setBoostWasActive(true)
+            }
+          })
+          .catch(() => {})
+      }).catch(() => {})
+    }
+  }, [allDone])
 
-  const playAiText = useCallback(async (text: string) => {
+
+  // ── Audio: cache + deduplication + persistent element ──
+  const aiAudioCacheRef = useRef<Map<string, string>>(new Map())
+  // In-flight fetch promises — prevents duplicate concurrent TTS requests for the same text
+  const aiAudioInflightRef = useRef<Map<string, Promise<string | null>>>(new Map())
+  const aiAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  const normalizeAudioKey = (text: string) => text.trim()
+
+  /** Resolve audio URL with deduplication: cache → in-flight → fetch */
+  const ensureAiAudioUrl = useCallback(async (text: string): Promise<string | null> => {
+    const key = normalizeAudioKey(text)
+
+    // 1. Cache hit — instant
+    const cached = aiAudioCacheRef.current.get(key)
+    if (cached) return cached
+
+    // 2. In-flight request exists — reuse it (no duplicate fetch)
+    const inflight = aiAudioInflightRef.current.get(key)
+    if (inflight) return inflight
+
+    // 3. New fetch — store the promise for deduplication
+    const fetchPromise = fetchAudioUrl(text).then((url) => {
+      if (url) aiAudioCacheRef.current.set(key, url)
+      aiAudioInflightRef.current.delete(key)
+      return url
+    }).catch(() => {
+      aiAudioInflightRef.current.delete(key)
+      return null
+    })
+    aiAudioInflightRef.current.set(key, fetchPromise)
+    return fetchPromise
+  }, [])
+
+  /** Play audio for an AI message — non-blocking, plays as soon as URL is ready */
+  const playAiMessage = useCallback((text: string) => {
     setAiSpeaking(true)
-    const url = await fetchAudioUrl(text)
-    if (url) {
-      const audio = new Audio(url)
+
+    // Stop previous audio cleanly
+    if (aiAudioRef.current) {
+      aiAudioRef.current.pause()
+      aiAudioRef.current.onended = null
+      aiAudioRef.current.onerror = null
+    }
+
+    // Ensure persistent Audio element exists
+    if (!aiAudioRef.current) {
+      aiAudioRef.current = new Audio()
+    }
+
+    const playUrl = (url: string) => {
+      const audio = aiAudioRef.current!
       audio.onended = () => setAiSpeaking(false)
       audio.onerror = () => setAiSpeaking(false)
+      audio.src = url
+      audio.currentTime = 0
       audio.play().catch(() => setAiSpeaking(false))
-    } else {
-      setAiSpeaking(false)
     }
+
+    // Check cache first for instant playback
+    const key = normalizeAudioKey(text)
+    const cached = aiAudioCacheRef.current.get(key)
+    if (cached) {
+      playUrl(cached)
+      return
+    }
+
+    // Not cached — await in-flight or fetch, then play when ready
+    ensureAiAudioUrl(text).then((url) => {
+      if (url) {
+        playUrl(url)
+      } else {
+        // One retry
+        fetchAudioUrl(text).then((retryUrl) => {
+          if (retryUrl) {
+            aiAudioCacheRef.current.set(key, retryUrl)
+            playUrl(retryUrl)
+          } else {
+            setAiSpeaking(false)
+          }
+        })
+      }
+    })
+  }, [ensureAiAudioUrl])
+
+  // Preload opener audio on mount for faster start
+  useEffect(() => {
+    ensureAiAudioUrl(openerMessage)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleStart = () => {
     setStarted(true)
-    playAiText(aiMessages[0])
+    playAiMessage(openerMessage)
   }
 
   const stopStream = () => {
@@ -752,6 +1334,7 @@ function AiConversationPlayer({
       chunksRef.current = []
       setTranscript('')
       setTurnAnswered(false)
+      setShowConvSilent(false)
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
@@ -779,7 +1362,10 @@ function AiConversationPlayer({
         stopStream()
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
         chunksRef.current = []
-        if (blob.size === 0) return
+        if (blob.size === 0) {
+          setShowConvSilent(true)
+          return
+        }
 
         // --- Phase 1: STT — show transcript immediately ---
         setIsRecognizing(true)
@@ -799,30 +1385,32 @@ function AiConversationPlayer({
         setTranscript(recognized)
         setIsRecognizing(false)
 
-        // Empty transcript — skip API, go straight to fallback
+        // Empty transcript — show guidance, do NOT advance
         if (!recognized) {
-          const currentAiMsg = displayedAiMessagesRef.current[turn] ?? aiMessages[turn]
-          const h = buildTurnHint('', turn, true, currentAiMsg)
-          setTurnHint(h.hint)
-          setTurnNextPrompt(h.nextPrompt)
-          setTurnAnswered(true)
+          setShowConvSilent(true)
           return
         }
 
-        // --- Phase 2: AI evaluation — show "thinking" while waiting ---
-        setAiThinking(true)
-        nextAiReplyRef.current = null
+        // --- Predictive TTS prefetch: pre-generate likely reply audio ---
+        const predictedReplies: string[] = []
+        if (turn === 3) {
+          predictedReplies.push('Nice talking with you. See you!', 'That sounds great. Have a good day!', 'I see. Bye!')
+        } else if (turn === 0) {
+          // After greeting, AI will likely ask about the lesson topic
+          predictedReplies.push('Nice! So what did you do today?', "That's great! Tell me about your day.", 'Good to hear!')
+        } else {
+          predictedReplies.push('That sounds nice!', 'Oh, interesting.', 'I see. What happened next?', 'Really? Tell me more.')
+        }
+        for (const c of predictedReplies) ensureAiAudioUrl(c)
 
-        // Build conversation history for API
-        const apiHistory = history.map((h) => ({
-          ai: h.aiMessage,
-          user: h.userReply,
-        }))
-        // Add current turn's AI message
-        const currentAiMsg = displayedAiMessagesRef.current[turn] ?? aiMessages[turn]
-        apiHistory.push({ ai: currentAiMsg, user: recognized })
+        // --- Phase 2: Call AI API for dynamic response ---
+        const thinkingTimer = setTimeout(() => setAiThinking(true), 100)
+        const apiHistory = history.map((h) => ({ ai: h.aiMessage, user: h.userReply }))
+        apiHistory.push({ ai: currentAiMessage, user: recognized })
 
         try {
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 12_000)
           const apiRes = await fetch('/api/ai-conversation/reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -831,24 +1419,31 @@ function AiConversationPlayer({
               userMessage: recognized,
               lessonPhrase: currentAnswer,
               conversationHistory: apiHistory,
+              flavorContext: flavorContext ?? undefined,
+              isClosingTurn: turn === 3,
             }),
+            signal: controller.signal,
           })
+          clearTimeout(timeoutId)
 
           if (apiRes.ok) {
             const apiData = await apiRes.json()
             if (apiData.ok) {
-              // Store AI reply for next turn
-              nextAiReplyRef.current = apiData.aiReply
-              // Store evaluation detail (may be undefined for old API format)
+              incrementAiCallCount()
+              nextAiReplyRef.current = apiData.aiReply ?? null
+              // Prefetch TTS immediately so audio is ready when text renders
+              if (apiData.aiReply) {
+                ensureAiAudioUrl(apiData.aiReply)
+              }
               setTurnEvalDetail(apiData.evaluationDetail ?? null)
-              // Use API evaluation
               if (apiData.evaluation === 'retry') {
-                setTurnHint(apiData.hint ?? '今日の表現を使って、英語で1文で答えてみましょう')
+                setTurnHint(apiData.hint ?? 'Try answering using today\'s expression.')
                 setTurnNextPrompt(apiData.nextPrompt ?? null)
               } else {
                 setTurnHint(null)
                 setTurnNextPrompt(null)
               }
+              clearTimeout(thinkingTimer)
               setAiThinking(false)
               setTurnAnswered(true)
               return
@@ -858,12 +1453,13 @@ function AiConversationPlayer({
           // API failed — fall through to fallback
         }
 
-        // --- Fallback: use rule-based evaluation ---
-        nextAiReplyRef.current = null
-        setTurnEvalDetail(null)
-        const h = buildTurnHint(recognized, turn, true, currentAiMsg)
-        setTurnHint(h.hint)
-        setTurnNextPrompt(h.nextPrompt)
+        // Fallback: accept answer and generate simple follow-up
+        clearTimeout(thinkingTimer)
+        const fallback = buildFallbackEvaluation(turn, recognized, currentAnswer)
+        nextAiReplyRef.current = fallback.aiReply
+        setTurnEvalDetail(fallback.evaluationDetail)
+        setTurnHint(null)
+        setTurnNextPrompt(null)
         setAiThinking(false)
         setTurnAnswered(true)
       }
@@ -880,37 +1476,42 @@ function AiConversationPlayer({
     }
   }
 
-  // Advance to the next turn (called automatically or via manual "next" button)
+  // Advance to the next turn — uses dynamic AI reply
   const advanceToNextTurn = useCallback(() => {
-    const currentAiMsg = displayedAiMessagesRef.current[turn] ?? aiMessages[turn]
+    // Score this turn silently (not shown during conversation)
+    const turnScore = scoreTurn(turnEvalDetail, transcript, history.map((h) => h.userReply))
+
     const newHistory = [...history, {
-      aiMessage: currentAiMsg,
+      aiMessage: currentAiMessage,
       userReply: transcript,
       hint: turnHint,
       nextPrompt: turnNextPrompt,
-      reaction: pickReaction(transcript, currentAiMsg),
+      reaction: pickReaction(transcript, currentAiMessage),
+      eval: turnScore,
     }]
     setHistory(newHistory)
 
     const next = turn + 1
-    if (next >= totalTurns) {
+    if (next >= MAX_TURNS) {
+      // Conversation complete
       setAllDone(true)
       onInputChange('[conversation done]')
+      trackEvent('conversation_complete', { turns: next })
     } else {
-      // Use API-generated reply if available, else fall back to fixed message
-      const nextMsg = nextAiReplyRef.current ?? aiMessages[next]
-      displayedAiMessagesRef.current[next] = nextMsg
+      // Use the AI-generated reply for the next turn
+      const nextMsg = nextAiReplyRef.current ?? 'That sounds great! Tell me more.'
       nextAiReplyRef.current = null
 
+      setCurrentAiMessage(nextMsg)
       setTurn(next)
       setTranscript('')
       setTurnAnswered(false)
       setTurnHint(null)
       setTurnNextPrompt(null)
       setTurnEvalDetail(null)
-      playAiText(nextMsg)
+      playAiMessage(nextMsg)
     }
-  }, [history, aiMessages, turn, transcript, turnHint, turnNextPrompt, totalTurns, onInputChange, playAiText])
+  }, [history, currentAiMessage, turn, transcript, turnHint, turnNextPrompt, turnEvalDetail, onInputChange, playAiMessage])
 
   // Retry the current turn (reset recording state so user can try again)
   const handleRetryTurn = useCallback(() => {
@@ -919,27 +1520,19 @@ function AiConversationPlayer({
     setTurnHint(null)
     setTurnNextPrompt(null)
     setTurnEvalDetail(null)
+    setShowConvSilent(false)
   }, [])
 
-  // Auto-advance: only for strong answers (no hint + score >= 70)
-  // Low scores or hints → user must manually press "next" or "retry"
-  const shouldAutoAdvance = !turnHint && (!turnEvalDetail || turnEvalDetail.score >= 70)
-
-  useEffect(() => {
-    if (!turnAnswered || allDone) return
-    if (!shouldAutoAdvance) return
-
-    const timer = setTimeout(() => {
-      advanceToNextTurn()
-    }, 1500)
-
-    return () => clearTimeout(timer)
-  }, [turnAnswered, allDone, shouldAutoAdvance, advanceToNextTurn])
+  // No auto-advance — always require user to press "next" or "retry"
+  // This prevents advice UI from flashing and ensures user reads feedback
 
   const handleRetryAll = () => {
     setTurn(0)
     setStarted(false)
     setAllDone(false)
+    setShowReviewScreen(false)
+    setShowChallengeComplete(false)
+    setShowConvSilent(false)
     setTranscript('')
     setTurnAnswered(false)
     setTurnHint(null)
@@ -947,14 +1540,26 @@ function AiConversationPlayer({
     setTurnEvalDetail(null)
     setAiSpeaking(false)
     setAiThinking(false)
+    setCurrentAiMessage(openerMessage)
     nextAiReplyRef.current = null
-    displayedAiMessagesRef.current = [...aiMessages]
+    aiAudioInflightRef.current.clear()
     setHistory([])
     onInputChange('')
   }
 
   const isJa = /[\u3000-\u9FFF]/.test(uiText.scaffoldNextButton)
-  const result = allDone ? buildFeedback(history, isJa) : null
+  const sessionResult = allDone ? summarizeSession(history, isJa, currentAnswer) : null
+
+  // Auto-advance: after user answers and feedback is shown, advance to next turn automatically
+  // Must be ABOVE early returns to maintain stable hook order.
+  useEffect(() => {
+    if (!started || !turnAnswered || turnHint || allDone) return
+    const timer = setTimeout(() => {
+      advanceToNextTurn()
+    }, 100)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, turnAnswered, turnHint, allDone])
 
   if (!started) {
     return (
@@ -963,7 +1568,7 @@ function AiConversationPlayer({
         <button
           type="button"
           onClick={handleStart}
-          className="mt-4 rounded-xl bg-purple-500 px-6 py-3 font-bold text-white transition hover:bg-purple-600"
+          className="mt-4 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
         >
           {uiText.aiConversationStartButton}
         </button>
@@ -971,37 +1576,134 @@ function AiConversationPlayer({
     )
   }
 
+  // ── Challenge success screen — shown when last challenge is cleared ──
+  if (showChallengeComplete) {
+    return (
+      <div className="mt-4">
+        <div className="mx-auto mt-6 max-w-[460px] text-center">
+          <p className="text-2xl font-black text-[#22c55e]">
+            🎉 第{problemNumber}問目クリア！
+          </p>
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={() => { window.dispatchEvent(new Event('next-step')) }}
+              className={BTN_PRIMARY}
+            >
+              {isLastBlock ? uiText.aiConvFinishLesson : `第${problemNumber + 1}問目に進む`}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Review screen — separate from conversation, focused single-task ──
+  if (showReviewScreen) {
+    const allReviewDone = soundGameDone && quickResponseDone && (recallDone || !nativeHintForRecall)
+    return (
+      <div className="mt-4">
+        {!soundGameDone && (
+          <SoundGame uiText={uiText} onComplete={() => setSoundGameDone(true)} />
+        )}
+        {soundGameDone && !quickResponseDone && (
+          <QuickResponseGame
+            sentences={[currentAnswer, ...(previousPhrases.length > 0 ? previousPhrases.slice(-2) : [currentAnswer])]}
+            uiText={uiText}
+            onComplete={() => {
+              setQuickResponseDone(true)
+              // If no RecallChallenge, this is the last game → show success
+              if (!nativeHintForRecall) setShowChallengeComplete(true)
+            }}
+          />
+        )}
+        {soundGameDone && quickResponseDone && !recallDone && nativeHintForRecall && (
+          <RecallChallenge
+            pairs={[{ ja: nativeHintForRecall, en: currentAnswer }]}
+            uiText={uiText}
+            onComplete={() => {
+              setRecallDone(true)
+              setShowChallengeComplete(true)
+            }}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="mt-4">
-      {/* During conversation: minimal UI, auto-flow */}
+      {/* During conversation: chat-style UI — no round labels */}
       {!allDone && (
         <>
-          <p className="mb-3 text-center text-sm text-[#7b7b94]">
-            {uiText.aiQuestionRoundLabel
-              .replace('{current}', String(turn + 1))
-              .replace('{total}', String(totalTurns))}
-          </p>
+          {/* Conversation log — all completed turns + current AI message */}
+          <div className="mx-auto mb-4 max-w-[460px]">
+            <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-5 py-5">
+              <p className="mb-3 text-[11px] font-bold tracking-widest text-[#9CA3AF]">{uiText.conversationFlowLabel}</p>
+              <div className="flex flex-col gap-3">
+                {/* Completed turns */}
+                {history.map((h, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#1a1a2e]">
+                        <p className="mt-0.5">{h.aiMessage}</p>
+                      </div>
+                    </div>
+                    {h.userReply && (
+                      <div className="flex justify-end">
+                        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3.5 py-2 text-sm text-[#1a1a2e]">
+                          <p className="mt-0.5">{h.userReply}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
 
-          {isRecognizing && (
-            <p className="text-center text-sm text-[#7b7b94]">{uiText.aiConvRecognizing}</p>
+                {/* Current turn AI message — always visible */}
+                {!aiThinking && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#1a1a2e]">
+                      <p className="mt-0.5">{currentAiMessage}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* User's current answer (shown after recording) */}
+                {transcript && (
+                  <div className="flex justify-end">
+                    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3.5 py-2 text-sm text-[#1a1a2e]">
+                      <p className="mt-0.5">{transcript}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI thinking indicator */}
+                {aiThinking && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#7b7b94]">
+                      <p className="mt-0.5 animate-pulse">...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Silent guidance — shown after empty recording */}
+          {showConvSilent && !turnAnswered && !isRecording && !isRecognizing && (
+            <div className="mx-auto mt-3 max-w-[320px] rounded-xl bg-gray-50 px-4 py-3 text-center">
+              <p className="text-sm text-[#7b7b94]">{uiText.aiQuestionSilent}</p>
+            </div>
           )}
 
-          {/* Show transcript immediately after STT, before API response */}
-          {transcript && !turnAnswered && (aiThinking || isRecognizing) && (
-            <p className="mt-2 text-center text-sm text-gray-500">あなた: {transcript}</p>
-          )}
-
-          {aiThinking && (
-            <p className="mt-2 text-center text-sm font-semibold text-purple-500">AIが考え中...</p>
-          )}
-
-          {!turnAnswered && !isRecognizing && !aiThinking && (
-            <div className="mt-3 flex justify-center">
+          {/* Recording controls — only when not yet answered */}
+          {!turnAnswered && !isRecognizing && !aiThinking && !aiSpeaking && (
+            <div className="flex justify-center">
               {!isRecording ? (
                 <button
                   type="button"
                   onClick={handleStartRecording}
-                  className="w-full max-w-[320px] rounded-xl bg-green-500 px-6 py-3 font-bold text-white transition hover:bg-green-600"
+                  className={BTN_PRIMARY}
                 >
                   {uiText.aiConvRecordButton}
                 </button>
@@ -1009,7 +1711,7 @@ function AiConversationPlayer({
                 <button
                   type="button"
                   onClick={handleStopRecording}
-                  className="w-full max-w-[320px] rounded-xl bg-red-500 px-6 py-3 font-bold text-white transition hover:bg-red-600"
+                  className={BTN_STOP}
                 >
                   {uiText.aiConvStopButton}
                 </button>
@@ -1017,89 +1719,30 @@ function AiConversationPlayer({
             </div>
           )}
 
-          {/* Feedback for good replies (with or without auto-advance) */}
-          {turnAnswered && !turnHint && turnEvalDetail && (
-            <div className="mt-3 space-y-3">
-              <div className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-800">
-                <p className="font-bold">
-                  スコア: {turnEvalDetail.score}点 —{' '}
-                  {turnEvalDetail.score >= 80
-                    ? 'かなり自然です'
-                    : turnEvalDetail.score >= 60
-                      ? 'あと少しでより自然です'
-                      : 'もう一度試すともっと良くなります'}
-                </p>
-                {turnEvalDetail.feedback && <p className="mt-1">{turnEvalDetail.feedback}</p>}
-                {turnEvalDetail.correction && (
-                  <p className="mt-1 text-green-700">✏️ {turnEvalDetail.correction}</p>
-                )}
-              </div>
-              {!shouldAutoAdvance && (
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleRetryTurn}
-                    className="flex-1 rounded-xl bg-blue-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-                  >
-                    もう一度話す
-                  </button>
-                  <button
-                    type="button"
-                    onClick={advanceToNextTurn}
-                    className="flex-1 rounded-xl bg-gray-300 px-4 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-400"
-                  >
-                    次へ進む
-                  </button>
-                </div>
-              )}
-            </div>
+          {/* Recognizing indicator */}
+          {isRecognizing && (
+            <p className="mt-2 text-center text-sm text-[#7b7b94]">{uiText.aiConvRecognizing}</p>
           )}
 
-          {/* Advice panel when reply needs improvement */}
+          {/* Retry when answer needs improvement — amber hint card */}
           {turnAnswered && turnHint && (
             <div className="mt-3 space-y-3">
-              {transcript && (
-                <p className="text-center text-sm text-gray-500">あなた: {transcript}</p>
-              )}
-              {turnEvalDetail && (
-                <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-700">
-                  <p className="font-bold">
-                    スコア: {turnEvalDetail.score}点 —{' '}
-                    {turnEvalDetail.score >= 80
-                      ? 'かなり自然です'
-                      : turnEvalDetail.score >= 60
-                        ? 'あと少しでより自然です'
-                        : 'もう一度試すともっと良くなります'}
-                  </p>
-                  {turnEvalDetail.feedback && <p className="mt-1">{turnEvalDetail.feedback}</p>}
-                  {turnEvalDetail.correction && (
-                    <p className="mt-1 font-semibold text-blue-700">✏️ {turnEvalDetail.correction}</p>
-                  )}
-                </div>
-              )}
               <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                <p className="font-bold">💡 アドバイス</p>
+                <p className="font-bold">💡 {uiText.hintLabel}</p>
                 <p className="mt-1">{turnHint}</p>
                 {turnNextPrompt && (
                   <p className="mt-2 font-mono text-amber-900">
-                    💬 例: &quot;{turnNextPrompt}&quot;
+                    {uiText.aiConvExamplePrefix}: &quot;{turnNextPrompt}&quot;
                   </p>
                 )}
               </div>
-              <div className="flex gap-3">
+              <div className="flex justify-center">
                 <button
                   type="button"
                   onClick={handleRetryTurn}
-                  className="flex-1 rounded-xl bg-blue-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                  className={BTN_PRIMARY}
                 >
-                  もう一度話す
-                </button>
-                <button
-                  type="button"
-                  onClick={advanceToNextTurn}
-                  className="flex-1 rounded-xl bg-gray-300 px-4 py-3 text-sm font-bold text-gray-700 transition hover:bg-gray-400"
-                >
-                  次へ進む
+                  {uiText.aiConvRetryButton}
                 </button>
               </div>
             </div>
@@ -1107,66 +1750,1237 @@ function AiConversationPlayer({
         </>
       )}
 
-      {/* Feedback after conversation */}
-      {/* Show full conversation transcript after completion */}
+      {/* ── Completion: chat log + result + actions ── */}
       {allDone && (
-        <div className="mt-4 space-y-2">
-          {history.map((h, i) => (
-            <div key={i}>
-              <div className="rounded-xl bg-purple-50 px-4 py-2 text-sm text-purple-800">
-                <span className="font-bold">AI:</span> {h.aiMessage}
+        <>
+          {/* 1. Chat log — clean LINE-style bubbles, no labels */}
+          <div className="mx-auto mt-4 max-w-[460px]">
+            <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-5 py-5">
+              <div className="flex flex-col gap-3">
+                {history.map((h, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-start">
+                      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#1a1a2e]">
+                        {h.reaction
+                          ? <p>{h.reaction} {h.aiMessage}</p>
+                          : <p>{h.aiMessage}</p>
+                        }
+                      </div>
+                    </div>
+                    {h.userReply && (
+                      <div className="flex justify-end">
+                        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3.5 py-2 text-sm text-[#1a1a2e]">
+                          <p>{h.userReply}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-              {h.userReply && (
-                <div className="mt-1 rounded-xl bg-gray-50 px-4 py-2 text-sm text-gray-800 text-right">
-                  <span className="font-bold">{uiText.aiConvYourReply}:</span> {h.userReply}
-                </div>
-              )}
-              {h.reaction && (
-                <div className="mt-1 rounded-xl bg-purple-50 px-4 py-2 text-sm font-bold text-purple-700">
-                  AI: {h.reaction}
-                </div>
-              )}
-              {h.hint && (
-                <div className="mt-1 rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-800">
-                  💡 {h.hint}
-                </div>
-              )}
             </div>
-          ))}
-        </div>
-      )}
-
-      {allDone && result && (
-        <div className="mt-4 space-y-3">
-          <div className="rounded-xl bg-green-50 px-5 py-4">
-            <p className="text-sm font-bold text-green-800">{uiText.aiConvFeedbackTitle}</p>
-            <p className="mt-1 text-sm text-green-700">{result.feedback}</p>
           </div>
 
-          <div className="rounded-xl bg-blue-50 px-5 py-4">
-            <p className="text-sm font-bold text-blue-800">{uiText.aiConvAdviceTitle}</p>
-            <p className="mt-1 text-sm text-blue-700">{result.advice}</p>
-          </div>
+          {/* 2. Soft result + hint */}
+          {sessionResult && (
+            <div className="mx-auto mt-4 max-w-[460px] space-y-3">
+              <div className={`rounded-xl px-4 py-3 ${
+                sessionResult.finalEvaluation === 'good' ? 'bg-green-50'
+                : sessionResult.finalEvaluation === 'ok' ? 'bg-blue-50'
+                : 'bg-gray-50'
+              }`}>
+                <p className={`text-sm font-bold ${
+                  sessionResult.finalEvaluation === 'good' ? 'text-green-800'
+                  : sessionResult.finalEvaluation === 'ok' ? 'text-blue-800'
+                  : 'text-gray-700'
+                }`}>{sessionResult.summary}</p>
+              </div>
+            </div>
+          )}
 
-          <div className="flex flex-col items-center gap-3">
+          {/* 3. Main action buttons */}
+          <div className="mx-auto mt-5 max-w-[460px] flex gap-3">
             <button
               type="button"
               onClick={handleRetryAll}
-              className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+              className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
             >
               {uiText.aiConvRetryAll}
             </button>
-
             <button
               type="button"
-              onClick={() => {
-                window.dispatchEvent(new Event('next-step'))
-              }}
-              className="w-full rounded-xl bg-[#F5A623] py-4 text-base font-bold text-white transition hover:bg-[#D4881A]"
+              onClick={() => setShowReviewScreen(true)}
+              className="flex-1 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
             >
-              {isLastBlock ? uiText.aiConvFinishLesson : uiText.scaffoldNextButton}
+              {isLastBlock ? uiText.aiConvFinishLesson : uiText.aiConvNextProblem}
             </button>
           </div>
+
+          {/* 5. Completion card — shown only when isLastBlock */}
+          {isLastBlock && showPaywall && (
+            <div className="mx-auto mt-6 max-w-[360px] rounded-2xl border border-[#F5A623]/30 bg-gradient-to-b from-[#FFFDF5] to-[#FFF8EE] px-6 py-5 text-center shadow-sm">
+              <p className="text-lg font-black text-[#1a1a2e]">{uiText.paywallTitle}</p>
+              <p className="mt-2 text-xs font-bold text-[#F59E0B]">{uiText.paywallValue}</p>
+              <p className="mt-3 text-xs text-[#9CA3AF]">{uiText.paywallFreeLimit}</p>
+              <button
+                type="button"
+                onClick={() => { trackEvent('paywall_clicked', { action: 'dismiss' }); setShowPaywall(false) }}
+                className="mx-auto mt-3 block cursor-pointer text-xs text-[#9CA3AF] underline underline-offset-2 transition hover:text-[#6B7280]"
+              >
+                {uiText.paywallCtaSecondary}
+              </button>
+            </div>
+          )}
+
+          {/* 5. Streak celebration */}
+          {isLastBlock && streakCount > 0 && (
+            <div className="mx-auto mt-5 max-w-[300px] rounded-2xl border border-[#FDE68A] bg-gradient-to-b from-[#FFFBEB] to-[#FEF3C7] px-5 py-4 text-center shadow-sm">
+              <p className="text-2xl font-black text-[#F59E0B]">🔥 {streakCount}日連続</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-[#92400E]">
+                {streakCount >= 100 ? '100日達成！あなたは本物の学習者です'
+                  : streakCount >= 50 ? '50日！英語が日常になっています'
+                  : streakCount >= 30 ? '1ヶ月達成！本当にすごいです'
+                  : streakCount >= 14 ? '2週間！すばらしい継続力です'
+                  : streakCount >= 7 ? '1週間達成！習慣になってきましたね'
+                  : streakCount >= 3 ? 'いい調子です！この勢いで続けましょう'
+                  : 'いいスタート！明日も続けましょう'}
+              </p>
+            </div>
+          )}
+
+          {/* Diamond reward feedback */}
+          {isLastBlock && (() => {
+            const base = 1
+            const streakBonus = streakCount >= 3 ? 1 : 0
+            const boostBonus = boostWasActive ? 2 : 0
+            const total = base + streakBonus + boostBonus
+            return (
+              <div className="mx-auto mt-3 flex items-center justify-center gap-2">
+                <img src="/images/branding/diamond.svg" alt="" className="h-5 w-5" />
+                <span className="text-sm font-bold text-[#B45309]">
+                  +{total} ダイヤ獲得！{boostWasActive && '（ブーストで+2）'}
+                </span>
+              </div>
+            )
+          })()}
+
+        </>
+      )}
+    </div>
+  )
+}
+
+// ——— Step-level Mini Review ———
+
+type MiniReviewType = 'recognition' | 'recall' | 'transfer'
+type MiniReviewMode = 'audio-first' | 'text' | 'speaking'
+
+type MiniReviewItem = {
+  type: MiniReviewType
+  mode: MiniReviewMode
+  prompt: string
+  choices: [string, string]
+  correctIndex: 0 | 1
+  /** Text to generate audio for in audio-first or speaking mode. */
+  audioText?: string
+}
+
+/** In-memory performance tracking + adaptive engine. */
+type MiniReviewResult = {
+  type: MiniReviewType
+  correct: boolean
+  responseTimeMs: number
+  stage: string
+}
+
+type TypeBucket = { attempts: number; errors: number; slowCount: number }
+
+type WeaknessProfile = {
+  recognition: TypeBucket
+  recall: TypeBucket
+  transfer: TypeBucket
+  /** Slot dimensions with error counts. */
+  person: number
+  time: number
+  tense: number
+  subject: number
+}
+
+const SLOW_THRESHOLD_MS = 2000
+
+const miniReviewResults: MiniReviewResult[] = []
+
+const weaknessProfile: WeaknessProfile = {
+  recognition: { attempts: 0, errors: 0, slowCount: 0 },
+  recall: { attempts: 0, errors: 0, slowCount: 0 },
+  transfer: { attempts: 0, errors: 0, slowCount: 0 },
+  person: 0, time: 0, tense: 0, subject: 0,
+}
+
+/** Update weakness profile from a review result. */
+function updateWeaknessProfile(result: MiniReviewResult) {
+  const bucket = weaknessProfile[result.type]
+  bucket.attempts += 1
+  if (!result.correct) {
+    bucket.errors += 1
+  } else if (result.responseTimeMs < SLOW_THRESHOLD_MS) {
+    // Decay: fast correct answers reduce error weight
+    bucket.errors = Math.max(0, bucket.errors - 0.3)
+  }
+  if (result.responseTimeMs > SLOW_THRESHOLD_MS) {
+    bucket.slowCount += 1
+  }
+}
+
+/** Get error rate for a review type (0–1). */
+function getErrorRate(type: MiniReviewType): number {
+  const b = weaknessProfile[type]
+  return b.attempts > 0 ? b.errors / b.attempts : 0
+}
+
+/** Get slow rate for a review type (0–1). */
+function getSlowRate(type: MiniReviewType): number {
+  const b = weaknessProfile[type]
+  return b.attempts > 0 ? b.slowCount / b.attempts : 0
+}
+
+/** True if user is consistently slow across types. */
+function isGloballySlow(): boolean {
+  const total = weaknessProfile.recognition.attempts + weaknessProfile.recall.attempts + weaknessProfile.transfer.attempts
+  const totalSlow = weaknessProfile.recognition.slowCount + weaknessProfile.recall.slowCount + weaknessProfile.transfer.slowCount
+  return total >= 4 && totalSlow / total > 0.5
+}
+
+/** Get the weakest review type. Priority: slot weakness > type error rate > speed. */
+function getWeakestType(): MiniReviewType | null {
+  // If globally slow, bias toward recognition (easiest type)
+  if (isGloballySlow()) return 'recognition'
+
+  const types: MiniReviewType[] = ['recognition', 'recall', 'transfer']
+  let weakest: MiniReviewType | null = null
+  let maxRate = -1
+  for (const t of types) {
+    const rate = getErrorRate(t)
+    if (weaknessProfile[t].attempts >= 2 && rate > maxRate) {
+      maxRate = rate
+      weakest = t
+    }
+  }
+  return maxRate > 0.3 ? weakest : null
+}
+
+/** Track a slot dimension weakness when user gets it wrong. */
+function trackSlotWeakness(dimension: 'person' | 'time' | 'tense' | 'subject') {
+  weaknessProfile[dimension] += 1
+}
+
+/** Get the weakest slot dimension. */
+function getWeakestSlot(): 'person' | 'time' | 'tense' | 'subject' | null {
+  const dims = ['person', 'time', 'tense', 'subject'] as const
+  let weakest: typeof dims[number] | null = null
+  let max = 0
+  for (const d of dims) {
+    if (weaknessProfile[d] > max) { max = weaknessProfile[d]; weakest = d }
+  }
+  return max >= 2 ? weakest : null
+}
+
+/** Semantic verb alternatives for plausible distractors. */
+const VERB_ALTS: Record<string, string> = {
+  talked: 'spoke', spoke: 'talked',
+  went: 'walked', walked: 'went',
+  ate: 'had', had: 'ate',
+  made: 'prepared', prepared: 'made',
+  took: 'grabbed', grabbed: 'took',
+  watched: 'saw', saw: 'watched',
+  met: 'visited', visited: 'met',
+  bought: 'got', got: 'bought',
+  drank: 'had', read: 'looked at',
+}
+
+/** Semantic preposition alternatives. */
+const PREP_ALTS: Record<string, string> = {
+  with: 'to', to: 'with', at: 'in', in: 'at', for: 'about', about: 'for',
+}
+
+/** Tense transformation pairs for structural transfer. */
+const TENSE_TRANSFORMS: { match: RegExp; replace: string; timeFrom: string; timeTo: string }[] = [
+  { match: /\btalked\b/, replace: 'will talk', timeFrom: 'today', timeTo: 'tomorrow' },
+  { match: /\bwent\b/, replace: 'will go', timeFrom: 'today', timeTo: 'tomorrow' },
+  { match: /\bate\b/, replace: 'will eat', timeFrom: 'today', timeTo: 'tomorrow' },
+  { match: /\bmade\b/, replace: 'will make', timeFrom: 'today', timeTo: 'tomorrow' },
+  { match: /\btook\b/, replace: 'will take', timeFrom: 'today', timeTo: 'tomorrow' },
+  { match: /\bwatched\b/, replace: 'will watch', timeFrom: 'today', timeTo: 'tomorrow' },
+  { match: /\bbought\b/, replace: 'will buy', timeFrom: 'today', timeTo: 'tomorrow' },
+]
+
+/** Subject transformation for structural transfer. */
+const SUBJECT_ALTS: Record<string, string> = {
+  'I': 'We', 'We': 'I', 'He': 'She', 'She': 'He',
+}
+
+/**
+ * Build a semantic distractor by replacing a verb or preposition.
+ * Falls back to word-swap only if no semantic alternative works.
+ */
+function buildDistractor(sentence: string): string {
+  const words = sentence.split(/\s+/)
+
+  // Priority 1: replace a verb with a semantic alternative
+  for (let i = 0; i < words.length; i++) {
+    const lower = words[i].toLowerCase().replace(/[.,!?]/g, '')
+    if (VERB_ALTS[lower]) {
+      const copy = [...words]
+      copy[i] = VERB_ALTS[lower]
+      return copy.join(' ')
+    }
+  }
+
+  // Priority 2: replace a preposition with a semantic alternative
+  for (let i = 0; i < words.length; i++) {
+    const lower = words[i].toLowerCase()
+    if (PREP_ALTS[lower]) {
+      const copy = [...words]
+      copy[i] = PREP_ALTS[lower]
+      return copy.join(' ')
+    }
+  }
+
+  // Priority 3: word-swap fallback (last resort)
+  if (words.length < 3) return sentence
+  const mid = Math.floor(words.length / 2)
+  const copy = [...words]
+  ;[copy[mid], copy[mid - 1]] = [copy[mid - 1], copy[mid]]
+  return copy.join(' ')
+}
+
+/**
+ * Attempt a structural tense transfer (past → future).
+ * Returns null if no clean transformation is possible.
+ */
+function buildTenseTransfer(sentence: string): { transformed: string; label: string } | null {
+  for (const t of TENSE_TRANSFORMS) {
+    if (t.match.test(sentence)) {
+      let result = sentence.replace(t.match, t.replace)
+      // Also swap time word if present
+      if (result.includes(t.timeFrom)) {
+        result = result.replace(t.timeFrom, t.timeTo)
+      }
+      if (result !== sentence) return { transformed: result, label: t.timeTo }
+    }
+  }
+  return null
+}
+
+/**
+ * Attempt a subject transfer (I → We, etc.).
+ * Returns null if no clean transformation is possible.
+ */
+function buildSubjectTransfer(sentence: string): { transformed: string; label: string } | null {
+  const firstWord = sentence.split(/\s+/)[0]
+  if (!firstWord) return null
+  const alt = SUBJECT_ALTS[firstWord]
+  if (!alt) return null
+  const result = sentence.replace(new RegExp(`^${firstWord}\\b`), alt)
+  if (result !== sentence) return { transformed: result, label: alt }
+  return null
+}
+
+/** Generate one mini-review question from the current sentence + stage. */
+function generateMiniReview(
+  stage: 'listen' | 'repeat' | 'scaffold' | 'ai_question',
+  sentence: string,
+  personSlot: string,
+  personAlt: string,
+  timeSlot: string,
+  timeAlt: string,
+  uiText: LessonCopy['activeCard']
+): MiniReviewItem | null {
+  if (!sentence || sentence.split(/\s+/).length < 2) return null
+
+  // Listen prefers speaking mode; repeat prefers audio-first; others text
+  const mode: MiniReviewMode = stage === 'listen' ? 'speaking'
+    : stage === 'repeat' ? 'audio-first'
+    : 'text'
+  const audioText = sentence
+
+  /** Helper to build a review item with mode/audioText pre-filled. */
+  const mk = (type: MiniReviewType, prompt: string, choices: [string, string], correctIndex: 0 | 1, overrideMode?: MiniReviewMode): MiniReviewItem =>
+    ({ type, mode: overrideMode ?? mode, prompt, choices, correctIndex, audioText })
+
+  // ── Adaptive bias: override stage default if weakness detected ──
+  const weakestType = getWeakestType()
+  const weakestSlot = getWeakestSlot()
+
+  // If user is weak at recall and current stage normally does recognition,
+  // try recall first. Vice versa for transfer.
+  const stageDefault: Record<string, MiniReviewType> = {
+    listen: 'recognition', repeat: 'recall', scaffold: 'recognition', ai_question: 'transfer',
+  }
+  const shouldBiasType = weakestType && weakestType !== stageDefault[stage]
+
+  // If user is weak at a specific slot dimension, prefer that dimension
+  const preferPerson = weakestSlot === 'person' && personSlot
+  const preferTime = weakestSlot === 'time' && timeSlot
+  const preferTense = weakestSlot === 'tense'
+  const preferSubject = weakestSlot === 'subject'
+
+  // Adaptive override: try to generate the weakest type for any stage
+  if (shouldBiasType && weakestType === 'recall') {
+    const d = personSlot ? sentence.replace(personSlot, personAlt)
+      : timeSlot ? sentence.replace(timeSlot, timeAlt)
+      : buildDistractor(sentence)
+    if (d !== sentence) return mk('recall', uiText.miniReviewRecallPrompt, [sentence, d], 0)
+  }
+  if (shouldBiasType && weakestType === 'transfer' && stage !== 'ai_question') {
+    if (personSlot) {
+      const v = sentence.replace(personSlot, personAlt)
+      const w = sentence.replace(personSlot, 'someone')
+      if (v !== w) return mk('transfer', uiText.miniReviewTransferPick.replace('{value}', personAlt), [v, w], 0)
+    }
+  }
+
+  switch (stage) {
+    // ── LISTEN → recognition ──
+    // Test whether the learner caught the meaning from audio
+    case 'listen': {
+      // Adaptive: prefer weak slot dimension
+      if (preferTime && timeSlot) return mk('recognition', uiText.miniReviewWhen, [timeSlot, timeAlt], 0)
+      if (preferPerson && personSlot) return mk('recognition', uiText.miniReviewWho, [personSlot, personAlt], 0)
+      // Default priority
+      if (personSlot) return mk('recognition', uiText.miniReviewWho, [personSlot, personAlt], 0)
+      if (timeSlot) return mk('recognition', uiText.miniReviewWhen, [timeSlot, timeAlt], 0)
+      const d1 = buildDistractor(sentence)
+      if (d1 === sentence) return null
+      return mk('recognition', uiText.miniReviewWhichSentence, [sentence, d1], 0)
+    }
+
+    case 'repeat': {
+      const d2 = personSlot ? sentence.replace(personSlot, personAlt)
+        : timeSlot ? sentence.replace(timeSlot, timeAlt)
+        : buildDistractor(sentence)
+      if (d2 === sentence) return null
+      return mk('recall', uiText.miniReviewRecallPrompt, [sentence, d2], 0)
+    }
+
+    case 'scaffold': {
+      if (personSlot) {
+        const verbChunk = sentence.split(/\s+/).slice(0, 2).join(' ')
+        if (verbChunk && verbChunk !== personSlot) {
+          return mk('recognition', uiText.miniReviewWhichChanges, [personSlot, verbChunk], 0)
+        }
+      }
+      const d3 = personSlot ? sentence.replace(personSlot, personAlt)
+        : timeSlot ? sentence.replace(timeSlot, timeAlt)
+        : buildDistractor(sentence)
+      if (d3 === sentence) return null
+      return mk('recall', uiText.miniReviewWhichSentence, [sentence, d3], 0)
+    }
+
+    case 'ai_question': {
+      // Adaptive: try weakest dimension first
+      if (preferTense) {
+        const t = buildTenseTransfer(sentence)
+        if (t) { const w = buildDistractor(t.transformed); if (w !== t.transformed) return mk('transfer', uiText.miniReviewTenseTransfer.replace('{value}', t.label), [t.transformed, w], 0) }
+      }
+      if (preferSubject) {
+        const s = buildSubjectTransfer(sentence)
+        if (s) { const w = buildDistractor(s.transformed); if (w !== s.transformed) return mk('transfer', uiText.miniReviewSubjectTransfer.replace('{value}', s.label), [s.transformed, w], 0) }
+      }
+      if (preferTime && timeSlot) {
+        const v = sentence.replace(timeSlot, timeAlt); const w = sentence.replace(timeSlot, 'sometime')
+        if (v !== w) return mk('transfer', uiText.miniReviewTransferPick.replace('{value}', timeAlt), [v, w], 0)
+      }
+      // Default priority
+      if (personSlot) {
+        const variation = sentence.replace(personSlot, personAlt)
+        const wrong = sentence.replace(personSlot, 'someone')
+        if (variation !== wrong) return mk('transfer', uiText.miniReviewTransferPick.replace('{value}', personAlt), [variation, wrong], 0)
+      }
+      const tense = buildTenseTransfer(sentence)
+      if (tense) {
+        const wrong = buildDistractor(tense.transformed)
+        if (wrong !== tense.transformed) return mk('transfer', uiText.miniReviewTenseTransfer.replace('{value}', tense.label), [tense.transformed, wrong], 0)
+      }
+      const subject = buildSubjectTransfer(sentence)
+      if (subject) {
+        const wrong = buildDistractor(subject.transformed)
+        if (wrong !== subject.transformed) return mk('transfer', uiText.miniReviewSubjectTransfer.replace('{value}', subject.label), [subject.transformed, wrong], 0)
+      }
+      if (timeSlot) {
+        const variation = sentence.replace(timeSlot, timeAlt)
+        const wrong = sentence.replace(timeSlot, 'sometime')
+        if (variation !== wrong) return mk('transfer', uiText.miniReviewTransferPick.replace('{value}', timeAlt), [variation, wrong], 0)
+      }
+      // No clean transfer possible — skip
+      return null
+    }
+
+    default:
+      return null
+  }
+}
+
+function MiniReviewCard({
+  item,
+  uiText,
+  onComplete,
+  stage,
+  hideAudioHelperText = false,
+  autoPlay = false,
+  hideInlineResult = false,
+}: {
+  item: MiniReviewItem
+  uiText: LessonCopy['activeCard']
+  onComplete: (correct: boolean) => void
+  stage?: string
+  hideAudioHelperText?: boolean
+  autoPlay?: boolean
+  hideInlineResult?: boolean
+}) {
+  const [selected, setSelected] = useState<number | null>(null)
+  const [audioPlayed, setAudioPlayed] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [speakingState, setSpeakingState] = useState<'idle' | 'recording' | 'detected' | 'noSpeech' | 'fallback'>('idle')
+  const speakingAttemptRef = useRef(0)
+  const startTimeRef = useRef(Date.now())
+  const isCorrect = selected === item.correctIndex
+  const isSpeaking = item.mode === 'speaking'
+  const isAudioFirst = item.mode === 'audio-first' || isSpeaking
+  const showChoices = (!isAudioFirst || audioPlayed) && !isSpeaking
+
+  const playAudio = async () => {
+    if (isPlaying || !item.audioText) return
+    setIsPlaying(true)
+    try {
+      const res = await fetch('/api/audio/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: item.audioText, speed: 0.8 }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.audio_url) {
+          const audio = new Audio(data.audio_url)
+          audio.onended = () => { setIsPlaying(false); setAudioPlayed(true); startTimeRef.current = Date.now() }
+          audio.onerror = () => { setIsPlaying(false); setAudioPlayed(true) }
+          audio.play().catch(() => { setIsPlaying(false); setAudioPlayed(true) })
+          return
+        }
+      }
+    } catch { /* ignore */ }
+    setIsPlaying(false)
+    setAudioPlayed(true)
+  }
+
+  // Auto-play on mount if requested
+  const autoPlayTriggered = useRef(false)
+  useEffect(() => {
+    if (autoPlay && !autoPlayTriggered.current && item.audioText) {
+      autoPlayTriggered.current = true
+      playAudio()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay])
+
+  const handleSpeak = async () => {
+    if (speakingState !== 'idle') return
+    setSpeakingState('recording')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+        const speechDetected = blob.size > 1024
+        const responseTimeMs = Date.now() - startTimeRef.current
+        speakingAttemptRef.current += 1
+
+        const result: MiniReviewResult = { type: item.type, correct: speechDetected, responseTimeMs, stage: stage ?? '' }
+        miniReviewResults.push(result)
+        updateWeaknessProfile(result)
+
+        if (speechDetected) {
+          setSpeakingState('detected')
+          setTimeout(() => onComplete(true), 700)
+        } else if (speakingAttemptRef.current < 2) {
+          // First failure: show feedback briefly then reset to idle for retry
+          setSpeakingState('noSpeech')
+          setTimeout(() => setSpeakingState('idle'), 900)
+        } else {
+          // Second failure: fallback to choice mode
+          setSpeakingState('fallback')
+        }
+      }
+      recorder.start()
+      setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, 1500)
+    } catch {
+      // Mic unavailable — fallback to choice mode
+      setSpeakingState('fallback')
+    }
+  }
+
+  const handleChoice = (index: 0 | 1) => {
+    if (selected !== null) return
+    const responseTimeMs = Date.now() - startTimeRef.current
+    const correct = index === item.correctIndex
+    setSelected(index)
+
+    const result: MiniReviewResult = { type: item.type, correct, responseTimeMs, stage: stage ?? '' }
+    miniReviewResults.push(result)
+    updateWeaknessProfile(result)
+
+    setTimeout(() => onComplete(correct), 700)
+  }
+
+  // Speaking mode: fallback renders choices instead
+  const showChoicesFallback = isSpeaking && speakingState === 'fallback'
+
+  return (
+    <div className="mx-auto mt-4 max-w-[320px] animate-[fadeInUp_200ms_ease-out] rounded-[16px] border border-[#E8E4DF] bg-[#FFFDF8] px-5 py-4 text-center">
+      {isAudioFirst && !audioPlayed ? (
+        <>
+          {isPlaying ? (
+            <p className="text-sm font-bold text-[#3B82F6]">{uiText.challengeAudioPlaying}</p>
+          ) : (
+            <>
+              {!hideAudioHelperText && (
+                <p className="text-sm text-[#7b7b94]">{isSpeaking ? uiText.miniReviewSpeakNow : uiText.miniReviewListenFirst}</p>
+              )}
+              <button
+                type="button"
+                onClick={playAudio}
+                className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#3B82F6] text-white transition hover:bg-[#2563EB]"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M8 5v14l11-7z" /></svg>
+              </button>
+            </>
+          )}
+        </>
+      ) : isSpeaking && speakingState !== 'fallback' ? (
+        <>
+          <p className="text-sm font-bold text-[#1a1a2e]">{item.prompt}</p>
+          <p className="mt-1 text-xs text-[#7b7b94]">{uiText.miniReviewSpeakNow}</p>
+          {speakingState === 'idle' && (
+            <button
+              type="button"
+              onClick={handleSpeak}
+              className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600 active:scale-[0.95]"
+            >
+              🎤
+            </button>
+          )}
+          {speakingState === 'recording' && (
+            <div className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-400 text-white">⏺</div>
+          )}
+          {speakingState === 'detected' && (
+            <p className="mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold text-[#22c55e]">{uiText.miniReviewSpeechDetected}</p>
+          )}
+          {speakingState === 'noSpeech' && (
+            <p className="mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold text-[#F5A623]">{uiText.miniReviewNoSpeech}</p>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-bold text-[#1a1a2e]">{item.prompt}</p>
+          {(showChoices || showChoicesFallback) && (
+            <div className="mt-3 flex justify-center gap-2">
+              {item.choices.map((choice, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleChoice(i as 0 | 1)}
+                  disabled={selected !== null}
+                  className={`min-w-[120px] rounded-xl border px-4 py-2.5 text-sm font-bold transition active:scale-[0.97] ${
+                    selected === null
+                      ? 'border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'
+                      : selected === i
+                        ? i === item.correctIndex
+                          ? 'border-[#22c55e] bg-[#F0FDF4] text-[#22c55e]'
+                          : 'border-[#F5A623] bg-[#FFF9EC] text-[#F5A623]'
+                        : 'border-[#E8E4DF] bg-white text-[#b5b5c3]'
+                  }`}
+                >
+                  {choice}
+                </button>
+              ))}
+            </div>
+          )}
+          {selected !== null && !hideInlineResult && (
+            <p className={`mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold ${isCorrect ? 'text-[#22c55e]' : 'text-[#F5A623]'}`}>
+              {isCorrect ? uiText.miniReviewNice : uiText.miniReviewAlmost}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ——— Sound Discrimination Mini-Game ———
+
+const SOUND_PAIRS: { a: string; b: string }[] = [
+  { a: 'right', b: 'light' },
+  { a: 'berry', b: 'very' },
+  { a: 'think', b: 'sink' },
+  { a: 'fan', b: 'han' },
+  { a: 'ship', b: 'sheep' },
+  { a: 'pen', b: 'pan' },
+  { a: 'hot', b: 'hat' },
+  { a: 'bet', b: 'bed' },
+  { a: 'see', b: 'she' },
+  { a: 'rice', b: 'lice' },
+]
+
+function SoundGame({ uiText, onComplete }: { uiText: LessonCopy['activeCard']; onComplete: () => void }) {
+  const [questionIndex, setQuestionIndex] = useState(0)
+  const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null)
+  const [score, setScore] = useState(0)
+  const [gameQuestions] = useState(() => {
+    const shuffled = [...SOUND_PAIRS].sort(() => Math.random() - 0.5)
+    return shuffled.slice(0, 5).map((pair) => {
+      const correctIsA = Math.random() > 0.5
+      return {
+        correct: correctIsA ? pair.a : pair.b,
+        choiceA: pair.a,
+        choiceB: pair.b,
+      }
+    })
+  })
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [showIncorrectHint, setShowIncorrectHint] = useState(false)
+  const sgAudioRef = useRef<HTMLAudioElement | null>(null)
+  const sgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const done = questionIndex >= gameQuestions.length
+
+  const currentQ = gameQuestions[questionIndex]
+
+  // Cleanup: stop audio + clear timer
+  const cleanupSgAudio = useCallback(() => {
+    if (sgAudioRef.current) {
+      sgAudioRef.current.pause()
+      sgAudioRef.current.onended = null
+      sgAudioRef.current.onerror = null
+      sgAudioRef.current = null
+    }
+    if (sgTimerRef.current) {
+      clearTimeout(sgTimerRef.current)
+      sgTimerRef.current = null
+    }
+  }, [])
+
+  // Cleanup on unmount
+  useEffect(() => () => cleanupSgAudio(), [cleanupSgAudio])
+
+  // Prefetch current + next round audio
+  useEffect(() => {
+    if (currentQ) ensureChallengeAudioUrl(currentQ.correct, 0.8)
+    const nextQ = gameQuestions[questionIndex + 1]
+    if (nextQ) ensureChallengeAudioUrl(nextQ.correct, 0.8)
+  }, [questionIndex, currentQ, gameQuestions])
+
+  const playAudio = async () => {
+    debugLog('[challenge-listening-play-clicked]', { round: questionIndex, text: currentQ?.correct, isPlaying })
+    if (!currentQ || isPlaying) return
+    cleanupSgAudio()
+    setIsPlaying(true)
+    const url = await ensureChallengeAudioUrl(currentQ.correct, 0.8)
+    if (url) {
+      const audio = new Audio(url)
+      sgAudioRef.current = audio
+      sgTimerRef.current = setTimeout(() => { setIsPlaying(false); cleanupSgAudio() }, 10000)
+      audio.onended = () => { setIsPlaying(false); cleanupSgAudio() }
+      audio.onerror = () => { setIsPlaying(false); cleanupSgAudio() }
+      audio.play().catch(() => { setIsPlaying(false); cleanupSgAudio() })
+    } else {
+      setIsPlaying(false)
+    }
+  }
+
+  const handleChoice = (choice: string) => {
+    if (feedback || done) return
+    const isCorrect = choice === currentQ?.correct
+    setFeedback(isCorrect ? 'correct' : 'incorrect')
+    if (isCorrect) {
+      setScore((s) => s + 1)
+      setShowIncorrectHint(false)
+      setTimeout(() => {
+        setFeedback(null)
+        cleanupSgAudio()
+        setIsPlaying(false)
+        setQuestionIndex(questionIndex + 1)
+      }, 800)
+    } else {
+      setShowIncorrectHint(true)
+      setTimeout(() => {
+        setFeedback(null)
+      }, 1200)
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="mt-4 animate-[fadeInUp_250ms_ease-out] rounded-[16px] border border-[#E8E4DF] bg-[#F0FDF4] px-5 py-4 text-center">
+        <p className="text-lg font-black text-[#22c55e]">{uiText.soundGameComplete}</p>
+        <p className="mt-1 text-sm text-[#5a5a7a]">{score} / {gameQuestions.length}</p>
+        <button
+          type="button"
+          onClick={onComplete}
+          className="mx-auto mt-3 block rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+        >
+          次へ
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 rounded-[16px] border border-[#E8E4DF] bg-white px-5 py-4 text-center">
+      <p className="text-lg font-black text-[#1a1a2e]">
+        {uiText.soundGameTitle}
+      </p>
+      <p className="mt-1 text-xs text-[#7b7b94]">
+        ({questionIndex + 1}/{gameQuestions.length})
+      </p>
+
+      <p className="mt-3 text-center text-sm text-gray-700">音声と同じ単語を選択してみましょう！</p>
+
+      {/* Status indicator */}
+      {isPlaying && (
+        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">🔊 再生中…</p>
+      )}
+
+      <div className="mt-3 flex justify-center">
+        <button
+          type="button"
+          onClick={playAudio}
+          disabled={isPlaying || !!feedback}
+          className={isPlaying || feedback ? BTN_DISABLED : BTN_PRIMARY}
+        >
+          {isPlaying ? '再生中...' : '再生する'}
+        </button>
+      </div>
+
+      {feedback && (
+        <p className={`mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold ${feedback === 'correct' ? 'text-[#22c55e]' : 'text-[#F5A623]'}`}>
+          {feedback === 'correct' ? uiText.soundGameCorrect : uiText.soundGameIncorrect}
+        </p>
+      )}
+      {showIncorrectHint && !feedback && (
+        <p className="mt-1 text-xs text-[#7b7b94]">もう一度音声を聞いて、よく似た発音を聞き分けてみましょう。</p>
+      )}
+
+      {!feedback && currentQ && (
+        <div className="mt-3 flex justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleChoice(currentQ.choiceA)}
+            disabled={isPlaying}
+            className={`min-w-[100px] rounded-xl border border-[#E8E4DF] px-5 py-3 text-base font-bold transition active:scale-[0.97] ${isPlaying ? 'bg-gray-100 text-gray-400' : 'bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'}`}
+          >
+            {currentQ.choiceA}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleChoice(currentQ.choiceB)}
+            disabled={isPlaying}
+            className={`min-w-[100px] rounded-xl border border-[#E8E4DF] px-5 py-3 text-base font-bold transition active:scale-[0.97] ${isPlaying ? 'bg-gray-100 text-gray-400' : 'bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'}`}
+          >
+            {currentQ.choiceB}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ——— Challenge Repeat Feedback ———
+
+type RepeatMismatchDetail = {
+  message: string
+  expectedWord: string | null
+  spokenWord: string | null
+  hint: string
+}
+
+function buildRepeatFeedback(
+  evalResult: { rawTokens: string[]; expectedTokens: string[]; mismatchIndex: number | null; exactMatch: boolean },
+  transcript: string,
+  variant: 'repeat' | 'recall',
+): RepeatMismatchDetail {
+  const t = transcript.trim()
+
+  // No speech detected
+  if (!t) {
+    return { message: '音声が聞き取れませんでした。', expectedWord: null, spokenWord: null, hint: 'もう少しはっきり発音してみましょう。' }
+  }
+
+  // Token count mismatch (words missing or extra)
+  if (evalResult.rawTokens.length !== evalResult.expectedTokens.length) {
+    const diff = evalResult.expectedTokens.length - evalResult.rawTokens.length
+    if (diff > 0) {
+      const missingIdx = evalResult.mismatchIndex ?? evalResult.rawTokens.length
+      const missingWord = evalResult.expectedTokens[missingIdx] ?? null
+      return {
+        message: '単語が足りません。',
+        expectedWord: missingWord,
+        spokenWord: null,
+        hint: variant === 'repeat' ? 'お手本をもう一度聞いて、全文を話してみましょう。' : '英文全体を思い出して話してみましょう。',
+      }
+    }
+    return { message: '余分な単語があります。', expectedWord: null, spokenWord: null, hint: variant === 'repeat' ? 'お手本と同じ文だけを話しましょう。' : '正しい英文だけを話しましょう。' }
+  }
+
+  // Exact word mismatch at specific index
+  if (!evalResult.exactMatch && evalResult.mismatchIndex !== null) {
+    const idx = evalResult.mismatchIndex
+    const expected = evalResult.expectedTokens[idx] ?? null
+    const spoken = evalResult.rawTokens[idx] ?? null
+    return {
+      message: `${idx + 1}語目が違います。`,
+      expectedWord: expected,
+      spokenWord: spoken,
+      hint: variant === 'repeat' ? 'お手本をよく聞いてから話してみましょう。' : '正しい単語を思い出してみましょう。',
+    }
+  }
+
+  // exactMatch=true but wordMatchScore too low (pronunciation issue)
+  return { message: '発音が不明瞭です。', expectedWord: null, spokenWord: null, hint: 'ゆっくり丁寧に話してみましょう。' }
+}
+
+// ——— Quick Response Game ———
+
+function QuickResponseGame({
+  sentences,
+  uiText,
+  onComplete,
+}: {
+  sentences: string[]
+  uiText: LessonCopy['activeCard']
+  onComplete: () => void
+}) {
+  const [round, setRound] = useState(0)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isJudging, setIsJudging] = useState(false)
+  const [feedback, setFeedback] = useState<'correct' | 'tryAgain' | null>(null)
+  const [mismatch, setMismatch] = useState<RepeatMismatchDetail | null>(null)
+  const [score, setScore] = useState(0)
+  const qrRecorderRef = useRef<MediaRecorder | null>(null)
+  const qrTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const total = Math.min(sentences.length, 5)
+  const done = round >= total
+  const busy = isPlaying || isRecording || isJudging
+
+  // Prefetch current + next round audio
+  useEffect(() => {
+    if (sentences[round]) ensureChallengeAudioUrl(sentences[round], 0.85)
+    if (sentences[round + 1]) ensureChallengeAudioUrl(sentences[round + 1], 0.85)
+  }, [round, sentences])
+
+  const playCurrent = async () => {
+    if (isPlaying || done) return
+    setIsPlaying(true)
+    const url = await ensureChallengeAudioUrl(sentences[round], 0.85)
+    if (url) {
+      const audio = new Audio(url)
+      audio.onended = () => setIsPlaying(false)
+      audio.onerror = () => setIsPlaying(false)
+      audio.play().catch(() => setIsPlaying(false))
+    } else {
+      setIsPlaying(false)
+    }
+  }
+
+  const handleRecord = async () => {
+    if (busy || done) return
+    debugLog('[challenge-repeat-clicked]', { expectedText: sentences[round], round })
+    setIsRecording(true)
+    setMismatch(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      qrRecorderRef.current = recorder
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      recorder.onstop = async () => {
+        qrRecorderRef.current = null
+        if (qrTimerRef.current) { clearTimeout(qrTimerRef.current); qrTimerRef.current = null }
+        stream.getTracks().forEach((t) => t.stop())
+        setIsRecording(false)
+        setIsJudging(true)
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+        debugLog('[challenge-repeat-recording-stopped]', { blobSize: blob.size })
+        const formData = new FormData()
+        formData.append('file', new File([blob], 'qr.webm', { type: blob.type }))
+        formData.append('expectedText', sentences[round])
+        formData.append('language', 'en')
+        formData.append('mode', 'repeat')
+        debugLog('[challenge-repeat-request]', { expectedText: sentences[round], mode: 'repeat' })
+        try {
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData })
+          let isGood = false
+          if (res.ok) {
+            const data = await res.json()
+            debugLog('[challenge-repeat-response]', { transcript: data.transcript, totalScore: data.totalScore, wordMatch: data.breakdown?.wordMatch })
+            const evalResult = evaluateRepeat(data.transcript ?? '', sentences[round], data.breakdown?.wordMatch ?? null)
+            debugLog('[challenge-repeat-eval]', evalResult)
+            isGood = evalResult.isPass
+            setFeedback(isGood ? 'correct' : 'tryAgain')
+            if (isGood) {
+              setScore((s) => s + 1)
+            } else {
+              setMismatch(buildRepeatFeedback(evalResult, data.transcript ?? '', 'repeat'))
+            }
+          } else {
+            setFeedback('tryAgain')
+            setMismatch({ message: '判定できませんでした。', expectedWord: null, spokenWord: null, hint: 'もう一度お試しください。' })
+          }
+          if (isGood) {
+            setTimeout(() => { setFeedback(null); setMismatch(null); setRound((r) => r + 1) }, 800)
+          } else {
+            setTimeout(() => { setFeedback(null) }, 1200)
+          }
+        } catch {
+          setFeedback('tryAgain')
+          setMismatch({ message: '通信エラー', expectedWord: null, spokenWord: null, hint: 'もう一度お試しください。' })
+          setTimeout(() => { setFeedback(null) }, 1200)
+        } finally {
+          setIsJudging(false)
+        }
+      }
+      recorder.start()
+      qrTimerRef.current = setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, 5000)
+    } catch {
+      setIsRecording(false)
+    }
+  }
+
+  const handleStopQrRecording = () => {
+    if (qrRecorderRef.current && qrRecorderRef.current.state !== 'inactive') {
+      qrRecorderRef.current.stop()
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="mt-4 animate-[fadeInUp_250ms_ease-out] rounded-[16px] border border-[#E8E4DF] bg-[#F0FDF4] px-5 py-4 text-center">
+        <p className="text-lg font-black text-[#22c55e]">{uiText.quickResponseComplete}</p>
+        <p className="mt-1 text-sm text-[#5a5a7a]">{score} / {total}</p>
+        <button type="button" onClick={onComplete} className="mx-auto mt-3 block rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">次へ</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 rounded-[16px] border border-[#E8E4DF] bg-white px-5 py-4 text-center">
+      <p className="text-lg font-black text-[#1a1a2e]">{uiText.quickResponseTitle}</p>
+      <p className="mt-1 text-xs text-[#7b7b94]">({round + 1}/{total})</p>
+
+      <p className="mt-3 text-center text-sm text-gray-700">{uiText.quickResponseListen}</p>
+
+      {/* Status indicator */}
+      {(isPlaying || isRecording || isJudging) && (
+        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">
+          {isPlaying ? '🔊 再生中…' : isRecording ? '🎙️ 録音中…' : '⏳ 判定中…'}
+        </p>
+      )}
+
+      <div className="mt-3 flex justify-center gap-3">
+        <button
+          type="button"
+          onClick={playCurrent}
+          disabled={busy}
+          className={busy && !isPlaying ? BTN_DISABLED : BTN_PRIMARY}
+        >
+          {isPlaying ? '再生中...' : '再生する'}
+        </button>
+        <button
+          type="button"
+          onClick={isRecording ? handleStopQrRecording : handleRecord}
+          disabled={busy && !isRecording}
+          className={isRecording ? BTN_STOP : busy ? BTN_DISABLED : BTN_PRIMARY}
+        >
+          {isRecording ? '録音停止' : isJudging ? '判定中...' : '録音する'}
+        </button>
+      </div>
+
+      {feedback && (
+        <p className={`mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold ${feedback === 'correct' ? 'text-[#22c55e]' : 'text-[#F5A623]'}`}>
+          {feedback === 'correct' ? uiText.quickResponseCorrect : uiText.quickResponseTryAgain}
+        </p>
+      )}
+      {mismatch && !feedback && (
+        <div className="mt-2 animate-[fadeInUp_150ms_ease-out] text-center">
+          <p className="text-xs font-bold text-[#F5A623]">{mismatch.message}</p>
+          {mismatch.expectedWord && (
+            <p className="mt-1 text-sm">
+              <span className="text-[#7b7b94]">正解: </span>
+              <span className="font-bold text-[#22c55e]">{mismatch.expectedWord}</span>
+              {mismatch.spokenWord && (
+                <span className="text-[#7b7b94]"> ← あなた: <span className="font-bold text-[#ef4444]">{mismatch.spokenWord}</span></span>
+              )}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-[#7b7b94]">{mismatch.hint}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ——— Recall Challenge Game ———
+
+function RecallChallenge({
+  pairs,
+  uiText,
+  onComplete,
+}: {
+  pairs: { ja: string; en: string }[]
+  uiText: LessonCopy['activeCard']
+  onComplete: () => void
+}) {
+  const [round, setRound] = useState(0)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isJudging, setIsJudging] = useState(false)
+  const [feedback, setFeedback] = useState<'correct' | 'tryAgain' | null>(null)
+  const [mismatch, setMismatch] = useState<RepeatMismatchDetail | null>(null)
+  const [score, setScore] = useState(0)
+  const rcRecorderRef = useRef<MediaRecorder | null>(null)
+  const rcTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const total = Math.min(pairs.length, 5)
+  const done = round >= total
+  const currentPair = pairs[round]
+  const rcBusy = isRecording || isJudging
+
+  const handleRecord = async () => {
+    if (rcBusy || done || !currentPair) return
+    debugLog('[challenge-speaking-clicked]', { expectedText: currentPair.en, round })
+    setIsRecording(true)
+    setMismatch(null)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      rcRecorderRef.current = recorder
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      recorder.onstop = async () => {
+        rcRecorderRef.current = null
+        if (rcTimerRef.current) { clearTimeout(rcTimerRef.current); rcTimerRef.current = null }
+        stream.getTracks().forEach((t) => t.stop())
+        setIsRecording(false)
+        setIsJudging(true)
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+        debugLog('[challenge-speaking-recording-stopped]', { blobSize: blob.size })
+        const formData = new FormData()
+        formData.append('file', new File([blob], 'recall.webm', { type: blob.type }))
+        formData.append('expectedText', currentPair.en)
+        formData.append('language', 'en')
+        formData.append('mode', 'repeat')
+        debugLog('[challenge-speaking-request]', { expectedText: currentPair.en, mode: 'repeat' })
+        try {
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData })
+          let isGood = false
+          if (res.ok) {
+            const data = await res.json()
+            debugLog('[challenge-speaking-response]', { transcript: data.transcript, totalScore: data.totalScore, wordMatch: data.breakdown?.wordMatch })
+            const evalResult = evaluateRepeat(data.transcript ?? '', currentPair.en, data.breakdown?.wordMatch ?? null)
+            debugLog('[challenge-speaking-eval]', evalResult)
+            isGood = evalResult.isPass
+            setFeedback(isGood ? 'correct' : 'tryAgain')
+            if (isGood) {
+              setScore((s) => s + 1)
+            } else {
+              setMismatch(buildRepeatFeedback(evalResult, data.transcript ?? '', 'recall'))
+            }
+          } else {
+            setFeedback('tryAgain')
+            setMismatch({ message: '判定できませんでした。', expectedWord: null, spokenWord: null, hint: 'もう一度お試しください。' })
+          }
+          if (isGood) {
+            setTimeout(() => { setFeedback(null); setMismatch(null); setRound((r) => r + 1) }, 800)
+          } else {
+            setTimeout(() => { setFeedback(null) }, 1200)
+          }
+        } catch {
+          setFeedback('tryAgain')
+          setMismatch({ message: '通信エラー', expectedWord: null, spokenWord: null, hint: 'もう一度お試しください。' })
+          setTimeout(() => { setFeedback(null) }, 1200)
+        } finally {
+          setIsJudging(false)
+        }
+      }
+      recorder.start()
+      rcTimerRef.current = setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, 5000)
+    } catch {
+      setIsRecording(false)
+    }
+  }
+
+  const handleStopRcRecording = () => {
+    if (rcRecorderRef.current && rcRecorderRef.current.state !== 'inactive') {
+      rcRecorderRef.current.stop()
+    }
+  }
+
+  if (done) {
+    return (
+      <div className="mt-4 animate-[fadeInUp_250ms_ease-out] rounded-[16px] border border-[#E8E4DF] bg-[#F0FDF4] px-5 py-4 text-center">
+        <p className="text-lg font-black text-[#22c55e]">{uiText.recallComplete}</p>
+        <p className="mt-1 text-sm text-[#5a5a7a]">{score} / {total}</p>
+        <button type="button" onClick={onComplete} className="mx-auto mt-3 block rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">次へ</button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-4 rounded-[16px] border border-[#E8E4DF] bg-white px-5 py-4 text-center">
+      <p className="text-lg font-black text-[#1a1a2e]">{uiText.recallTitle}</p>
+      <p className="mt-1 text-xs text-[#7b7b94]">({round + 1}/{total})</p>
+
+      <p className="mt-3 text-center text-sm text-gray-700">{uiText.recallPrompt}</p>
+
+      {currentPair && (
+        <p className="mt-3 text-lg font-black text-[#1a1a2e]">{currentPair.ja}</p>
+      )}
+
+      {/* Status indicator */}
+      {(isRecording || isJudging) && (
+        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">
+          {isRecording ? '🎙️ 録音中…' : '⏳ 判定中…'}
+        </p>
+      )}
+
+      <div className="mt-3 flex justify-center">
+        <button
+          type="button"
+          onClick={isRecording ? handleStopRcRecording : handleRecord}
+          disabled={isJudging}
+          className={isRecording ? BTN_STOP : isJudging ? BTN_DISABLED : BTN_PRIMARY}
+        >
+          {isRecording ? '録音停止' : isJudging ? '判定中...' : '録音する'}
+        </button>
+      </div>
+
+      {feedback && (
+        <p className={`mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold ${feedback === 'correct' ? 'text-[#22c55e]' : 'text-[#F5A623]'}`}>
+          {feedback === 'correct' ? uiText.recallCorrect : uiText.recallTryAgain}
+        </p>
+      )}
+      {mismatch && !feedback && (
+        <div className="mt-2 animate-[fadeInUp_150ms_ease-out] text-center">
+          <p className="text-xs font-bold text-[#F5A623]">{mismatch.message}</p>
+          {mismatch.expectedWord && (
+            <p className="mt-1 text-sm">
+              <span className="text-[#7b7b94]">正解: </span>
+              <span className="font-bold text-[#22c55e]">{mismatch.expectedWord}</span>
+              {mismatch.spokenWord && (
+                <span className="text-[#7b7b94]"> ← あなた: <span className="font-bold text-[#ef4444]">{mismatch.spokenWord}</span></span>
+              )}
+            </p>
+          )}
+          <p className="mt-1 text-xs text-[#7b7b94]">{mismatch.hint}</p>
         </div>
       )}
     </div>
@@ -1177,18 +2991,175 @@ function AiConversationPlayer({
 
 const TYPING_ROUNDS = 3
 
-function buildTypingPrompts(currentAnswer: string, previousPhrases: string[]): string[] {
-  // Always use currentAnswer 3 times for reinforcement when no previous phrases
-  // When previous phrases exist, mix them in for review
-  const unique = previousPhrases.filter((p) => p.trim() !== currentAnswer.trim())
+/**
+ * Build gap-fill variations from a sentence by blanking out semantic chunks.
+ * Returns sentences with ______ replacing key parts.
+ */
+function buildGapFillVariations(sentence: string): string[] {
+  const words = sentence.split(/\s+/)
+  if (words.length < 3) return []
 
+  const gaps: string[] = []
+
+  // Gap 1: blank last 1-2 words (time/object position)
+  const tail = words.length <= 4 ? 1 : 2
+  const gap1 = [...words.slice(0, words.length - tail), '______'].join(' ')
+  gaps.push(gap1)
+
+  // Gap 2: blank middle chunk (object position, skip first 2 words)
+  if (words.length >= 5) {
+    const mid = Math.floor(words.length / 2)
+    const gap2 = [...words.slice(0, mid - 1), '______', ...words.slice(mid + 1)].join(' ')
+    if (gap2 !== gap1) gaps.push(gap2)
+  }
+
+  return gaps
+}
+
+// ── Topic-based typing template pools ──
+
+type TypingTopic = 'who' | 'when' | 'what'
+
+const TYPING_WHO_TEMPLATES: ((person: string) => string)[] = [
+  (p) => `I talked with ${p}.`,
+  (p) => `I met ${p}.`,
+  (p) => `I was with ${p}.`,
+]
+
+const TYPING_WHEN_TEMPLATES: ((time: string) => string)[] = [
+  (t) => `I did it ${t}.`,
+  (t) => `It was ${t}.`,
+  (t) => `That happened ${t}.`,
+]
+
+// Verb-sensitive "what" templates — only returns safe variants for the given verb chunk
+const SOCIAL_VERBS = new Set(['talk', 'talked', 'speak', 'spoke', 'chat', 'chatted'])
+const DIRECT_OBJ_VERBS = new Set(['discuss', 'discussed'])
+const MEET_VERBS = new Set(['meet', 'met', 'visit', 'visited', 'see', 'saw'])
+
+function getTypingWhatVariants(verbChunk: string): string[] {
+  const firstVerb = verbChunk.split(/\s+/)[0]?.toLowerCase() ?? ''
+  const variants: string[] = [`I ${verbChunk}.`]
+
+  if (SOCIAL_VERBS.has(firstVerb)) {
+    variants.push(`I ${verbChunk} about it.`)
+    variants.push(`I ${verbChunk} with someone.`)
+  } else if (DIRECT_OBJ_VERBS.has(firstVerb)) {
+    // "discuss" takes a direct object — no "about"
+    variants.push(`I ${verbChunk} it.`)
+    variants.push(`I ${verbChunk} it with someone.`)
+  } else if (MEET_VERBS.has(firstVerb)) {
+    variants.push(`I ${verbChunk} someone.`)
+  }
+  // Self-contained actions (woke up, took a bath, went home, etc.)
+  // → only the base form `I ${verbChunk}.` — no unsafe extensions
+
+  return variants
+}
+
+function detectTypingTopic(sentence: string, personSlot: string, timeSlot: string): TypingTopic {
+  if (personSlot) return 'who'
+  if (timeSlot) return 'when'
+  return 'what'
+}
+
+function extractSlots(sentence: string): { personSlot: string; timeSlot: string; verbChunk: string } {
+  const words = sentence.split(/\s+/)
+  let personSlot = ''
+  for (let i = 0; i < words.length; i++) {
+    if (/^(with|to|about)$/i.test(words[i]) && words[i + 1]) {
+      personSlot = words.slice(i + 1, i + 3).join(' ').replace(/[.,!?]/g, '')
+      break
+    }
+  }
+  const lastWord = words[words.length - 1]?.replace(/[.,!?]/g, '') ?? ''
+  const timeSlot = /^(today|yesterday|tomorrow|tonight|now)$/i.test(lastWord) ? lastWord : ''
+  // Extract verb chunk (first 2-3 words after subject)
+  const verbChunk = words.slice(1, 4).join(' ').replace(/[.,!?]/g, '')
+  return { personSlot, timeSlot, verbChunk }
+}
+
+function buildTypingPrompts(currentAnswer: string, previousPhrases: string[], typingVariations?: string[] | null): string[] {
   const prompts = [currentAnswer]
+  const { personSlot, timeSlot, verbChunk } = extractSlots(currentAnswer)
+  const topic = detectTypingTopic(currentAnswer, personSlot, timeSlot)
 
-  // Q2: most recent previous phrase, or current again
-  prompts.push(unique.length > 0 ? unique[unique.length - 1] : currentAnswer)
+  // Use typing variations from scene data if available
+  if (typingVariations && typingVariations.length > 0) {
+    for (const v of typingVariations) {
+      if (prompts.length >= TYPING_ROUNDS) break
+      if (v.trim() && v.trim() !== currentAnswer.trim()) prompts.push(v.trim())
+    }
+  }
 
-  // Q3: second previous phrase, or current again
-  prompts.push(unique.length > 1 ? unique[unique.length - 2] : currentAnswer)
+  // Generate topic-based structural variations
+  if (prompts.length < TYPING_ROUNDS) {
+    const personAlts = ['my teacher', 'my boss', 'my coworker']
+    const personAlt = personSlot
+      ? personAlts.find((p) => p.toLowerCase() !== personSlot.toLowerCase()) ?? 'my teacher'
+      : 'my friend'
+    const timeAlt = timeSlot
+      ? (timeSlot.toLowerCase() === 'today' ? 'yesterday' : 'today')
+      : 'today'
+
+    if (topic === 'who') {
+      // Round 2: same sentence with different person
+      const swapped = personSlot ? currentAnswer.replace(personSlot, personAlt) : null
+      if (swapped && swapped !== currentAnswer && prompts.length < TYPING_ROUNDS) {
+        prompts.push(swapped)
+      }
+      // Round 3: structural variation
+      if (prompts.length < TYPING_ROUNDS) {
+        const tmpl = TYPING_WHO_TEMPLATES[Math.floor(Math.random() * TYPING_WHO_TEMPLATES.length)]
+        const variant = tmpl(personAlt)
+        if (!prompts.includes(variant)) prompts.push(variant)
+      }
+    } else if (topic === 'when') {
+      // Round 2: same sentence with different time
+      const swapped = timeSlot ? currentAnswer.replace(new RegExp(`${timeSlot}`, 'i'), timeAlt) : null
+      if (swapped && swapped !== currentAnswer && prompts.length < TYPING_ROUNDS) {
+        prompts.push(swapped)
+      }
+      // Round 3: structural variation
+      if (prompts.length < TYPING_ROUNDS) {
+        const tmpl = TYPING_WHEN_TEMPLATES[Math.floor(Math.random() * TYPING_WHEN_TEMPLATES.length)]
+        const variant = tmpl(timeAlt)
+        if (!prompts.includes(variant)) prompts.push(variant)
+      }
+    } else {
+      // 'what' topic — verb-sensitive variations (only safe extensions)
+      if (verbChunk && prompts.length < TYPING_ROUNDS) {
+        const variants = getTypingWhatVariants(verbChunk)
+        for (const variant of variants) {
+          if (prompts.length >= TYPING_ROUNDS) break
+          if (variant !== currentAnswer && !prompts.includes(variant)) prompts.push(variant)
+        }
+      }
+    }
+  }
+
+  // Gap-fill fallback if still need more
+  if (prompts.length < TYPING_ROUNDS) {
+    const gapFills = buildGapFillVariations(currentAnswer)
+    for (const g of gapFills) {
+      if (prompts.length >= TYPING_ROUNDS) break
+      prompts.push(g)
+    }
+  }
+
+  // Previous phrases as review
+  if (prompts.length < TYPING_ROUNDS) {
+    const unique = previousPhrases.filter((p) => p.trim() !== currentAnswer.trim() && !prompts.includes(p.trim()))
+    for (const p of unique) {
+      if (prompts.length >= TYPING_ROUNDS) break
+      prompts.push(p.trim())
+    }
+  }
+
+  // Pad with currentAnswer if still short
+  while (prompts.length < TYPING_ROUNDS) {
+    prompts.push(currentAnswer)
+  }
 
   return prompts.slice(0, TYPING_ROUNDS)
 }
@@ -1199,33 +3170,70 @@ function TypingMultiRound({
   copy,
   previousPhrases = [],
   onInputChange,
-  playAudio,
   level,
+  ctaLabel,
 }: {
   item: LessonBlockItem
   uiText: LessonCopy['activeCard']
   copy: LessonCopy
   previousPhrases?: string[]
   onInputChange: (value: string) => void
-  playAudio: () => void
   level?: CurrentLevel
+  ctaLabel?: string
 }) {
   const [round, setRound] = useState(0)
   const [input, setInput] = useState('')
   const [checked, setChecked] = useState(false)
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
   const [allDone, setAllDone] = useState(false)
+  const [showEmptyGuidance, setShowEmptyGuidance] = useState(false)
 
   const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
+  const typingVars = (item as LessonBlockItem & { typing_variations?: string[] | null }).typing_variations
   const prompts = useMemo(
-    () => buildTypingPrompts(currentAnswer, previousPhrases),
-    [currentAnswer, previousPhrases]
+    () => buildTypingPrompts(currentAnswer, previousPhrases, typingVars),
+    [currentAnswer, previousPhrases, typingVars]
   )
+
+  // Per-prompt audio: fetch and cache audio for each typing prompt independently
+  const typingAudioCacheRef = useRef<Map<string, string>>(new Map())
+  const typingAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const currentPrompt = prompts[round] ?? currentAnswer
 
+  const playTypingAudio = useCallback(async () => {
+    // Stop previous
+    if (typingAudioRef.current) {
+      typingAudioRef.current.pause()
+      typingAudioRef.current = null
+    }
+
+    const text = currentPrompt
+    if (!text) return
+
+    // Check cache first
+    let url = typingAudioCacheRef.current.get(text)
+    if (!url) {
+      const fetched = await fetchAudioUrl(text)
+      if (fetched) {
+        typingAudioCacheRef.current.set(text, fetched)
+        url = fetched
+      }
+    }
+
+    if (url) {
+      const audio = new Audio(url)
+      typingAudioRef.current = audio
+      audio.play().catch(() => {})
+    }
+  }, [currentPrompt])
+
   const handleCheck = () => {
-    if (!input.trim()) return
+    if (!input.trim()) {
+      setShowEmptyGuidance(true)
+      return
+    }
+    setShowEmptyGuidance(false)
     const isAdvanced = level === 'advanced'
     const normalize = isAdvanced
       ? (s: string) => s.replace(/\s+/g, ' ').trim()
@@ -1233,6 +3241,7 @@ function TypingMultiRound({
     const correct = normalize(input) === normalize(currentPrompt)
     setIsCorrect(correct)
     setChecked(true)
+    trackEvent('typing_answer', { round, correct })
   }
 
   const handleNext = () => {
@@ -1245,6 +3254,7 @@ function TypingMultiRound({
       setInput('')
       setChecked(false)
       setIsCorrect(null)
+      setShowEmptyGuidance(false)
     }
   }
 
@@ -1261,7 +3271,7 @@ function TypingMultiRound({
       <div className="mt-3 flex justify-center">
         <button
           type="button"
-          onClick={playAudio}
+          onClick={playTypingAudio}
           className="rounded-xl bg-blue-500 px-6 py-3 text-white transition hover:bg-blue-600"
         >
           {uiText.typingPlayButton}
@@ -1271,61 +3281,101 @@ function TypingMultiRound({
       <input
         type="text"
         value={input}
-        onChange={(e) => setInput(e.target.value)}
+        onChange={(e) => { setInput(e.target.value); if (showEmptyGuidance) setShowEmptyGuidance(false) }}
         className="mt-3 w-full rounded-xl border px-4 py-3 text-base"
         placeholder={currentPrompt.split(/\s+/).slice(0, 2).join(' ') + '...'}
       />
 
       {!checked && (
-        <button
-          type="button"
-          onClick={handleCheck}
-          className="mt-3 w-full rounded-xl bg-[#F5A623] py-3 text-white font-bold transition hover:bg-[#D4881A]"
-        >
-          {uiText.typingCheckButton}
-        </button>
+        <>
+          {showEmptyGuidance && (
+            <div className="mx-auto mt-2 max-w-[320px] rounded-xl bg-gray-50 px-4 py-2.5 text-center">
+              <p className="text-sm text-[#7b7b94]">{uiText.typingEmptyGuidance}</p>
+            </div>
+          )}
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              onClick={handleCheck}
+              className="rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]"
+            >
+              {uiText.typingCheckButton}
+            </button>
+          </div>
+        </>
       )}
 
       {checked && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-3 animate-[fadeInUp_200ms_ease-out] space-y-2">
+          {isCorrect && (
+            <p className="text-center text-sm font-bold text-[#22c55e]">{uiText.typingSuccess}</p>
+          )}
           <div className={`rounded-xl px-4 py-3 ${isCorrect ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
             <p className="text-sm font-bold">
               {isCorrect ? copy.typing.correct : copy.typing.incorrect}
             </p>
-            {!isCorrect && (
-              <p className="mt-1 text-sm">
-                {uiText.aiQuestionBetterWay}
-                <span className="font-bold">{currentPrompt}</span>
-              </p>
-            )}
+            {!isCorrect && (() => {
+              const alts = generateAlternativeExpressions(currentPrompt)
+              return alts.length > 0 ? (
+                <div className="mt-1 text-sm">
+                  <p>{uiText.aiQuestionBetterWay}</p>
+                  {alts.map((alt, i) => (
+                    <p key={i} className="font-bold">・{alt}</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-sm">
+                  {uiText.aiQuestionBetterWay}
+                  <span className="font-bold">{currentPrompt}</span>
+                </p>
+              )
+            })()}
           </div>
 
           {round < TYPING_ROUNDS - 1 && (
-            <button
-              type="button"
-              onClick={handleNext}
-              className="w-full rounded-xl bg-blue-500 py-3 text-white font-bold transition hover:bg-blue-600"
-            >
-              {uiText.aiQuestionNextQuestion}
-            </button>
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={handleNext}
+                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+              >
+                {uiText.aiQuestionNextQuestion}
+              </button>
+            </div>
           )}
         </div>
       )}
 
       {(allDone || (checked && round >= TYPING_ROUNDS - 1)) && (
-        <button
-          type="button"
-          onClick={() => {
-            if (!allDone) {
-              setAllDone(true)
-              onInputChange(input || '[typed]')
-            }
-            window.dispatchEvent(new Event('next-step'))
-          }}
-          className="mt-6 w-full rounded-xl bg-[#F5A623] py-4 text-base font-bold text-white transition hover:bg-[#D4881A]"
-        >
-          {uiText.scaffoldNextButton}
-        </button>
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setRound(0)
+              setInput('')
+              setChecked(false)
+              setIsCorrect(null)
+              setAllDone(false)
+              setShowEmptyGuidance(false)
+            }}
+            className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+          >
+            {uiText.aiQuestionRetryTurn}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!allDone) {
+                setAllDone(true)
+                onInputChange(input || '[typed]')
+              }
+              window.dispatchEvent(new Event('next-step'))
+            }}
+            className="flex-1 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+          >
+            {ctaLabel ?? uiText.scaffoldNextButton}
+          </button>
+        </div>
       )}
     </div>
   )
@@ -1335,31 +3385,185 @@ function TypingMultiRound({
  * Evaluate: conversation-first.
  * 'good' = natural response, conversation works
  * 'close' = communicated but a more common phrasing exists
+ * 'retry' = answer is semantically unrelated to the question
  * 'silent' = nothing recognizable was said
  */
-function evaluateAnswer(transcript: string, expected: string): 'good' | 'close' | 'silent' {
-  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean)
-  const userWords = new Set(normalize(transcript))
 
-  // Detect silent / noise-only recordings
-  const noiseWords = new Set(['no', 'um', 'uh', 'hmm', 'ah', 'oh'])
-  const meaningfulWords = [...userWords].filter((w) => !noiseWords.has(w))
-  if (meaningfulWords.length === 0) return 'silent'
+/** Question-type detectors and the keywords a valid answer should contain. */
+const QUESTION_RELEVANCE_RULES: {
+  detect: (q: string) => boolean
+  validAnswer: (words: Set<string>, raw: string) => boolean
+}[] = [
+  {
+    // "What time..." questions — answer should mention time
+    detect: (q) => /what time/i.test(q) || /when did you/i.test(q) || /when do you/i.test(q),
+    validAnswer: (words, raw) =>
+      /\d/.test(raw) ||
+      ['morning', 'afternoon', 'evening', 'night', 'noon', 'oclock', 'around', 'early', 'late', 'ago', 'am', 'pm'].some((w) => words.has(w)),
+  },
+  {
+    // "Where..." questions — answer should mention a place
+    detect: (q) => /where did you|where do you|where are/i.test(q),
+    validAnswer: (words) =>
+      ['home', 'work', 'office', 'school', 'store', 'station', 'restaurant', 'park', 'gym', 'kitchen', 'bed', 'room', 'there', 'here', 'outside', 'inside', 'supermarket', 'shop', 'cafe', 'hospital'].some((w) => words.has(w)),
+  },
+  {
+    // "Why..." questions — answer should contain a reason/purpose signal
+    detect: (q) => /^why /i.test(q) || /why do you|why did you/i.test(q),
+    validAnswer: (words) =>
+      ['because', 'so', 'since', 'want', 'need', 'helps', 'help', 'makes', 'make', 'better', 'easier', 'like', 'love', 'prefer', 'tired', 'busy', 'healthy', 'save', 'cheap', 'expensive', 'important'].some((w) => words.has(w)),
+  },
+  {
+    // "What..." (general) questions — answer should not be a yes/no only
+    detect: (q) => /^what /i.test(q) || /what do you|what did you/i.test(q),
+    validAnswer: (_words, raw) => raw.replace(/[^a-z\s]/gi, '').split(/\s+/).filter(Boolean).length >= 2,
+  },
+]
 
-  // Check keyword overlap — if decent match, fully good
-  const skipWords = new Set(['i', 'a', 'the', 'is', 'am', 'are', 'do', 'does', 'did', 'to', 'in', 'at', 'on', 'my', 'it', 'and', 'but', 'so', 'because', 'that', 'this', 'for', 'of'])
-  const contentWords = normalize(expected).filter((w) => !skipWords.has(w))
-  if (contentWords.length === 0) return 'good'
+// ── ASR Transcript Sanitizer (context-aware) ──
+// Replaces invalid/unrecognized tokens with [unclear] using the expected sentence
+// as context, NOT a global dictionary. This scales with any vocabulary.
 
-  const matched = contentWords.filter((w) => userWords.has(w)).length
-  const ratio = matched / contentWords.length
-  if (ratio >= 0.2) return 'good'
+// Minimal function-word whitelist — grammar glue that appears in any sentence
+const FUNCTION_WORDS = new Set([
+  'i','me','my','you','your','he','she','it','we','they','them','his','her','its','our','their',
+  'a','an','the','this','that','these','those',
+  'is','am','are','was','were','be','been','being',
+  'do','does','did','done','doing',
+  'have','has','had','having',
+  'will','would','shall','should','can','could','may','might','must',
+  'not','no','yes','yeah','yep','nope','ok','okay',
+  'and','or','but','so','if','because','when','where','who','what','how','why','which',
+  'to','of','in','on','at','for','with','from','by','about','into','out','up','down','off','over','under',
+  'just','also','too','very','really','well','here','there','then','again','more',
+])
 
-  // User said something different — still OK, just show the native phrasing
-  return 'close'
+/** Levenshtein distance — standard edit distance for fuzzy matching */
+function editDistance(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0) as number[])
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[m][n]
+}
+
+/** Similarity score 0..1 based on edit distance */
+function similarity(a: string, b: string): number {
+  if (a === b) return 1
+  const maxLen = Math.max(a.length, b.length)
+  if (maxLen === 0) return 1
+  return 1 - editDistance(a, b) / maxLen
+}
+
+/**
+ * Context-aware transcript sanitizer.
+ * @param raw - Raw ASR transcript
+ * @param unclearLabel - Replacement text for unrecognized tokens (e.g. "[unclear]")
+ * @param contextSentence - The expected/target sentence used as vocabulary source
+ */
+function sanitizeTranscript(raw: string, unclearLabel: string, contextSentence: string): string {
+  if (!raw.trim()) return raw
+
+  // Build expected word set from context sentence
+  const expectedWords = contextSentence.toLowerCase().replace(/[^a-z0-9\s']/g, '').split(/\s+/).filter(Boolean)
+
+  return raw.split(/\s+/).map((token) => {
+    const clean = token.replace(/[.,!?;:'"]+$/g, '').toLowerCase()
+    if (!clean) return token
+    // Pass through numbers
+    if (/^\d+$/.test(clean)) return token
+    // Must look like an English word (letters + optional apostrophe)
+    if (!/^[a-z]+(?:'[a-z]+)?$/i.test(clean)) return unclearLabel
+    // Pass through short words (1-3 chars) — likely real
+    if (clean.length <= 3) return token
+    // Pass through function words
+    if (FUNCTION_WORDS.has(clean)) return token
+    // Check against expected sentence context (exact or fuzzy match)
+    const isClose = expectedWords.some((w) => similarity(clean, w) > 0.6)
+    if (isClose) return token
+    // Not close to any expected word — replace
+    return unclearLabel
+  }).join(' ')
+}
+
+function isAnswerRelevantToQuestion(question: string, transcript: string): boolean {
+  const lower = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, '')
+  const words = new Set(lower.split(/\s+/).filter(Boolean))
+
+  for (const rule of QUESTION_RELEVANCE_RULES) {
+    if (rule.detect(question)) {
+      return rule.validAnswer(words, lower)
+    }
+  }
+
+  // No specific rule matched — accept any non-empty answer
+  return true
+}
+
+// ── Alternative expression generator ──
+// Produces varied phrasings of a sentence by swapping common verbs/phrases.
+const VERB_ALT_MAP: Record<string, string[]> = {
+  'talk with': ['speak with', 'chat with'],
+  'speak with': ['talk with', 'chat with'],
+  'chat with': ['talk with', 'speak with'],
+  'talk to': ['speak to', 'chat with'],
+  'speak to': ['talk to', 'chat with'],
+  'go to': ['head to', 'visit'],
+  'head to': ['go to', 'visit'],
+  'get up': ['wake up', 'rise'],
+  'wake up': ['get up', 'rise'],
+  'take a bath': ['take a shower', 'have a bath'],
+  'take a shower': ['take a bath', 'have a shower'],
+  'have lunch': ['eat lunch', 'grab lunch'],
+  'eat lunch': ['have lunch', 'grab lunch'],
+  'have dinner': ['eat dinner', 'grab dinner'],
+  'eat dinner': ['have dinner', 'grab dinner'],
+  'have breakfast': ['eat breakfast', 'grab breakfast'],
+  'eat breakfast': ['have breakfast', 'grab breakfast'],
+  'watch TV': ['watch television', 'watch a show'],
+  'read a book': ['read books', 'do some reading'],
+  'go shopping': ['do some shopping', 'shop'],
+  'go for a walk': ['take a walk', 'go walking'],
+  'take a walk': ['go for a walk', 'go walking'],
+  'listen to music': ['put on music', 'play music'],
+  'play games': ['play video games', 'game'],
+  'do homework': ['work on homework', 'study'],
+  'go home': ['head home', 'return home'],
+  'come home': ['get home', 'arrive home'],
+  'make dinner': ['cook dinner', 'prepare dinner'],
+  'cook dinner': ['make dinner', 'prepare dinner'],
+}
+
+function generateAlternativeExpressions(sentence: string): string[] {
+  const lower = sentence.toLowerCase()
+  const alts: string[] = []
+  for (const [phrase, replacements] of Object.entries(VERB_ALT_MAP)) {
+    if (lower.includes(phrase)) {
+      for (const rep of replacements) {
+        const alt = sentence.replace(new RegExp(phrase, 'i'), rep)
+        if (alt.toLowerCase() !== lower && !alts.some((a) => a.toLowerCase() === alt.toLowerCase())) {
+          alts.push(alt)
+        }
+      }
+    }
+  }
+  return alts.length >= 2 ? alts.slice(0, 3) : []
 }
 
 const TOTAL_ROUNDS = 3
+
+type ConversationTurn = {
+  speaker: 'ai' | 'user'
+  text: string
+}
 
 /**
  * Builds a natural follow-up question that encourages reuse of a previous phrase.
@@ -1400,12 +3604,18 @@ function AiQuestionPlayer({
   inputValue,
   onInputChange,
   previousPhrases = [],
+  level,
+  ctaLabel,
+  regionContext: regionCtxProp = null,
 }: {
   item: LessonBlockItem
   uiText: LessonCopy['activeCard']
   inputValue: string
   onInputChange: (value: string) => void
   previousPhrases?: string[]
+  level?: string
+  ctaLabel?: string
+  regionContext?: import('../../../lib/daily-timeline').RegionContext | null
 }) {
   const [round, setRound] = useState(0)
   const [allDone, setAllDone] = useState(false)
@@ -1413,8 +3623,19 @@ function AiQuestionPlayer({
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [transcript, setTranscript] = useState('')
-  const [evaluation, setEvaluation] = useState<'good' | 'close' | 'silent' | null>(null)
+  const [evaluation, setEvaluation] = useState<'good' | 'partial' | 'retry' | 'silent' | null>(null)
   const [roundAnswered, setRoundAnswered] = useState(false)
+  const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([])
+  const [hintExpandedByTurn, setHintExpandedByTurn] = useState<Record<number, boolean>>({})
+  const [goodRoundsCount, setGoodRoundsCount] = useState(0)
+  const [totalAnsweredCount, setTotalAnsweredCount] = useState(0)
+  const [showSilentGuidance, setShowSilentGuidance] = useState(false)
+  /** Whether the question audio is currently playing. */
+  const [questionPlaying, setQuestionPlaying] = useState(false)
+  /** Whether the question audio has been played to completion at least once for the current round. */
+  const [questionPlayed, setQuestionPlayed] = useState(false)
+  /** Whether the question audio failed (error, blocked, fetch failure). Recording stays locked. */
+  const [questionError, setQuestionError] = useState(false)
   const questionAudioRef = useRef<HTMLAudioElement | null>(null)
   const audioUrlCacheRef = useRef<Map<string, string>>(new Map())
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -1423,77 +3644,105 @@ function AiQuestionPlayer({
 
   const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
   const aiQuestion = (item as LessonBlockItem & { aiQuestionText?: string | null }).aiQuestionText?.trim() || ''
+  // Target-language copy for AI question prompts (learner practices English)
+  const targetCopy = useMemo(() => getLessonCopy('en').activeCard, [])
   const lastPhrase = previousPhrases.length > 0
     ? previousPhrases[previousPhrases.length - 1]
     : null
 
-  // Build 3 questions in the TARGET language (not UI language)
-  // Q1 = scene-specific (with variation), Q2 = reuse previous phrase, Q3 = full sentence practice
-  const questions = useMemo(() => {
-    const q1Variants = aiQuestion
-      ? [
-          aiQuestion,
-          `Tell me, ${aiQuestion.replace(/^\w/, (c) => c.toLowerCase())}`,
-          `So, ${aiQuestion.replace(/^\w/, (c) => c.toLowerCase())}`,
-        ]
-      : ['Can you tell me about that?', 'What can you tell me?', 'Tell me more about this.']
-    const q1 = q1Variants[Math.floor(Math.random() * q1Variants.length)]
+  // ── Slot extraction for structured variation questions ──
+  const sentenceSlots = useMemo(() => {
+    const words = currentAnswer.split(/\s+/)
+    // Find person/object slot (word after "with"/"to"/"about" or possessive+noun)
+    let personSlot = ''
+    let personAlt = ''
+    for (let i = 0; i < words.length; i++) {
+      if (/^(with|to|about)$/i.test(words[i]) && words[i + 1]) {
+        // Take up to 2 words after preposition (e.g. "my friend")
+        personSlot = words.slice(i + 1, i + 3).join(' ').replace(/[.,!?]/g, '')
+        break
+      }
+    }
+    // Find time slot (last word if it's a time word)
+    const lastWord = words[words.length - 1]?.replace(/[.,!?]/g, '') ?? ''
+    const timeSlot = /^(today|yesterday|tomorrow|tonight|now)$/i.test(lastWord) ? lastWord : ''
+    const timeAlt = timeSlot.toLowerCase() === 'today' ? 'yesterday' : 'today'
 
-    const q2Fallbacks = [
-      'Can you tell me more about that?',
-      'Could you explain a bit more?',
-      'What else can you say about that?',
-    ]
-    const q2 = lastPhrase
-      ? buildReuseQuestion(lastPhrase)
-      : q2Fallbacks[Math.floor(Math.random() * q2Fallbacks.length)]
+    // Generate person alternatives
+    const personAlts = ['my teacher', 'my boss', 'my coworker', 'my neighbor']
+    personAlt = personSlot
+      ? personAlts.find((p) => p.toLowerCase() !== personSlot.toLowerCase()) ?? 'my teacher'
+      : ''
 
-    const q3Variants = [
-      'Say the full sentence one more time.',
-      'Try saying it again from the beginning.',
-      'One more time — say the whole thing.',
-    ]
-    const q3 = q3Variants[Math.floor(Math.random() * q3Variants.length)]
+    return { personSlot, personAlt, timeSlot, timeAlt }
+  }, [currentAnswer])
 
-    return [q1, q2, q3]
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiQuestion, lastPhrase])
+  // ── Conversation engine — generates all 3 turns once and freezes them ──
+  // useState ensures specs are stable across re-renders (useMemo is only a cache hint).
+  const [frozenSpecs] = useState<ConversationPromptSpec[]>(() => {
+    const conv = generateConversation(currentAnswer, sentenceSlots, level, targetCopy, regionCtxProp)
+    return [conv.round1, conv.round2, conv.round3]
+  })
 
-  // Each round has its own expected answer for evaluation
-  const expectedAnswers = useMemo(() => [
-    currentAnswer,                           // Q1: current sentence
-    lastPhrase ? `${lastPhrase} ${currentAnswer}` : currentAnswer, // Q2: accept both phrases
-    currentAnswer,                           // Q3: current sentence again
-  ], [currentAnswer, lastPhrase])
-
-  const currentQuestion = questions[round] ?? questions[0]
-  const expectedAnswer = expectedAnswers[round] ?? currentAnswer
+  const currentSpec = frozenSpecs[round] ?? frozenSpecs[0]
+  const currentQuestion = currentSpec.prompt
+  const expectedAnswer = currentSpec.expectedAnswer
 
   const roundLabel = uiText.aiQuestionRoundLabel
     .replace('{current}', String(round + 1))
     .replace('{total}', String(TOTAL_ROUNDS))
 
+  /** Clean up the current question audio element safely. */
+  const cleanupQuestionAudio = () => {
+    if (questionAudioRef.current) {
+      questionAudioRef.current.pause()
+      questionAudioRef.current.onended = null
+      questionAudioRef.current.onerror = null
+      questionAudioRef.current = null
+    }
+  }
+
+  /** Attach onended/onerror to an Audio element and play it. */
+  const playQuestionAudio = (audio: HTMLAudioElement) => {
+    cleanupQuestionAudio()
+    questionAudioRef.current = audio
+    setQuestionPlaying(true)
+    setQuestionError(false)
+
+    audio.onended = () => {
+      setQuestionPlaying(false)
+      setQuestionPlayed(true)
+    }
+    audio.onerror = () => {
+      setQuestionPlaying(false)
+      setQuestionError(true)
+    }
+
+    audio.play().catch(() => {
+      setQuestionPlaying(false)
+      setQuestionError(true)
+    })
+  }
+
   const handlePlayQuestion = async () => {
-    questionAudioRef.current?.pause()
+    setQuestionError(false)
 
     const cached = audioUrlCacheRef.current.get(currentQuestion)
     if (cached) {
-      const audio = new Audio(cached)
-      questionAudioRef.current = audio
-      audio.play().catch(() => {})
+      playQuestionAudio(new Audio(cached))
       return
     }
 
     if (!currentQuestion) return
     setLoadingQuestion(true)
-    const url = await fetchAudioUrl(currentQuestion)
+    const url = await fetchAudioUrl(currentQuestion, 0.75)
     setLoadingQuestion(false)
 
     if (url) {
       audioUrlCacheRef.current.set(currentQuestion, url)
-      const audio = new Audio(url)
-      questionAudioRef.current = audio
-      audio.play().catch(() => {})
+      playQuestionAudio(new Audio(url))
+    } else {
+      setQuestionError(true)
     }
   }
 
@@ -1511,6 +3760,7 @@ function AiQuestionPlayer({
       setTranscript('')
       setEvaluation(null)
       setRoundAnswered(false)
+      setShowSilentGuidance(false)
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
@@ -1530,7 +3780,10 @@ function AiQuestionPlayer({
 
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
         chunksRef.current = []
-        if (blob.size === 0) return
+        if (blob.size === 0) {
+          setShowSilentGuidance(true)
+          return
+        }
 
         setIsRecognizing(true)
         try {
@@ -1542,16 +3795,42 @@ function AiQuestionPlayer({
 
           if (res.ok) {
             const data = await res.json()
-            const recognized = data.transcript?.trim() || ''
+            const rawTranscript = data.transcript?.trim() || ''
+            // Sanitize: replace invalid ASR tokens with [unclear]
+            const recognized = sanitizeTranscript(rawTranscript, uiText.unclearToken, expectedAnswer)
             setTranscript(recognized)
-            const result = evaluateAnswer(recognized, expectedAnswer)
+
+            // Strip [unclear] tokens before evaluation
+            const forEval = recognized.replace(/\[unclear\]|\[不明\]/g, '').replace(/\s+/g, ' ').trim()
+
+            // Evaluate using the conversation engine
+            let result: 'good' | 'partial' | 'retry' | 'silent'
+            if (!forEval) {
+              result = 'silent'
+              setShowSilentGuidance(true)
+            } else {
+              const bucket = evaluateConversationAnswer(forEval, currentSpec)
+              result = bucket === 'correct' ? 'good'
+                : bucket === 'partial' ? 'partial'
+                : 'retry'
+            }
             setEvaluation(result)
-            // silent = could not hear, let user retry (don't mark as answered)
             if (result !== 'silent') {
+              trackEvent('ai_question_answer', { round, result })
+              setTotalAnsweredCount((c) => c + 1)
+              if (result === 'good') setGoodRoundsCount((c) => c + 1)
+            }
+            // silent = let user retry (don't mark as answered)
+            if (result !== 'silent' && result !== 'retry') {
               setRoundAnswered(true)
               if (round >= TOTAL_ROUNDS - 1) {
-                setAllDone(true)
-                onInputChange(recognized || '[answered]')
+                // Append final turn to conversation log — but do NOT set allDone yet.
+                // The user must see the result card first, then click "complete".
+                setConversationTurns((prev) => [
+                  ...prev,
+                  { speaker: 'ai', text: currentQuestion },
+                  { speaker: 'user', text: recognized || expectedAnswer },
+                ])
               }
             }
           } else {
@@ -1582,6 +3861,15 @@ function AiQuestionPlayer({
   }
 
   const handleNextQuestion = () => {
+    cleanupQuestionAudio()
+    // Append completed turn to conversation log
+    const newTurns: ConversationTurn[] = [
+      ...conversationTurns,
+      { speaker: 'ai', text: currentQuestion },
+      { speaker: 'user', text: transcript || expectedAnswer },
+    ]
+    setConversationTurns(newTurns)
+
     const next = round + 1
     if (next >= TOTAL_ROUNDS) {
       setAllDone(true)
@@ -1593,26 +3881,115 @@ function AiQuestionPlayer({
       setRoundAnswered(false)
       setIsRecognizing(false)
       setIsRecording(false)
+      setQuestionPlaying(false)
+      setQuestionPlayed(false)
+      setQuestionError(false)
+      setShowSilentGuidance(false)
     }
   }
 
   const handleRetryAll = () => {
+    cleanupQuestionAudio()
     setRound(0)
     setAllDone(false)
     setTranscript('')
     setEvaluation(null)
     setRoundAnswered(false)
+    setShowSilentGuidance(false)
+    setQuestionPlaying(false)
+    setQuestionPlayed(false)
+    setQuestionError(false)
+    setConversationTurns([])
+    setHintExpandedByTurn({})
     onInputChange('')
   }
 
-  const feedbackMessage =
-    evaluation === 'good' ? uiText.aiQuestionGood
-    : evaluation === 'close' ? uiText.aiQuestionClose
-    : evaluation === 'silent' ? uiText.aiQuestionSilent
-    : null
+  // ── Progressive hint fade-out ──
+  // Combines level (stable) + session success count + accuracy (dynamic)
+  type HintDisplayLevel = 'full' | 'collapsed' | 'hidden_default' | 'optional_only'
+
+  const hintDisplayLevel: HintDisplayLevel = useMemo(() => {
+    const levelScore =
+      level === 'advanced' ? 0.95
+      : level === 'intermediate' ? 0.7
+      : 0.3
+
+    // Session boost: +0.1 per good round (max +0.2)
+    const sessionBoost = Math.min(goodRoundsCount * 0.1, 0.2)
+
+    // Accuracy boost: if ≥ 5 answers and ≥ 80% correct, add +0.1
+    const accuracy = totalAnsweredCount >= 5 ? goodRoundsCount / totalAnsweredCount : 0
+    const accuracyBoost = accuracy >= 0.8 ? 0.1 : 0
+
+    const readiness = Math.min(levelScore + sessionBoost + accuracyBoost, 1.0)
+
+    if (readiness >= 1.0) return 'optional_only'
+    if (readiness >= 0.85) return 'hidden_default'
+    if (readiness >= 0.7) return 'collapsed'
+    return 'full'
+  }, [level, goodRoundsCount, totalAnsweredCount])
+
+  // Per-turn hint expanded state — defaults based on hint level
+  const isHintExpanded = hintExpandedByTurn[round] ?? (hintDisplayLevel === 'full')
+  const setIsHintExpanded = (expanded: boolean) => {
+    setHintExpandedByTurn((prev) => ({ ...prev, [round]: expanded }))
+  }
+
+  const feedbackMessage = useMemo(() => {
+    if (!evaluation) return null
+    if (evaluation === 'silent') return uiText.aiQuestionSilent
+
+    const lower = transcript.toLowerCase()
+    const { person, time, requiresFullSentence } = currentSpec.requiredSlots
+    const personPresent = person ? person.toLowerCase().split(/\s+/).every((w) => lower.includes(w)) : false
+    const timePresent = time ? lower.includes(time.toLowerCase()) : false
+    const wordCount = lower.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean).length
+
+    // Light reinforcement — deterministic per round (no random on re-render)
+    const reinforcements = ["You're getting better.", 'That sounded more natural.', 'Keep it up.']
+    const maybeReinforce = (base: string) => {
+      // Use round as a seed — consistent across re-renders for the same turn
+      if (round % 2 === 0) return base
+      return `${base} ${reinforcements[round % reinforcements.length]}`
+    }
+
+    if (evaluation === 'good') {
+      // Full sentence with all slots
+      if (requiresFullSentence && wordCount >= 4 && (personPresent || timePresent)) {
+        const slotDetail = personPresent && timePresent
+          ? ` You used '${person}' and '${time}' correctly.`
+          : personPresent && person
+            ? ` You used '${person}' correctly.`
+            : timePresent && time
+              ? ` You used '${time}' correctly.`
+              : ''
+        return maybeReinforce(`Nice! You said the full sentence correctly.${slotDetail}`)
+      }
+      // Slot match (short answer OK)
+      if (personPresent && person) return maybeReinforce(`Nice! You used '${person}' correctly.`)
+      if (timePresent && time) return maybeReinforce(`Nice! You used '${time}' correctly.`)
+      return maybeReinforce('Nice! That sounded natural.')
+    }
+
+    if (evaluation === 'partial') {
+      if (requiresFullSentence && wordCount < 3) {
+        return 'Good! Try saying the whole sentence.'
+      }
+      if (person && !personPresent) return `Almost! Try using '${person}'.`
+      if (time && !timePresent) return `Almost! Try using '${time}'.`
+      return 'Almost! Try saying the whole sentence.'
+    }
+
+    // retry
+    if (person) return `Try using '${person}' in your answer.`
+    if (time) return `Try using '${time}' in your answer.`
+    return uiText.aiQuestionRetry
+  }, [evaluation, transcript, currentSpec, uiText, round])
 
   const feedbackColor =
     evaluation === 'good' ? 'text-green-700 bg-green-50'
+    : evaluation === 'partial' ? 'text-amber-700 bg-amber-50'
+    : evaluation === 'retry' ? 'text-amber-700 bg-amber-50'
     : evaluation === 'silent' ? 'text-gray-700 bg-gray-50'
     : 'text-blue-700 bg-blue-50'
 
@@ -1622,20 +3999,149 @@ function AiQuestionPlayer({
         {roundLabel}
       </p>
 
-      <div className="mt-3 flex justify-center">
-        <button
-          type="button"
-          onClick={handlePlayQuestion}
-          disabled={loadingQuestion}
-          className="rounded-xl bg-blue-500 px-6 py-3 text-white transition hover:bg-blue-600 disabled:bg-gray-300"
-        >
-          {loadingQuestion ? '...' : uiText.aiQuestionPlayButton}
-        </button>
-      </div>
+      {/* Conversation log — previous turns */}
+      {conversationTurns.length > 0 && (
+        <div className="mx-auto mt-6 max-w-[460px]">
+          <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-5 py-5">
+            <p className="mb-3 text-[11px] font-bold tracking-widest text-[#9CA3AF]">{uiText.conversationFlowLabel}</p>
+            <div className="flex flex-col gap-3">
+              {conversationTurns.map((turn, i) => (
+                <div key={i} className={`flex ${turn.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${
+                    turn.speaker === 'ai'
+                      ? 'rounded-bl-md bg-[#F0F4FF] text-[#1a1a2e]'
+                      : 'rounded-br-md bg-[#FFF8EE] text-[#1a1a2e]'
+                  }`}>
+                    <p className="text-[10px] font-bold text-[#9c9c9c]">
+                      {turn.speaker === 'ai' ? uiText.aiQuestionLabel : uiText.aiQuestionYourAnswer}
+                    </p>
+                    <p className="mt-0.5">{turn.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-      <p className="mt-3 text-sm text-[#5a5a7a] text-center">
-        {uiText.aiQuestionInstruction}
-      </p>
+      {/* Active question controls */}
+      {!allDone && (
+        <>
+          <div className="mt-7 flex justify-center">
+            <button
+              type="button"
+              onClick={handlePlayQuestion}
+              disabled={loadingQuestion || questionPlaying}
+              className={`rounded-xl px-6 py-3 text-white transition ${
+                loadingQuestion || questionPlaying
+                  ? 'cursor-not-allowed bg-gray-300'
+                  : questionError
+                    ? 'cursor-pointer bg-amber-500 hover:bg-amber-600'
+                    : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
+              }`}
+            >
+              {loadingQuestion ? '...' : questionPlaying ? uiText.aiQuestionPlaying : questionError ? uiText.aiQuestionRetryPlay : uiText.aiQuestionPlayButton}
+            </button>
+          </div>
+
+          {questionError && (
+            <p className="mt-2 text-center text-xs text-amber-600">
+              {uiText.aiQuestionAudioError}
+            </p>
+          )}
+
+          <p className="mt-3 text-sm text-[#5a5a7a] text-center">
+            {uiText.aiQuestionInstruction}
+          </p>
+
+          {/* Progressive hint — fades out as learner improves */}
+          {currentSpec.expectedAnswer && (() => {
+            const hasSlots = currentSpec.requiredSlots.person || currentSpec.requiredSlots.time
+            const isFollowUp = currentSpec.kind === 'follow_up'
+
+            const encouragement =
+              hintDisplayLevel === 'collapsed' ? uiText.hintEncouragementCollapsed
+              : hintDisplayLevel === 'hidden_default' ? uiText.hintEncouragementHidden
+              : hintDisplayLevel === 'optional_only' ? uiText.hintEncouragementOptional
+              : null
+
+            const showToggle = hintDisplayLevel !== 'full'
+
+            return (
+              <div className="mx-auto mt-4 max-w-[360px]">
+                {/* Collapsed: encouragement + CTA in one block */}
+                {showToggle && !isHintExpanded && (
+                  <div className="rounded-xl border border-[#E5E7EB] bg-[#FAF8F5] px-4 py-3 text-center">
+                    {encouragement && !isFollowUp && (
+                      <p className="text-xs text-[#7b7b94]">{encouragement}</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsHintExpanded(true)}
+                      className="mt-1.5 cursor-pointer rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs text-[#6B7280] transition hover:bg-[#FAFDF7]"
+                    >
+                      {uiText.hintShowButton}
+                    </button>
+                  </div>
+                )}
+
+                {/* Hint card — full mode or expanded */}
+                {isHintExpanded && (
+                  <div className="rounded-xl border border-[#E5E7EB] bg-[#FAFDF7] px-4 py-3">
+                    <div className="flex items-start justify-between">
+                      <p className="text-xs font-bold text-[#6B7280]">
+                        {isFollowUp ? '🎯' : uiText.aiQuestionGoalLabel}
+                      </p>
+                      {showToggle && (
+                        <button
+                          type="button"
+                          onClick={() => setIsHintExpanded(false)}
+                          className="ml-auto cursor-pointer text-[10px] text-[#9CA3AF] hover:text-[#6B7280]"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {/* Full sentence for production turns */}
+                    {!isFollowUp && (
+                      <p className="mt-1 text-sm font-bold text-[#1a1a2e]">{currentSpec.expectedAnswer}</p>
+                    )}
+                    {/* Follow-up: show expected answer as light text */}
+                    {isFollowUp && currentSpec.expectedAnswer && (
+                      <p className="mt-0.5 text-sm text-[#5a5a7a]">{currentSpec.expectedAnswer}</p>
+                    )}
+                    {/* Slot badges — all turn kinds */}
+                    {hasSlots && (
+                      <div className={!isFollowUp ? 'mt-2 border-t border-[#E5E7EB] pt-2' : 'mt-1.5'}>
+                        <p className="text-[10px] font-bold text-[#9CA3AF]">{uiText.aiQuestionGoalUse}</p>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          {currentSpec.requiredSlots.person && (
+                            <span className="rounded-md bg-[#EFF6FF] px-2 py-0.5 text-xs font-bold text-[#2563EB]">
+                              {currentSpec.requiredSlots.person}
+                            </span>
+                          )}
+                          {currentSpec.requiredSlots.time && (
+                            <span className="rounded-md bg-[#FFF7ED] px-2 py-0.5 text-xs font-bold text-[#F59E0B]">
+                              {currentSpec.requiredSlots.time}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </>
+      )}
+
+      {/* Silent guidance — shown immediately after empty recording */}
+      {showSilentGuidance && !roundAnswered && !isRecording && !isRecognizing && (
+        <div className="mx-auto mt-3 max-w-[320px] rounded-xl bg-gray-50 px-4 py-3 text-center">
+          <p className="text-sm text-[#7b7b94]">{uiText.aiQuestionSilent}</p>
+        </div>
+      )}
 
       {!roundAnswered && (
         <div className="mt-4 flex justify-center">
@@ -1643,16 +4149,24 @@ function AiQuestionPlayer({
             <button
               type="button"
               onClick={handleStartRecording}
-              disabled={isRecognizing}
-              className="w-full max-w-[320px] rounded-xl bg-green-500 px-6 py-3 font-bold text-white transition hover:bg-green-600 disabled:bg-gray-300"
+              disabled={isRecognizing || questionPlaying || !questionPlayed}
+              className={`rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
+                isRecognizing || questionPlaying || !questionPlayed
+                  ? 'cursor-not-allowed bg-gray-300'
+                  : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
+              }`}
             >
-              {isRecognizing ? uiText.aiQuestionRecognizing : uiText.aiQuestionRecordButton}
+              {isRecognizing
+                ? uiText.aiQuestionRecognizing
+                : !questionPlayed
+                  ? uiText.aiQuestionInputGuide
+                  : uiText.aiQuestionRecordButton}
             </button>
           ) : (
             <button
               type="button"
               onClick={handleStopRecording}
-              className="w-full max-w-[320px] rounded-xl bg-red-500 px-6 py-3 font-bold text-white transition hover:bg-red-600"
+              className={BTN_STOP}
             >
               {uiText.aiQuestionStopButton}
             </button>
@@ -1660,75 +4174,98 @@ function AiQuestionPlayer({
         </div>
       )}
 
-      {(transcript || evaluation === 'silent') && (
-        <div className="mt-4 rounded-[14px] border border-[#E8E4DF] bg-white px-5 py-4">
+      {(transcript || evaluation === 'silent') && roundAnswered && !allDone && (
+        <div className="mt-7 rounded-[14px] border border-[#E8E4DF] bg-white px-5 py-5">
           {transcript && evaluation !== 'silent' && (
             <>
               <p className="text-sm text-[#7b7b94] text-center">{uiText.aiQuestionYourAnswer}</p>
-              <p className="mt-1 text-lg font-bold text-[#1a1a2e] text-center">{transcript}</p>
+              <p className="mt-1 text-lg font-bold text-[#1a1a2e] text-center">
+                {transcript.split(/(\[unclear\]|\[不明\])/).map((part, i) =>
+                  /^\[unclear\]$|^\[不明\]$/.test(part)
+                    ? <span key={i} className="italic text-[#D1D5DB]" title={uiText.unclearToken}>{part}</span>
+                    : <span key={i}>{part}</span>
+                )}
+              </p>
             </>
           )}
 
           {feedbackMessage && (
             <div className={`mt-3 rounded-xl px-4 py-3 ${feedbackColor}`}>
               <p className="text-sm font-bold">{feedbackMessage}</p>
-              {evaluation === 'close' && expectedAnswer && (
-                <p className="mt-1 text-sm">
-                  {uiText.aiQuestionBetterWay}
-                  <span className="font-bold">{expectedAnswer}</span>
-                </p>
+              {evaluation === 'partial' && (() => {
+                const answers = [currentSpec.expectedAnswer, ...currentSpec.alternativeAnswers]
+                  .filter((a, i, arr) => arr.indexOf(a) === i)
+                return answers.length > 0 ? (
+                  <div className="mt-1 text-sm">
+                    <p>{uiText.aiQuestionBetterWay}</p>
+                    {answers.map((a, i) => (
+                      <p key={i} className="font-bold">・{a}</p>
+                    ))}
+                  </div>
+                ) : null
+              })()}
+            </div>
+          )}
+
+          {roundAnswered && evaluation === 'good' && (
+            <p className="mt-2 animate-[fadeInUp_200ms_ease-out] text-center text-sm font-bold text-[#22c55e]">
+              {uiText.aiQuestionSuccess}
+            </p>
+          )}
+
+          {roundAnswered && !allDone && (
+            <div className="mt-4">
+              {round < TOTAL_ROUNDS - 1 ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={handleNextQuestion}
+                    className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                  >
+                    {uiText.aiQuestionNextQuestion}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleRetryAll()}
+                    className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                  >
+                    {uiText.aiQuestionRetryTurn}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onInputChange(transcript || '[answered]')
+                      window.dispatchEvent(new Event('next-step'))
+                    }}
+                    className="flex-1 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                  >
+                    {uiText.aiQuestionNextStage}
+                  </button>
+                </div>
               )}
             </div>
           )}
-
-          {roundAnswered && !allDone && round < TOTAL_ROUNDS - 1 && (
-            <div className="mt-4 flex justify-center">
-              <button
-                type="button"
-                onClick={handleNextQuestion}
-                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-              >
-                {uiText.aiQuestionNextQuestion}
-              </button>
-            </div>
-          )}
         </div>
       )}
 
-      {(allDone || (roundAnswered && round >= TOTAL_ROUNDS - 1)) && (
-        <div className="mt-6 flex flex-col items-center gap-3">
-          <button
-            type="button"
-            onClick={handleRetryAll}
-            className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-          >
-            {uiText.aiQuestionRetryAll}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new Event('next-step'))
-            }}
-            className="w-full rounded-xl bg-[#F5A623] py-4 text-base font-bold text-white transition hover:bg-[#D4881A]"
-          >
-            {uiText.scaffoldNextButton}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
 
-async function fetchAudioUrl(text: string): Promise<string | null> {
+async function fetchAudioUrl(text: string, speed?: number): Promise<string | null> {
   if (!text.trim()) return null
   try {
     const baseUrl =
       typeof window !== 'undefined' ? '' : 'http://localhost:3000'
+    const body: Record<string, unknown> = { text }
+    if (typeof speed === 'number') body.speed = speed
     const res = await fetch(`${baseUrl}/api/audio/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(body),
       cache: 'no-store',
     })
     if (!res.ok) return null
@@ -1742,11 +4279,13 @@ async function fetchAudioUrl(text: string): Promise<string | null> {
 function AudioCompareCard({
   correctUrl,
   recordedUrl,
+  uiText,
 }: {
   correctUrl: string
   recordedUrl: string
+  uiText: LessonCopy['activeCard']
 }) {
-  const [playing, setPlaying] = useState<'correct' | 'recorded' | 'compare' | null>(null)
+  const [playing, setPlaying] = useState<'compare' | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   function stopCurrent() {
@@ -1758,41 +4297,23 @@ function AudioCompareCard({
     setPlaying(null)
   }
 
-  function playUrl(url: string, label: 'correct' | 'recorded') {
-    stopCurrent()
-    const audio = new Audio(url)
-    audioRef.current = audio
-    setPlaying(label)
-    audio.onended = () => setPlaying(null)
-    audio.onerror = () => setPlaying(null)
-    audio.play().catch(() => setPlaying(null))
-  }
-
   function playCompare() {
     stopCurrent()
     setPlaying('compare')
 
-    const correct1 = new Audio(correctUrl)
-    correct1.onended = () => {
+    const correct = new Audio(correctUrl)
+    correct.onended = () => {
       setTimeout(() => {
         const user = new Audio(recordedUrl)
         audioRef.current = user
-        user.onended = () => {
-          setTimeout(() => {
-            const correct2 = new Audio(correctUrl)
-            audioRef.current = correct2
-            correct2.onended = () => setPlaying(null)
-            correct2.onerror = () => setPlaying(null)
-            correct2.play().catch(() => setPlaying(null))
-          }, 300)
-        }
+        user.onended = () => setPlaying(null)
         user.onerror = () => setPlaying(null)
         user.play().catch(() => setPlaying(null))
       }, 300)
     }
-    correct1.onerror = () => setPlaying(null)
-    audioRef.current = correct1
-    correct1.play().catch(() => setPlaying(null))
+    correct.onerror = () => setPlaying(null)
+    audioRef.current = correct
+    correct.play().catch(() => setPlaying(null))
   }
 
   useEffect(() => {
@@ -1800,39 +4321,18 @@ function AudioCompareCard({
   }, [])
 
   const btnBase = 'w-full rounded-xl px-4 py-3 text-sm font-bold transition'
-  const btnIdle = `${btnBase} border border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF7F2]`
-  const btnActive = `${btnBase} border border-[#F5A623] bg-[#FFF9EC] text-[#D4881A]`
 
   return (
-    <div className="mt-4 rounded-[14px] border border-[#E8E4DF] bg-[#FFFDF8] px-5 py-4">
-      <p className="mb-3 text-center text-sm font-bold text-[#5a5a7a]">
-        発音を聞き比べてみましょう
-      </p>
-      <div className="flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={() => playing === 'correct' ? stopCurrent() : playUrl(correctUrl, 'correct')}
-          className={playing === 'correct' ? btnActive : btnIdle}
-        >
-          {playing === 'correct' ? '再生中…' : '正しい発音を聞く'}
-        </button>
-        <button
-          type="button"
-          onClick={() => playing === 'recorded' ? stopCurrent() : playUrl(recordedUrl, 'recorded')}
-          className={playing === 'recorded' ? btnActive : btnIdle}
-        >
-          {playing === 'recorded' ? '再生中…' : 'あなたの発音を聞く'}
-        </button>
-        <button
-          type="button"
-          onClick={() => playing === 'compare' ? stopCurrent() : playCompare()}
-          className={playing === 'compare'
-            ? `${btnBase} border border-[#F5A623] bg-[#F5A623] text-white`
-            : `${btnBase} border border-[#F5A623] bg-white text-[#F5A623] hover:bg-[#FFF9EC]`}
-        >
-          {playing === 'compare' ? '聞き比べ中…' : '聞き比べる'}
-        </button>
-      </div>
+    <div className="mt-4 flex justify-center">
+      <button
+        type="button"
+        onClick={() => playing === 'compare' ? stopCurrent() : playCompare()}
+        className={playing === 'compare'
+          ? `${btnBase} max-w-[280px] border border-[#D6D3D1] bg-[#F3F1EC] text-[#5a5a7a]`
+          : `${btnBase} max-w-[280px] border border-[#D6D3D1] bg-white text-[#5a5a7a] hover:bg-[#F3F1EC]`}
+      >
+        {playing === 'compare' ? uiText.comparingAudioLabel : uiText.compareAudioButton}
+      </button>
     </div>
   )
 }
@@ -1854,19 +4354,27 @@ function SemanticChunkList({ chunks }: { chunks: SemanticChunk[] }) {
 function ScaffoldAutoPlay({
   scaffoldSteps,
   semanticChunks,
+  nativeHint,
   lessonImageUrl,
   dynamicConversationHeading,
   scenarioLabel,
   audioUrl,
   uiText,
+  level,
+  itemId,
+  ctaLabel,
 }: {
   scaffoldSteps: string[]
   semanticChunks: SemanticChunk[] | null | undefined
-  lessonImageUrl: string
+  nativeHint?: string | null
+  lessonImageUrl: string | null
   dynamicConversationHeading: string
   scenarioLabel: string
   audioUrl: string
   uiText: LessonCopy['activeCard']
+  level?: string
+  itemId?: string
+  ctaLabel?: string
 }) {
   const [currentStep, setCurrentStep] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -1878,12 +4386,109 @@ function ScaffoldAutoPlay({
   const [hasPlayedMixStep, setHasPlayedMixStep] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const cancelledRef = useRef(false)
+  /** Guards against duplicate play triggers for the same step. */
+  const playingStepRef = useRef<number>(-1)
   const totalSteps = Math.max(Math.min(scaffoldSteps.length, 3), 1)
   const stepsKey = scaffoldSteps.slice(0, 3).join('||')
 
-  // Fetch audio URLs on mount / when steps change
+
+  /** Ref for the current safety timer so cleanup can clear it. */
+  const safetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** Ref for Step 2 text-pause timer. */
+  const mixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /** Stop any in-flight audio/timers and clear all refs. */
+  const cleanup = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.onended = null
+      audioRef.current.onerror = null
+      audioRef.current = null
+    }
+    if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null }
+    if (mixTimerRef.current) { clearTimeout(mixTimerRef.current); mixTimerRef.current = null }
+    playingStepRef.current = -1
+  }, [])
+
+  /**
+   * SINGLE SOURCE OF TRUTH for scaffold playback.
+   * Directly plays the given step. Called by restart, manual play, and auto-advance.
+   */
+  const startPlayback = useCallback((stepIndex: number) => {
+    cleanup()
+    setCurrentStep(stepIndex)
+    setIsPlaying(false)
+    playingStepRef.current = stepIndex
+
+    // Step 2 (mix): text only — pause for reading/meaning association, then advance
+    if (stepIndex === 1) {
+      setHasPlayedMixStep(true)
+      // Dynamic duration: base 2000ms + 100ms per character, capped at 4000ms
+      const chunkText = scaffoldSteps[1] ?? ''
+      const displayMs = Math.min(4000, Math.max(2000, 1500 + chunkText.length * 100))
+      mixTimerRef.current = setTimeout(() => {
+        mixTimerRef.current = null
+        const next = stepIndex + 1
+        if (next >= totalSteps) {
+          setAllDone(true)
+        } else {
+          startPlayback(next)
+        }
+      }, displayMs)
+      return
+    }
+
+    const url = stepAudioUrls[stepIndex]
+    if (!url) {
+      // No audio URL — skip to next step
+      const next = stepIndex + 1
+      if (next >= totalSteps) {
+        setAllDone(true)
+      } else {
+        startPlayback(next)
+      }
+      return
+    }
+
+    const audio = new Audio(url)
+    audioRef.current = audio
+    let ended = false
+
+    const advance = (reason: string) => {
+      if (ended) return
+      ended = true
+      if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null }
+      setIsPlaying(false)
+      const next = stepIndex + 1
+      if (next >= totalSteps) {
+        setAllDone(true)
+      } else {
+        startPlayback(next)
+      }
+    }
+
+    audio.onended = () => advance('onended')
+    audio.onerror = () => advance('onerror')
+    safetyTimerRef.current = setTimeout(() => advance('timeout'), 8_000)
+
+    audio.play()
+      .then(() => {
+        setIsPlaying(true)
+        setHasPlayedOnce(true)
+      })
+      .catch(() => {
+        if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null }
+        ended = true
+        setIsPlaying(false)
+        // Autoplay blocked — user can tap play
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepAudioUrls, totalSteps, cleanup])
+
+  // Fetch audio URLs on mount / when steps change, then auto-start
   useEffect(() => {
     cancelledRef.current = false
+    cleanup()
     setCurrentStep(0)
     setAllDone(false)
     setIsPlaying(false)
@@ -1899,104 +4504,76 @@ function ScaffoldAutoPlay({
       return
     }
 
-    Promise.all(texts.map(fetchAudioUrl)).then((urls) => {
+    const stepSpeeds: (number | undefined)[] =
+      level === 'beginner' ? [0.85, undefined, 1.0] : [undefined, undefined, undefined]
+
+    Promise.all(texts.map((t, i) => fetchAudioUrl(t, stepSpeeds[i]))).then((urls) => {
       if (!cancelledRef.current) {
         setStepAudioUrls(urls)
         setLoading(false)
-        setPlayRequested(true)
       }
     })
 
-    return () => { cancelledRef.current = true }
+    return () => { cancelledRef.current = true; cleanup() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepsKey])
 
-  // Play current step audio
-  useEffect(() => {
-    if (!playRequested || allDone || stepAudioUrls.length === 0) return
-
-    const url = stepAudioUrls[currentStep]
-    if (!url) {
-      const next = currentStep + 1
-      if (next >= totalSteps) {
-        setAllDone(true)
-        setPlayRequested(false)
-      } else {
-        setCurrentStep(next)
-      }
-      return
-    }
-
-    const audio = new Audio(url)
-    audioRef.current = audio
-
-    audio.onended = () => {
-      const next = currentStep + 1
-      if (next >= totalSteps) {
-        setAllDone(true)
-        setIsPlaying(false)
-        setPlayRequested(false)
-      } else {
-        setCurrentStep(next)
-      }
-    }
-
-    audio.onerror = () => {
-      setIsPlaying(false)
-      const next = currentStep + 1
-      if (next >= totalSteps) {
-        setAllDone(true)
-        setPlayRequested(false)
-      } else {
-        setCurrentStep(next)
-      }
-    }
-
-    audio.play()
-      .then(() => {
-        setIsPlaying(true)
-        setHasPlayedOnce(true)
-        if (currentStep === 1) setHasPlayedMixStep(true)
-      })
-      .catch(() => {
-        // Autoplay blocked — let user tap play
-        setIsPlaying(false)
-        setPlayRequested(false)
-      })
-
-    return () => {
-      audio.pause()
-      audio.onended = null
-      audio.onerror = null
-    }
-  }, [currentStep, playRequested, allDone, stepAudioUrls, totalSteps])
+  // No auto-play — user must press the play button to start
 
   const handleRestart = () => {
-    setCurrentStep(0)
+    cleanup()
     setAllDone(false)
-    setPlayRequested(true)
+    setHasPlayedOnce(false)
+    setHasPlayedMixStep(false)
+    setPlayRequested(false)
+    startPlayback(0)
   }
 
   const handleManualPlay = () => {
-    setPlayRequested(true)
+    startPlayback(currentStep)
   }
 
   const playingLabel = uiText.scaffoldPlayingLabel
     .replace('{current}', String(currentStep + 1))
     .replace('{total}', String(totalSteps))
 
-  const showPlayButton = !loading && !isPlaying && !allDone && !playRequested
+  // Scaffold is idle when not loading, not playing, not auto-advancing, and not done
+  const isScaffoldIdle = !loading && !isPlaying && !playRequested && !allDone
 
   return (
     <div className="mt-4 text-center">
       <div className="rounded-[14px] border border-[#E8E4DF] bg-white px-4 py-6">
-        <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+        {lessonImageUrl && (
+          <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+        )}
 
-        <p className="mt-4 text-sm text-[#5a5a7a]">
-          {uiText.scaffoldInstruction}
-        </p>
+        {/* Mix step (step 2): phrase pair or mix-text fallback */}
+        {/* Step 2: chunk display — show meaning; fall back to nativeHint for first chunk */}
+        {currentStep === 1 && semanticChunks != null && semanticChunks.length > 0 && (
+          <div className="mx-auto mt-3 max-w-[320px] space-y-2">
+            {semanticChunks.map((c, i) => {
+              const meaning = c.meaning || (i === 0 && nativeHint ? nativeHint : '')
+              return (
+                <div key={i} className="rounded-xl border border-[#E8E4DF] bg-[#FAF8F5] px-4 py-3 text-center">
+                  <p className="text-base font-bold leading-7 text-[#1a1a2e]">{c.chunk}</p>
+                  {meaning ? (
+                    <p className="mt-0.5 text-sm leading-6 text-[#5a5a7a]">{meaning}</p>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Hide instruction text during mix step — phrase pair is sufficient */}
+        {currentStep !== 1 && (
+          <p className="mt-4 text-sm text-[#5a5a7a]">
+            {uiText.scaffoldInstruction}
+          </p>
+        )}
 
         {loading && (
-          <p className="mt-3 text-sm text-[#7b7b94]">音声を準備中...</p>
+          <p className="mt-3 text-sm text-[#7b7b94]">{uiText.scaffoldAudioPreparing}</p>
         )}
 
         {isPlaying && (
@@ -2005,21 +4582,27 @@ function ScaffoldAutoPlay({
           </p>
         )}
 
-        {currentStep === 1 && hasPlayedMixStep && semanticChunks != null && semanticChunks.length > 0 && (
-          <div className="mx-auto mt-4 max-w-[280px]">
-            <SemanticChunkList chunks={semanticChunks} />
-          </div>
-        )}
 
-        {showPlayButton && (
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={handleManualPlay}
-              className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-            >
-              {hasPlayedOnce ? uiText.scaffoldRestartButton : '音声を聞く'}
-            </button>
+        {/* Play button — shown before first play, or restart at step 3/3 */}
+        {!loading && !allDone && !isPlaying && (
+          <div className="mt-4 flex justify-center">
+            {!hasPlayedOnce ? (
+              <button
+                type="button"
+                onClick={handleManualPlay}
+                className={BTN_PRIMARY}
+              >
+                {uiText.scaffoldPlayButton}
+              </button>
+            ) : currentStep === 2 ? (
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+              >
+                {uiText.scaffoldRestartButton}
+              </button>
+            ) : null}
           </div>
         )}
 
@@ -2048,9 +4631,9 @@ function ScaffoldAutoPlay({
           onClick={() => {
             window.dispatchEvent(new Event('next-step'))
           }}
-          className="mt-6 w-full rounded-xl bg-[#F5A623] py-4 text-base font-bold text-white transition hover:bg-[#D4881A]"
+          className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
         >
-          {uiText.scaffoldNextButton}
+          {ctaLabel ?? uiText.scaffoldNextButton}
         </button>
       )}
     </div>
@@ -2068,6 +4651,8 @@ export function LessonActiveCard({
   onCheck,
   onStartRepeatFromListen,
   onRetryListenFromRepeat,
+  onRetryListenFromScaffold,
+  onGoBackToStage,
   repeatAutoStartNonce,
   listenResetNonce,
   currentStageId,
@@ -2077,6 +4662,8 @@ export function LessonActiveCard({
   scenarioLabel,
   previousPhrases = [],
   level,
+  lessonSessionId,
+  responseStage = 'typing',
 }: LessonActiveCardProps) {
   const repeatResultRef = useRef<HTMLDivElement | null>(null)
   const listenAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -2090,28 +4677,106 @@ export function LessonActiveCard({
   const resultRef = useRef<HTMLDivElement | null>(null)
 
   const stageTone = getStageTone({ currentStageId })
-  const dynamicConversationHeading = _copy.activeCard.lessonHeadingTemplate
-    .replace('{scene}', scenarioLabel || targetLanguageLabel)
-    .replace('{language}', targetLanguageLabel)
-  const lessonImageUrl =
-    (item as LessonBlockItem & { image_url?: string | null }).image_url?.trim() ||
-    '/images/backgrounds/home_01.webp'
+  const sceneId = block.sceneId ?? null
+  const dynamicConversationHeading = scenarioLabel || targetLanguageLabel
+  // Scene image resolution: prefer centralized resolver, fall back to legacy item.image_url
+  const sceneCategory = block.sceneCategory ?? null
+  const sceneImages = useMemo(
+    () => sceneId && sceneCategory ? resolveSceneImages(sceneCategory, sceneId) : null,
+    [sceneCategory, sceneId]
+  )
+  const stageStep: StepType | null =
+    currentStageId === 'listen' ? 'listen'
+    : currentStageId === 'repeat' ? 'repeat'
+    : currentStageId === 'ai_question' ? 'ai_question'
+    : currentStageId === 'typing' ? 'typing'
+    : currentStageId === 'ai_conversation' ? 'conversation'
+    : currentStageId === 'scaffold_transition' ? 'predict'
+    : null
+  const resolvedImage = sceneImages && stageStep ? getStepImage(sceneImages, stageStep) : undefined
+  // Fall back to legacy image_url only if NOT from deleted /images/backgrounds/
+  const legacyUrl = (item as LessonBlockItem & { image_url?: string | null }).image_url?.trim() ?? null
+  const legacyIsValid = legacyUrl && !legacyUrl.startsWith('/images/backgrounds/')
+  const rawImageUrl = resolvedImage ?? (legacyIsValid ? legacyUrl : null)
+  const lessonImageUrl = rawImageUrl && isValidLessonImage(rawImageUrl) ? rawImageUrl : null
+
+  // Resolve conversation flavor for AI conversation prompts
+  const conversationFlavorContext: FlavorContext | null = useMemo(() => {
+    const blockSceneId = block.sceneId
+    const blockRegion = block.region ?? 'en_us_general'
+    const blockAge = block.ageGroup ?? '20s'
+    if (!blockSceneId || !level) return null
+
+    // Get catalog flavor if available
+    const variant = resolveSceneConversation(blockSceneId, blockRegion, blockAge, level)
+    const catalogFlavor = variant?.flavor
+
+    // Merge region context for richer immersion
+    const regionCtx = getRegionContext(blockRegion)
+
+    // Combine: catalog flavor is primary, region context fills gaps
+    const cultureNotes = [
+      ...(catalogFlavor?.cultureNotes ?? []),
+      ...(regionCtx?.cultureNotes ?? []),
+    ].filter((v, i, a) => a.indexOf(v) === i) // dedup
+
+    const setting = catalogFlavor?.setting
+      ?? (regionCtx ? `${regionCtx.atmosphere} atmosphere` : undefined)
+
+    return {
+      sceneId: blockSceneId,
+      region: blockRegion,
+      ageGroup: blockAge,
+      topics: [
+        ...(catalogFlavor?.topics ?? []),
+        ...(regionCtx?.storeExamples?.slice(0, 2) ?? []),
+      ].filter((v, i, a) => a.indexOf(v) === i),
+      references: catalogFlavor?.references,
+      cultureNotes: cultureNotes.length > 0 ? cultureNotes : undefined,
+      setting,
+      lifestyle: catalogFlavor?.lifestyle,
+    }
+  }, [block.sceneId, block.region, block.ageGroup, level])
+
+
   const audioUrl = getItemAudioUrl(item)
+  const rawAudioStatus = (item as LessonBlockItem & { audio_status?: 'ok' | 'fallback' | 'failed' }).audio_status
+  // If audio_status is set (hydration complete), use it. If not set and no URL, pending.
+  // Timeout: if pending lasts > 30s, treat as failed.
+  const [audioPendingTimedOut, setAudioPendingTimedOut] = useState(false)
+  const audioPendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    const isPending = !audioUrl && rawAudioStatus == null
+    if (isPending && !audioPendingTimedOut) {
+      audioPendingTimerRef.current = setTimeout(() => setAudioPendingTimedOut(true), 30_000)
+    } else if (audioPendingTimerRef.current) {
+      clearTimeout(audioPendingTimerRef.current)
+      audioPendingTimerRef.current = null
+    }
+    if (!isPending) setAudioPendingTimedOut(false)
+    return () => { if (audioPendingTimerRef.current) clearTimeout(audioPendingTimerRef.current) }
+  }, [audioUrl, rawAudioStatus, audioPendingTimedOut])
+
+  const audioStatus = audioPendingTimedOut ? 'failed' : (rawAudioStatus ?? 'ok')
+  const isAudioPending = !audioUrl && audioStatus !== 'failed'
 
   const currentIndex =
-    currentStageId === 'listen' || currentStageId === 'repeat'
+    currentStageId === 'listen'
       ? 0
-      : currentStageId === 'scaffold_transition'
+      : currentStageId === 'repeat'
         ? 1
-        : currentStageId === 'ai_question'
+        : currentStageId === 'scaffold_transition'
           ? 2
-          : currentStageId === 'typing'
+          : currentStageId === 'ai_question'
             ? 3
-            : currentStageId === 'ai_conversation'
+            : currentStageId === 'typing'
               ? 4
-              : 0
+              : currentStageId === 'ai_conversation'
+                ? 5
+                : 0
 
-  const TOTAL_STAGES = 5
+  const TOTAL_STAGES = 6
   const questionProgressPercent =
     ((currentIndex + 1) / TOTAL_STAGES) * 100
 
@@ -2119,6 +4784,8 @@ export function LessonActiveCard({
   const [isRecordingRepeat, setIsRecordingRepeat] = useState(false)
   const [repeatTranscript, setRepeatTranscript] = useState('')
   const [repeatScore, setRepeatScore] = useState<number | null>(null)
+  const [repeatIsPass, setRepeatIsPass] = useState(false)
+  const prevRepeatScoreRef = useRef<number | null>(null)
   const [repeatScoreBreakdown, setRepeatScoreBreakdown] = useState<RepeatScoreBreakdown | null>(
     null
   )
@@ -2126,12 +4793,21 @@ export function LessonActiveCard({
   const [, setMatchedWords] = useState<string[]>([])
   const [repeatAttemptCount, setRepeatAttemptCount] = useState(0)
   const uiText = _copy.activeCard
+  const AUDIO_PREPARING_LABEL = uiText.audioPreparing
 
   const scaffoldSteps = useMemo(() => getScaffoldSteps(item), [item])
+  // Use the exact target-language text from scaffold steps (same text used for audio)
+  const scaffoldTargetText = scaffoldSteps[2] ?? scaffoldSteps[0] ?? ''
+  const rawCatalogChunks = (item as LessonBlockItem & { semantic_chunks?: SemanticChunk[] | null }).semantic_chunks ?? null
+  const scaffoldSemanticChunks = useMemo(
+    () => extractSemanticChunks(scaffoldTargetText, rawCatalogChunks),
+    [scaffoldTargetText, rawCatalogChunks]
+  )
   const [scaffoldStepIndex, setScaffoldStepIndex] = useState(0)
   
   const stageNames = [
-    uiText.timelineListenRepeat,
+    uiText.timelineListen,
+    uiText.timelineRepeat,
     uiText.stageScaffoldLabel,
     uiText.timelineAiQuestion,
     uiText.timelineTyping,
@@ -2156,11 +4832,16 @@ export function LessonActiveCard({
   const [listenPlaybackError, setListenPlaybackError] = useState<string | null>(null)
   const [recordedPlaybackError, setRecordedPlaybackError] = useState<string | null>(null)
   const [isListenPlaying, setIsListenPlaying] = useState(false)
+  const isFirstListenPlayRef = useRef(true)
+  const wasFirstListenPlayRef = useRef(false)
+  const audioPlayLoggedSessionRef = useRef<string | null>(null)
+  const audioCompletedLoggedSessionRef = useRef<string | null>(null)
   const [isScoringRepeat, setIsScoringRepeat] = useState(false)
   const [recordedAudioUrl, setRecordedAudioUrl] = useState<string | null>(null)
 
   const timelineSteps = [
-    uiText.timelineListenRepeat,
+    uiText.timelineListen,
+    uiText.timelineRepeat,
     uiText.stageScaffoldLabel,
     uiText.timelineAiQuestion,
     uiText.timelineTyping,
@@ -2170,12 +4851,103 @@ export function LessonActiveCard({
   const typingResultClassName =
     progress.isCorrect == null ? '' : progress.isCorrect ? 'text-green-700' : 'text-amber-700'
 
+  const isJaUi = /[\u3000-\u9FFF]/.test(uiText.scaffoldNextButton)
+  const isLastBlock = currentQuestionIndex >= totalQuestions - 1
+  const ctaLabel = getCtaLabel(currentStageId, isLastBlock, uiText)
+
+  // Mini review between stages
+  const [pendingMiniReview, setPendingMiniReview] = useState<MiniReviewItem | null>(null)
+  const miniReviewSentence = item.answer?.trim() || item.prompt?.trim() || ''
+  const miniSlots = useMemo(() => {
+    const words = miniReviewSentence.split(/\s+/)
+    let pSlot = ''
+    let pAlt = ''
+    for (let i = 0; i < words.length; i++) {
+      if (/^(with|to|about)$/i.test(words[i]) && words[i + 1]) {
+        pSlot = words.slice(i + 1, i + 3).join(' ').replace(/[.,!?]/g, '')
+        break
+      }
+    }
+    const last = words[words.length - 1]?.replace(/[.,!?]/g, '') ?? ''
+    const tSlot = /^(today|yesterday|tomorrow|tonight)$/i.test(last) ? last : ''
+    const tAlt = tSlot.toLowerCase() === 'today' ? 'yesterday' : 'today'
+    const pAlts = ['my teacher', 'my boss', 'my coworker']
+    pAlt = pSlot ? (pAlts.find((p) => p.toLowerCase() !== pSlot.toLowerCase()) ?? 'my teacher') : ''
+    return { personSlot: pSlot, personAlt: pAlt, timeSlot: tSlot, timeAlt: tAlt }
+  }, [miniReviewSentence])
+
+  // Stage validation: mini-review must pass before CTA becomes visible
+  const [stageValidated, setStageValidated] = useState(false)
+  const [validationAttempted, setValidationAttempted] = useState(false)
+  const [validationView, setValidationView] = useState<'result' | 'challenge'>('result')
+  const [challengeResult, setChallengeResult] = useState<'correct' | 'incorrect' | null>(null)
+  const [challengePhase, setChallengePhase] = useState<'intro' | 'question' | 'result'>('intro')
+  const [challengeAttempt, setChallengeAttempt] = useState(0)
+  const [guideMessageOverride, setGuideMessageOverride] = useState<string | null>(null)
+  const [convResetNonce, setConvResetNonce] = useState(0)
+
+  // Reset validation when stage changes
+  useEffect(() => {
+    setStageValidated(false)
+    setValidationAttempted(false)
+    setValidationView('result')
+    setChallengeResult(null)
+    setChallengePhase('intro')
+    setPendingMiniReview(null)
+  }, [currentStageId])
+
+  // Auto-trigger validation for stages where task completion is tracked by sub-components
+  // Sub-components dispatch 'next-step' which now goes through normally (no interceptor)
+  // but we want to show validation BEFORE the CTA, so for sub-component stages,
+  // we skip mini-review validation and let them advance directly
+  // (mini-review only applies to listen/repeat where the CTA is in the main card)
+  useEffect(() => {
+    if (currentStageId === 'scaffold_transition' || currentStageId === 'ai_question' || currentStageId === 'typing') {
+      setStageValidated(true) // Sub-components manage their own flow
+    }
+  }, [currentStageId])
+
+  // Generate validation challenge for the current stage
+  const triggerValidation = useCallback(() => {
+    if (stageValidated || pendingMiniReview) return
+
+    const stageForReview =
+      currentStageId === 'listen' ? 'listen' as const
+      : currentStageId === 'repeat' ? 'repeat' as const
+      : currentStageId === 'scaffold_transition' ? 'scaffold' as const
+      : currentStageId === 'ai_question' ? 'ai_question' as const
+      : null
+
+    if (!stageForReview) { setStageValidated(true); return }
+
+    const review = generateMiniReview(
+      stageForReview,
+      miniReviewSentence,
+      miniSlots.personSlot,
+      miniSlots.personAlt,
+      miniSlots.timeSlot,
+      miniSlots.timeAlt,
+      uiText
+    )
+
+    if (review) {
+      setPendingMiniReview(review)
+      setValidationAttempted(true)
+      setChallengeResult(null)
+      setValidationView('challenge')
+    } else {
+      // No valid review — auto-validate
+      setStageValidated(true)
+    }
+  }, [currentStageId, stageValidated, pendingMiniReview, miniReviewSentence, miniSlots, uiText])
   const guideCharacter = getGuideCharacter({
     currentStageId,
     isRecordingRepeat,
     isListenPlaying,
     isCorrect: progress.isCorrect,
     uiText,
+    level,
+    uiLang: isJaUi ? 'ja' : 'en',
   })
 
   const mediaRecordingSupported = useMemo(() => {
@@ -2192,19 +4964,29 @@ export function LessonActiveCard({
 
   useEffect(() => {
     if (repeatTranscript && repeatResultRef.current) {
-      repeatResultRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const offset = window.innerWidth >= 1024 ? 200 : window.innerWidth >= 640 ? 120 : 100
+      const rect = repeatResultRef.current.getBoundingClientRect()
+      const top = rect.top + window.scrollY - offset
+      window.scrollTo({ top, behavior: 'smooth' })
     }
   }, [repeatTranscript])
 
+  // Reset first-listen flag when block audio changes
+  useEffect(() => {
+    isFirstListenPlayRef.current = true
+  }, [audioUrl])
+
   const playListenAudio = useCallback(() => {
     if (!audioUrl) {
-      setListenPlaybackError(uiText.listenAudioNotReady)
+      setListenPlaybackError(uiText.audioPreparing)
+      setTimeout(() => setListenPlaybackError(null), 2000)
       return
     }
 
     const audio = listenAudioRef.current
     if (!audio || !audio.src) {
-      setListenPlaybackError(uiText.listenAudioNotReady)
+      setListenPlaybackError(uiText.audioPreparing)
+      setTimeout(() => setListenPlaybackError(null), 2000)
       return
     }
 
@@ -2215,17 +4997,57 @@ export function LessonActiveCard({
     }
 
     audio.currentTime = 0
-    audio.playbackRate = playbackRate
 
-    audio
-      .play()
-      .then(() => {
-        setListenPlaybackError(null)
-      })
-      .catch((error) => {
-        console.error('listen audio play failed', error)
-        setListenPlaybackError(uiText.listenAudioNotReady)
-      })
+    // First listen: slightly slower (0.9x) for better comprehension
+    // Subsequent listens: use user-selected playback rate
+    const isFirst = isFirstListenPlayRef.current
+    audio.playbackRate = isFirst ? 0.9 : playbackRate
+
+    // Log audio_play_clicked: exactly once per session, first listen stage only
+    if (
+      currentStageId === 'listen' &&
+      isFirst &&
+      lessonSessionId &&
+      audioPlayLoggedSessionRef.current !== lessonSessionId
+    ) {
+      audioPlayLoggedSessionRef.current = lessonSessionId
+      try {
+        fetch('/api/track', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'audio_play_clicked',
+            properties: {
+              user_id: null,
+              lesson_run_id: null,
+              session_id: lessonSessionId,
+              stage_id: 'listen',
+              block_id: block.id ?? null,
+              scene_key: block.sceneId ?? null,
+              occurred_at: new Date().toISOString(),
+            },
+          }),
+          keepalive: true,
+        }).catch(() => {})
+      } catch { /* fire-and-forget */ }
+    }
+
+    // Add brief silence before first play for readiness
+    const delay = isFirst ? 150 : 0
+    wasFirstListenPlayRef.current = isFirst
+    if (isFirst) isFirstListenPlayRef.current = false
+
+    setTimeout(() => {
+      audio
+        .play()
+        .then(() => {
+          setListenPlaybackError(null)
+        })
+        .catch((error) => {
+          console.error('listen audio play failed', error)
+          setListenPlaybackError(uiText.listenAudioNotReady)
+        })
+    }, delay)
   }, [audioUrl, playbackRate])
 
   const stopListenAudio = useCallback(() => {
@@ -2276,6 +5098,7 @@ export function LessonActiveCard({
       formData.append('file', file)
       formData.append('expectedText', expectedText)
       formData.append('language', 'en')
+      formData.append('mode', 'repeat')
 
       try {
         setIsScoringRepeat(true)
@@ -2288,13 +5111,30 @@ export function LessonActiveCard({
         const data = (await response.json()) as PronunciationScoreApiResponse
 
         if (!response.ok || !data.ok) {
-          setRepeatRecognitionError(uiText.repeatScoreError)
+          // No speech detected vs API error: check transcript
+          const noSpeech = data.transcript != null && data.transcript.trim() === ''
+          setRepeatRecognitionError(noSpeech ? uiText.repeatNoRecordingForScore : uiText.repeatScoreError)
+          if (noSpeech) {
+            // Reset to retryable state so record button reappears
+            setRecordedAudioUrl(null)
+            ;(window as any).__lastRecordedBlob = null
+          }
           return
         }
 
         setRepeatTranscript(data.transcript)
         onInputChange(data.transcript)
-        setRepeatScore(data.totalScore)
+        prevRepeatScoreRef.current = repeatScore
+
+        // Repeat challenge: strict evaluator (single source of truth)
+        const evalResult = evaluateRepeat(
+          data.transcript ?? '',
+          expectedText,
+          data.breakdown?.wordMatch ?? null,
+        )
+
+        setRepeatIsPass(evalResult.isPass)
+        setRepeatScore(data.totalScore as number)
         setRepeatScoreBreakdown(data.breakdown)
         setMissingWords(data.missingWords ?? [])
         setMatchedWords(data.matchedWords ?? [])
@@ -2302,7 +5142,7 @@ export function LessonActiveCard({
         setRepeatRecognitionError(null)
       } catch (error) {
         console.error(error)
-      setRepeatRecognitionError(uiText.repeatScoreError)
+        setRepeatRecognitionError(uiText.repeatScoreError)
       } finally {
         setIsScoringRepeat(false)
       }
@@ -2394,6 +5234,7 @@ export function LessonActiveCard({
       setRecordedPlaybackError(null)
       setRepeatTranscript('')
       setRepeatScore(null)
+    setRepeatIsPass(false)
       setRepeatScoreBreakdown(null)
       setMissingWords([])
       setMatchedWords([])
@@ -2488,20 +5329,27 @@ export function LessonActiveCard({
     }
   }, [recordedAudioUrl])
 
+  // Recording auto-start disabled — user must press record button explicitly
   useEffect(() => {
-    if (currentStageId !== 'repeat') return
-    if (repeatAutoStartNonce === 0) return
-    if (lastAutoStartedNonceRef.current === repeatAutoStartNonce) return
-
-    lastAutoStartedNonceRef.current = repeatAutoStartNonce
-    void startRepeatRecognition()
-  }, [currentStageId, repeatAutoStartNonce, startRepeatRecognition])
+    if (repeatAutoStartNonce > 0) {
+      lastAutoStartedNonceRef.current = repeatAutoStartNonce
+    }
+  }, [repeatAutoStartNonce])
 
   useEffect(() => {
-    if (currentStageId !== 'listen') return
+    if (currentStageId !== 'listen' && currentStageId !== 'repeat') return
 
     lastAutoStartedNonceRef.current = 0
     stopListenAudio()
+    // Clear stale audio src to prevent previous problem's audio from replaying
+    if (listenAudioRef.current) {
+      listenAudioRef.current.pause()
+      listenAudioRef.current.currentTime = 0
+    }
+    if (recordedAudioRef.current) {
+      recordedAudioRef.current.pause()
+      recordedAudioRef.current.currentTime = 0
+    }
     mediaRecorderRef.current?.stop()
     stopMediaStream(mediaStreamRef.current)
     mediaStreamRef.current = null
@@ -2511,6 +5359,8 @@ export function LessonActiveCard({
 
     setRepeatTranscript('')
     setRepeatScore(null)
+    setRepeatIsPass(false)
+    prevRepeatScoreRef.current = null
     setRepeatScoreBreakdown(null)
     setMissingWords([])
     setMatchedWords([])
@@ -2526,12 +5376,13 @@ export function LessonActiveCard({
   }, [currentStageId, listenResetNonce, stopListenAudio])
 
   return (
-    <section className="mt-5 rounded-[24px] border border-[#E8E4DF] bg-white px-5 py-5 shadow-[0_12px_30px_rgba(15,23,42,0.05)] sm:px-6 sm:py-6">
-      <div className="mb-5 rounded-[18px] border border-[#E8E4DF] bg-[#FCFBF8] px-4 py-4">
-        <StageProgressBar currentBlockIndex={currentQuestionIndex} totalBlocks={totalQuestions} label={uiText.blockProgressLabel} />
-      </div>
+    <section className="mt-5 rounded-[24px] border border-[#E8E4DF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+      {/* Sticky timeline header — always visible */}
+      <div className="sticky top-0 z-10 rounded-t-[24px] border-b border-[#E8E4DF] bg-white px-5 pb-4 pt-5 sm:px-6">
+        <div className="mb-3 rounded-[18px] border border-[#E8E4DF] bg-[#FCFBF8] px-4 py-4">
+          <StageProgressBar currentBlockIndex={currentQuestionIndex} totalBlocks={totalQuestions} label={uiText.blockProgressLabel} />
+        </div>
 
-      <div className="mb-5">
         <div className="relative flex items-start justify-between">
           {timelineSteps.map((label, index) => {
             const isDone = index < currentIndex
@@ -2542,13 +5393,26 @@ export function LessonActiveCard({
                 <div
                   className={[
                     'flex items-center justify-center rounded-full border-2 transition-all',
-                    isDone ? 'border-[#22c55e] bg-[#22c55e]' : 'border-[#D6D3D1] bg-white',
+                    isDone
+                      ? 'border-[#22c55e] bg-[#22c55e]'
+                      : isCurrent
+                        ? 'border-[#2563eb] bg-[#2563eb]'
+                        : 'border-[#D6D3D1] bg-white',
                     isCurrent
-                      ? 'h-4 w-4 scale-125 shadow-[0_0_0_3px_rgba(34,197,94,0.18)]'
+                      ? 'h-5 w-5 shadow-[0_0_0_4px_rgba(37,99,235,0.18)]'
                       : 'h-3 w-3',
                   ].join(' ')}
                 />
-                <span className="mt-2 text-center text-xs font-bold leading-4 text-[#7b7b94]">
+                <span
+                  className={[
+                    'mt-2 text-center text-xs leading-4',
+                    isCurrent
+                      ? 'font-black text-[#2563eb]'
+                      : isDone
+                        ? 'font-bold text-[#22c55e]'
+                        : 'font-medium text-[#b5b5c3]',
+                  ].join(' ')}
+                >
                   {label}
                 </span>
               </div>
@@ -2565,6 +5429,100 @@ export function LessonActiveCard({
         </div>
       </div>
 
+      {/* Scrollable lesson content — or challenge view */}
+      {validationView === 'challenge' ? (
+        <div className="px-5 py-8 sm:px-6 sm:py-10">
+
+          {/* Phase: intro */}
+          {challengePhase === 'intro' && (
+            <div className="mx-auto max-w-[360px] animate-[fadeInUp_200ms_ease-out] text-center">
+              <p className="text-lg font-black text-[#1a1a2e]">🎧 {uiText.challengeTitle}</p>
+              <p className="mt-2 text-sm text-[#5a5a7a] whitespace-nowrap">{uiText.challengeDescription}</p>
+              <button
+                type="button"
+                onClick={() => setChallengePhase('question')}
+                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+              >
+                {uiText.challengeStart}
+              </button>
+            </div>
+          )}
+
+          {/* Phase: question — card stays visible after answer, result shown below */}
+          {challengePhase === 'question' && pendingMiniReview && (
+            <>
+              <MiniReviewCard
+                key={challengeAttempt}
+                item={{ ...pendingMiniReview, mode: 'audio-first' }}
+                uiText={uiText}
+                stage={currentStageId ?? undefined}
+                hideAudioHelperText
+                autoPlay
+                hideInlineResult
+                onComplete={(correct) => {
+                  setChallengeResult(correct ? 'correct' : 'incorrect')
+                  setValidationAttempted(true)
+                }}
+              />
+
+              {/* Result: correct — shown below the still-visible choices */}
+              {challengeResult === 'correct' && (
+                <div className="mx-auto mt-4 max-w-[320px] animate-[fadeInUp_200ms_ease-out] text-center">
+                  <p className="text-lg font-black text-[#22c55e]">{uiText.challengeCorrect}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingMiniReview(null)
+                      setStageValidated(true)
+                      setValidationView('result')
+                      setChallengeResult(null)
+                      setChallengePhase('intro')
+                      window.dispatchEvent(new Event('next-step'))
+                    }}
+                    className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                  >
+                    {ctaLabel}
+                  </button>
+                </div>
+              )}
+
+              {/* Result: incorrect — shown below the still-visible choices */}
+              {challengeResult === 'incorrect' && (
+                <div className="mx-auto mt-4 max-w-[320px] animate-[fadeInUp_200ms_ease-out] text-center">
+                  <p className="text-lg font-black text-[#F5A623]">{uiText.challengeIncorrect}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const stageForReview =
+                        currentStageId === 'listen' ? 'listen' as const
+                        : currentStageId === 'repeat' ? 'repeat' as const
+                        : currentStageId === 'scaffold_transition' ? 'scaffold' as const
+                        : currentStageId === 'ai_question' ? 'ai_question' as const
+                        : null
+                      const review = stageForReview
+                        ? generateMiniReview(stageForReview, miniReviewSentence, miniSlots.personSlot, miniSlots.personAlt, miniSlots.timeSlot, miniSlots.timeAlt, uiText)
+                        : null
+                      if (review) {
+                        setChallengeResult(null)
+                        setValidationAttempted(false)
+                        setChallengePhase('question')
+                        setChallengeAttempt((n) => n + 1)
+                        setPendingMiniReview(review)
+                      }
+                    }}
+                    className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                  >
+                    {uiText.miniReviewRetryChallenge}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+        </div>
+      ) : (
+      <div className="px-5 py-5 sm:px-6 sm:py-6">
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-[#9c9c9c]">
@@ -2577,9 +5535,6 @@ export function LessonActiveCard({
             {getStageLabel(currentStageId, uiText)}
           </div>
 
-          <p className="text-sm text-gray-500 mb-2">
-            {uiText.nowDoingLabel}：{getCurrentActionLabel(currentStageId, uiText)}
-          </p>
 
           <h2 className="mt-3 text-xl font-black tracking-tight text-[#1a1a2e] sm:text-2xl">
             {dynamicConversationHeading}
@@ -2603,13 +5558,10 @@ export function LessonActiveCard({
               <div className="absolute left-0 top-5 -translate-x-[12px] h-0 w-0 border-b-[10px] border-r-[12px] border-t-[10px] border-b-transparent border-r-[#BFDBFE] border-t-transparent" />
               <div className="absolute left-0 top-5 -translate-x-[10px] h-0 w-0 border-b-[8px] border-r-[10px] border-t-[8px] border-b-transparent border-r-[#BFDBFE] border-t-transparent" />
               <p className="text-xs font-bold tracking-wider text-[#2563EB]">
-                {guideCharacter.title}
+                {uiText.hintLabel}
               </p>
-              <p className="mt-1 text-sm font-semibold leading-6 text-[#2563EB]">
-                {guideCharacter.messagePrimary}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-[#5a5a7a]">
-                {guideCharacter.messageSecondary}
+              <p className="mt-1 whitespace-pre-line text-sm font-semibold leading-6 text-[#5a5a7a]">
+                {guideMessageOverride ?? guideCharacter.messagePrimary}
               </p>
             </div>
           </div>
@@ -2625,8 +5577,41 @@ export function LessonActiveCard({
               key={audioUrl}
               ref={listenAudioRef}
               src={audioUrl}
+              preload="auto"
               onPlay={() => setIsListenPlaying(true)}
               onPause={() => setIsListenPlaying(false)}
+              onEnded={() => {
+                setIsListenPlaying(false)
+                // Log audio_completed: first listen, first session occurrence only
+                if (
+                  currentStageId === 'listen' &&
+                  wasFirstListenPlayRef.current &&
+                  lessonSessionId &&
+                  audioCompletedLoggedSessionRef.current !== lessonSessionId
+                ) {
+                  audioCompletedLoggedSessionRef.current = lessonSessionId
+                  wasFirstListenPlayRef.current = false
+                  try {
+                    fetch('/api/track', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        event: 'audio_completed',
+                        properties: {
+                          user_id: null,
+                          lesson_run_id: null,
+                          session_id: lessonSessionId,
+                          stage_id: 'listen',
+                          block_id: block.id ?? null,
+                          scene_key: block.sceneId ?? null,
+                          occurred_at: new Date().toISOString(),
+                        },
+                      }),
+                      keepalive: true,
+                    }).catch(() => {})
+                  } catch { /* fire-and-forget */ }
+                }
+              }}
               className="hidden"
             />
           ) : null}
@@ -2642,7 +5627,9 @@ export function LessonActiveCard({
 
           {currentStageId === 'listen' && (
             <div className="mt-4 text-center">
-              <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+              {lessonImageUrl && (
+                <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+              )}
 
               <p className="mt-4 text-sm leading-6 text-[#5a5a7a]">
                 {uiText.listenInstruction}
@@ -2652,14 +5639,19 @@ export function LessonActiveCard({
                 <button
                   type="button"
                   onClick={playListenAudio}
-                  className="cursor-pointer rounded-xl bg-blue-500 px-5 py-3 text-sm font-bold text-white hover:bg-blue-600"
+                  disabled={isRecordingRepeat}
+                  className={`rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
+                    isRecordingRepeat
+                      ? 'cursor-not-allowed bg-gray-300'
+                      : 'bg-blue-500 hover:bg-blue-600'
+                  }`}
                 >
                   {uiText.listenPlayButton}
                 </button>
                 <button
                   type="button"
                   onClick={stopListenAudio}
-                  className="cursor-pointer rounded-xl bg-gray-400 px-5 py-3 text-sm font-bold text-white hover:bg-gray-500"
+                  className="rounded-xl bg-gray-400 px-6 py-3 text-sm font-bold text-white transition hover:bg-gray-500"
                 >
                   {uiText.listenStopButton}
                 </button>
@@ -2694,7 +5686,7 @@ export function LessonActiveCard({
                   className={`w-full max-w-[280px] rounded-xl px-5 py-3 text-sm font-bold text-white transition ${
                     isListenPlaying
                       ? 'cursor-not-allowed bg-gray-300'
-                      : 'cursor-pointer bg-green-500 hover:bg-green-600'
+                      : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
                   }`}
                 >
                   {isListenPlaying ? uiText.listenPlayingLabel : uiText.listenRecordingButton}
@@ -2702,7 +5694,7 @@ export function LessonActiveCard({
               </div>
 
               {listenPlaybackError && (
-                <p className="mt-2 text-sm text-red-600">{listenPlaybackError}</p>
+                <p className="mt-2 text-xs text-[#7b7b94]">{listenPlaybackError}</p>
               )}
 
               {!audioUrl && (
@@ -2713,64 +5705,54 @@ export function LessonActiveCard({
 
           {currentStageId === 'repeat' && (
             <div className="mt-4 text-center">
-              <p className="text-sm text-[#5a5a7a]">
-                {isRecordingRepeat ? uiText.repeatPrimary : uiText.repeatSpeakInstruction}
+              <p className="mt-1 text-sm font-semibold leading-6 text-[#5a5a7a]">
+                {recordedAudioUrl && !isRecordingRepeat
+                  ? uiText.repeatAfterRecordingInstruction
+                  : uiText.repeatSpeakInstruction}
               </p>
 
-              <div className="mt-3 rounded-[14px] border border-[#DCFCE7] bg-[#F0FDF4] px-4 py-3">
-                <p className="text-xs font-bold tracking-widest text-[#16A34A]">
-                  {uiText.stageListenRepeatLabel}
-                </p>
-              </div>
+
 
               <div className="mt-3 flex flex-col items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    stopListenAudio()
-                    onRetryListenFromRepeat()
-                  }}
-                  className="w-full max-w-[280px] cursor-pointer rounded-xl bg-blue-500 px-4 py-3 text-white transition hover:bg-blue-600"
-                >
-                  {uiText.repeatRetryAudioButton}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={isRecordingRepeat ? stopRepeatRecognition : startRepeatRecognition}
-                  disabled={isScoringRepeat}
-                  className={`w-full max-w-[280px] rounded-xl px-4 py-3 text-white transition ${
-                    isScoringRepeat
-                      ? 'cursor-not-allowed bg-gray-300'
-                      : 'cursor-pointer bg-green-500 hover:bg-green-600'
-                  }`}
-                >
-                  {isRecordingRepeat ? uiText.repeatStopRecordingButton : uiText.repeatRecordingButton}
-                </button>
-
-                {recordedAudioUrl && (
+                {/* Recording button: disabled after recording until scoring completes */}
+                {(!recordedAudioUrl || repeatTranscript) && (
                   <button
                     type="button"
-                    onClick={playRecordedAudio}
-                    className="w-full max-w-[280px] cursor-pointer rounded-xl bg-purple-500 px-4 py-3 text-white transition hover:bg-purple-600"
+                    onClick={isRecordingRepeat ? stopRepeatRecognition : startRepeatRecognition}
+                    disabled={isScoringRepeat || isListenPlaying}
+                    className={`rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
+                      isScoringRepeat || isListenPlaying
+                        ? 'cursor-not-allowed bg-gray-300'
+                        : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
+                    }`}
                   >
-                    {uiText.repeatPlayRecordedButton}
+                    {isRecordingRepeat
+                      ? uiText.repeatStopRecordingButton
+                      : repeatTranscript
+                        ? uiText.repeatRecordAgainButton
+                        : uiText.repeatRecordingButton}
                   </button>
                 )}
 
-                {recordedAudioUrl && (
+                {/* Score button: shown after recording, before scoring completes */}
+                {recordedAudioUrl && !repeatTranscript && (
                   <button
                     type="button"
                     onClick={async () => {
+                      if (!recordedAudioUrl) {
+                        setRepeatRecognitionError(uiText.repeatNoRecordingForScore)
+                        return
+                      }
                       const blob = (window as any).__lastRecordedBlob
                       if (!blob) {
-                        setRepeatRecognitionError(uiText.repeatEmptyRecordingError)
+                        setRepeatRecognitionError(uiText.repeatNoRecordingForScore)
+                        setRecordedAudioUrl(null)
                         return
                       }
                       await scoreRepeatRecording(blob)
                     }}
                     disabled={isRecordingRepeat || isScoringRepeat}
-                    className={`mt-2 w-full max-w-[280px] rounded-xl px-6 py-4 text-lg font-bold text-white transition ${
+                    className={`mt-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
                       isRecordingRepeat || isScoringRepeat
                         ? 'cursor-not-allowed bg-[#E7C27A]'
                         : 'cursor-pointer bg-[#F5A623] hover:bg-[#D4881A]'
@@ -2780,6 +5762,22 @@ export function LessonActiveCard({
                   </button>
                 )}
               </div>
+
+              {/* Secondary: Back to listen (repeat stage only) */}
+              {currentStageId === 'repeat' && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopListenAudio()
+                      onRetryListenFromRepeat()
+                    }}
+                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                  >
+                    {uiText.repeatRetryAudioButton}
+                  </button>
+                </div>
+              )}
 
               {!mediaRecordingSupported && (
                 <p className="mt-3 text-sm text-amber-700">
@@ -2791,37 +5789,59 @@ export function LessonActiveCard({
                 <p className="mt-3 text-sm text-red-600">{repeatRecognitionError}</p>
               )}
 
-              {recordedAudioUrl && (
-                <p className="mt-3 text-xs text-[#7b7b94]">
-                  {uiText.repeatRecordedReady}
-                </p>
-              )}
 
               {repeatTranscript && (
-                <div ref={repeatResultRef} className="mt-3 rounded-[14px] border border-[#E8E4DF] bg-white px-5 py-5 text-center">
+                <div ref={repeatResultRef} className="mt-3 animate-[fadeInUp_250ms_ease-out] rounded-[14px] border border-[#E8E4DF] bg-white px-5 py-5 text-center">
+                  {/* Relative improvement feedback (2nd+ attempt only) */}
+                  {prevRepeatScoreRef.current !== null && repeatScore !== null && (
+                    <p className="mb-1 animate-[fadeInUp_180ms_ease-out] text-xs font-bold text-[#3B82F6]">
+                      {repeatScore > prevRepeatScoreRef.current + 5
+                        ? uiText.repeatImproved
+                        : Math.abs(repeatScore - prevRepeatScoreRef.current) <= 5
+                          ? uiText.repeatStable
+                          : uiText.repeatSlightDrop}
+                    </p>
+                  )}
+                  {/* Micro weakness hint (1 actionable item, non-perfect only) */}
+                  {repeatScore !== null && repeatScore < 90 && missingWords.length > 0 && (
+                    <p className="mb-1 animate-[fadeInUp_180ms_ease-out] text-xs text-[#7b7b94]">
+                      {uiText.repeatWeaknessMissing.replace('{word}', missingWords[0])}
+                    </p>
+                  )}
+                  {repeatScore !== null && repeatScore < 90 && missingWords.length === 0 && repeatScoreBreakdown && repeatScoreBreakdown.wordMatch < 70 && (
+                    <p className="mb-1 animate-[fadeInUp_180ms_ease-out] text-xs text-[#7b7b94]">
+                      {uiText.repeatWeaknessSound.replace('{word}', item.answer?.split(/\s+/)[1] ?? '')}
+                    </p>
+                  )}
+                  {/* Success message */}
+                  <p className="mb-2 text-sm font-bold text-[#22c55e]">
+                    {repeatIsPass
+                      ? uiText.repeatSuccessGood
+                      : uiText.repeatSuccessOk}
+                  </p>
                   {/* 1. Immediate encouragement */}
                   <p className="text-xl font-black text-[#F5A623]">
-                    {repeatScore !== null && repeatScore >= 70
-                      ? 'すごい！上手に言えました'
-                      : 'いい調子です！'}
+                    {repeatIsPass
+                      ? uiText.repeatScoreExcellent
+                      : uiText.repeatScoreGood}
                   </p>
-                  <p className="mt-1 text-xs text-[#7b7b94]">
-                    {repeatScore !== null && repeatScore >= 70
-                      ? '次に進みましょう'
-                      : 'もう少しで完璧です — もう一度聞いて真似してみましょう'}
+                  <p className={`mt-1 ${repeatIsPass ? 'text-sm font-bold text-[#3B82F6]' : 'text-xs text-[#7b7b94]'}`}>
+                    {repeatIsPass
+                      ? uiText.repeatScoreExcellentSub
+                      : uiText.repeatScoreGoodSub}
                   </p>
 
                   {/* 2. Score as friendly progress bar */}
                   {repeatScore !== null && (
                     <div className="mx-auto mt-4 max-w-[260px]">
                       <div className="flex items-center justify-between text-xs text-[#7b7b94]">
-                        <span>{repeatAttemptCount > 0 ? `${repeatAttemptCount}回目` : ''}</span>
-                        <span className="font-bold text-[#1a1a2e]">{repeatScore}点</span>
+                        <span>{repeatAttemptCount > 0 ? `${repeatAttemptCount}${uiText.repeatAttemptSuffix}` : ''}</span>
+                        <span className="font-bold text-[#1a1a2e]">{repeatScore}{uiText.repeatScoreSuffix}</span>
                       </div>
                       <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-[#F0EDE8]">
                         <div
                           className={`h-full rounded-full transition-all duration-500 ${
-                            repeatScore >= 70 ? 'bg-[#22C55E]' : 'bg-[#F5A623]'
+                            repeatIsPass ? 'bg-[#22C55E]' : 'bg-[#F5A623]'
                           }`}
                           style={{ width: `${Math.min(repeatScore, 100)}%` }}
                         />
@@ -2864,7 +5884,7 @@ export function LessonActiveCard({
 
                   {/* 5. Pronunciation tip */}
                   {repeatScore !== null && (() => {
-                    const tip = getRepeatTip(repeatScoreBreakdown, missingWords, repeatScore)
+                    const tip = getRepeatTip(repeatScoreBreakdown, missingWords, repeatScore, uiText)
                     if (!tip) return null
                     return (
                       <p className="mx-auto mt-4 max-w-[280px] text-center text-xs leading-5 text-[#7b7b94]">
@@ -2873,16 +5893,28 @@ export function LessonActiveCard({
                     )
                   })()}
 
+                  {/* Compare audio */}
+                  {repeatTranscript && audioUrl && recordedAudioUrl && (
+                    <AudioCompareCard correctUrl={audioUrl} recordedUrl={recordedAudioUrl} uiText={uiText} />
+                  )}
+
                   {/* 6. Primary action */}
-                  {repeatScore !== null && repeatScore >= 70 && (
+                  {repeatIsPass && !stageValidated && !pendingMiniReview && (
                     <button
                       type="button"
-                      onClick={() => {
-                        window.dispatchEvent(new Event('next-step'))
-                      }}
-                      className="mx-auto mt-5 block w-full max-w-[280px] cursor-pointer rounded-xl bg-[#F5A623] py-3.5 text-sm font-black text-white transition hover:-translate-y-px hover:bg-[#D4881A] active:scale-[0.99]"
+                      onClick={triggerValidation}
+                      className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
                     >
-                      {uiText.repeatNextQuestionButton}
+                      {uiText.miniReviewValidationCta}
+                    </button>
+                  )}
+                  {repeatIsPass && stageValidated && (
+                    <button
+                      type="button"
+                      onClick={() => { window.dispatchEvent(new Event('next-step')) }}
+                      className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                    >
+                      {ctaLabel}
                     </button>
                   )}
 
@@ -2890,24 +5922,20 @@ export function LessonActiveCard({
                   {repeatAttemptCount >= 3 && repeatScore !== null && repeatScore < 80 && (
                     <div className="mt-4">
                       <p className="text-xs text-[#7b7b94]">
-                        大丈夫！何度も聞くうちに自然と言えるようになります
+                        {uiText.repeatAttemptLimitEncouragement}
                       </p>
                       <button
                         type="button"
                         onClick={() => {
                           window.dispatchEvent(new Event('next-step'))
                         }}
-                        className="mx-auto mt-3 block w-full max-w-[280px] rounded-xl bg-[#F5A623] py-3.5 text-sm font-bold text-white transition hover:bg-[#D4881A]"
+                        className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
                       >
-                        次に進む
+                        {uiText.repeatAttemptLimitAdvance}
                       </button>
                     </div>
                   )}
                 </div>
-              )}
-
-              {repeatTranscript && audioUrl && recordedAudioUrl && (
-                <AudioCompareCard correctUrl={audioUrl} recordedUrl={recordedAudioUrl} />
               )}
 
               {recordedPlaybackError && (
@@ -2917,22 +5945,30 @@ export function LessonActiveCard({
           )}
 
           {currentStageId === 'scaffold_transition' && (
-            <ScaffoldAutoPlay
-              scaffoldSteps={scaffoldSteps}
-              semanticChunks={(item as LessonBlockItem & { semantic_chunks?: SemanticChunk[] | null }).semantic_chunks}
-              lessonImageUrl={lessonImageUrl}
-              dynamicConversationHeading={dynamicConversationHeading}
-              scenarioLabel={scenarioLabel}
-              audioUrl={audioUrl}
-              uiText={uiText}
-            />
+            <>
+              <ScaffoldAutoPlay
+                scaffoldSteps={scaffoldSteps}
+                semanticChunks={scaffoldSemanticChunks}
+                nativeHint={(item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null}
+                lessonImageUrl={lessonImageUrl}
+                dynamicConversationHeading={dynamicConversationHeading}
+                scenarioLabel={scenarioLabel}
+                audioUrl={audioUrl}
+                uiText={uiText}
+                level={level}
+                itemId={item.id}
+                ctaLabel={ctaLabel}
+              />
+            </>
           )}
 
           {currentStageId === 'ai_question' && (
             <div>
-              <div className="mb-4">
-                <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
-              </div>
+              {lessonImageUrl && (
+                <div className="mb-4">
+                  <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+                </div>
+              )}
             <AiQuestionPlayer
               key={item.id}
               item={item}
@@ -2940,35 +5976,120 @@ export function LessonActiveCard({
               inputValue={inputValue}
               onInputChange={onInputChange}
               previousPhrases={previousPhrases}
+              level={level}
+              ctaLabel={ctaLabel}
+              regionContext={getRegionContext(block.region ?? null)}
             />
+            {onGoBackToStage && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => onGoBackToStage('scaffold_transition')}
+                  className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                >
+                  {uiText.backToScaffold}
+                </button>
+              </div>
+            )}
             </div>
           )}
 
-          {currentStageId === 'typing' && (
-            <TypingMultiRound
-              key={item.id}
-              item={item}
-              uiText={uiText}
-              copy={_copy}
-              previousPhrases={previousPhrases}
-              onInputChange={onInputChange}
-              playAudio={playListenAudio}
-              level={level}
-            />
+          {currentStageId === 'typing' && responseStage === 'typing' && (
+            <>
+              <TypingMultiRound
+                key={item.id}
+                item={item}
+                uiText={uiText}
+                copy={_copy}
+                previousPhrases={previousPhrases}
+                onInputChange={onInputChange}
+                level={level}
+                ctaLabel={ctaLabel}
+              />
+              {onGoBackToStage && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => onGoBackToStage('ai_question')}
+                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                  >
+                    {uiText.backToAiQuestion}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {currentStageId === 'typing' && responseStage === 'audio_choice' && (
+            <>
+              {(() => {
+                try {
+                  const answer = item.answer?.trim() || item.prompt?.trim() || ''
+                  const nativeHint = (item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null
+                  const audioChoiceItem: AudioChoiceItem = {
+                    promptTranslation: nativeHint || answer,
+                    options: [
+                      { audioUrl: '', textNative: answer, translation: nativeHint || '', isCorrect: true },
+                      { audioUrl: '', textNative: '(option 2)', translation: '', isCorrect: false },
+                      { audioUrl: '', textNative: '(option 3)', translation: '', isCorrect: false },
+                    ],
+                  }
+                  return (
+                    <AudioChoiceStage
+                      key={item.id}
+                      item={audioChoiceItem}
+                      onComplete={() => onInputChange(answer)}
+                    />
+                  )
+                } catch {
+                  // Fallback to typing on any error
+                  return (
+                    <TypingMultiRound
+                      key={item.id}
+                      item={item}
+                      uiText={uiText}
+                      copy={_copy}
+                      previousPhrases={previousPhrases}
+                      onInputChange={onInputChange}
+                      level={level}
+                      ctaLabel={ctaLabel}
+                    />
+                  )
+                }
+              })()}
+            </>
           )}
 
           {currentStageId === 'ai_conversation' && (
-            <AiConversationPlayer
-              key={item.id}
-              item={item}
-              uiText={uiText}
-              previousPhrases={previousPhrases}
-              onInputChange={onInputChange}
-              isLastBlock={currentQuestionIndex >= totalQuestions - 1}
-            />
+            <>
+              <AiConversationPlayer
+                key={`${item.id}-${convResetNonce}`}
+                item={item}
+                uiText={uiText}
+                previousPhrases={previousPhrases}
+                onInputChange={onInputChange}
+                isLastBlock={isLastBlock}
+                flavorContext={conversationFlavorContext}
+                level={level}
+                ctaLabel={ctaLabel}
+                onGuideMessageChange={setGuideMessageOverride}
+                problemNumber={currentQuestionIndex + 1}
+              />
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => { setConvResetNonce((n) => n + 1); setGuideMessageOverride(null) }}
+                  className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                >
+                  {uiText.backToTyping}
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
+      </div>
+      )}
     </section>
   )
 }

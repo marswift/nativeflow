@@ -1,13 +1,27 @@
 import 'server-only'
 import type { ChatMessage } from './openai-client'
+import { buildRegionPromptContext } from './lesson-run-service'
 
 // ——— API contract ———
+
+export type AiConversationFlavorContext = {
+  sceneId?: string
+  region?: string
+  ageGroup?: string
+  topics?: string[]
+  references?: string[]
+  cultureNotes?: string[]
+  setting?: string
+  lifestyle?: string[]
+}
 
 export type AiConversationRequest = {
   turnIndex: number
   userMessage: string
   lessonPhrase: string
   conversationHistory: { ai: string; user: string }[]
+  /** Optional flavor context for emotionally natural conversation. */
+  flavorContext?: AiConversationFlavorContext | null
 }
 
 export type AiConversationEvaluation = {
@@ -17,6 +31,8 @@ export type AiConversationEvaluation = {
   score: number
   feedback: string
   correction: string | null
+  naturalAlternative: string | null
+  followUp: string | null
 }
 
 export type AiConversationResponse = {
@@ -31,29 +47,74 @@ export type AiConversationResponse = {
 
 // ——— Prompt builder ———
 
-const SYSTEM_PROMPT_TEMPLATE = `You are a friendly English conversation partner helping a Japanese student practice speaking.
+const SYSTEM_PROMPT_TEMPLATE = `You are having a short, natural, real-life conversation with a language learner.
 
-The student just learned this phrase: "{lessonPhrase}"
+IMPORTANT:
+This is NOT a test or quiz.
+Do NOT behave like a teacher.
+Do NOT ask a fixed sequence of questions.
 
-Conversation structure (4 turns total):
-- Turn 0: Greet the student warmly. The student should respond to your greeting.
-- Turn 1: React to their greeting, then naturally ask about the lesson phrase.
-- Turn 2: React to their answer, ask a simple follow-up question.
-- Turn 3: Wrap up with brief encouragement and say goodbye.
+The learner just practiced this phrase: "{lessonPhrase}"
 
-Rules:
-- Keep aiReply to 1-2 SHORT sentences (under 20 words).
-- Use simple English (A2-B1 level).
-- React naturally to what the student actually said.
-- Gently guide them to use the lesson phrase.
+YOUR ROLE:
+You are a friendly conversation partner.
+Your goal is to continue the conversation naturally, respond to what the user just said, and keep things easy and comfortable.
 
-Evaluate the student's reply with these criteria:
-- isRelevant: does the reply relate to what was asked?
-- isNatural: does it sound like natural English (not random words)?
-- isComplete: is it a full sentence (not just one word)?
-- score: 0-100 overall quality
-- feedback: one short sentence explaining the evaluation (in Japanese)
-- correction: if the student's sentence has errors, provide the corrected version. null if correct.
+CORE RULES:
+1. ALWAYS read the full conversation history
+2. ALWAYS respond to the user's LAST message
+3. NEVER ignore what the user said
+4. NEVER switch topic randomly
+5. NEVER ask unrelated questions
+
+STYLE:
+- Use short, natural spoken English
+- One idea per message
+- Keep sentences simple
+- Avoid long explanations
+- Avoid textbook grammar tone
+
+RESPONSE PATTERNS (pick ONE per turn):
+A. React + follow-up: "Oh, nice. What did you talk about?"
+B. Acknowledge + expand: "That sounds good. I like simple meals like that."
+C. Empathy + question: "I see. Was it difficult?"
+D. Light reaction only: "Nice, that sounds fun."
+
+QUESTION RULE:
+- Ask at most ONE question per turn
+- Do NOT ask multiple questions
+- Do NOT repeat the same question pattern
+
+RESCUE MODE (if user response is very short, unclear, or empty):
+- Gently help them continue
+- Suggest simple options
+- Example: "That's okay. Maybe you talked with a friend or a teacher?"
+
+CONVERSATION STRUCTURE:
+This conversation has 5 turns:
+- Turn 0: Greeting (you already greeted, user is replying)
+- Turn 1-3: Main conversation about the lesson phrase
+- Turn 4: Closing (react to user's last answer, then say goodbye naturally)
+
+CLOSING RULE:
+When closing the conversation:
+- First react to what the user just said
+- Then include a short natural goodbye
+- Examples: "That sounds nice. See you later!" / "I see. Have a good day!"
+- Keep it warm and brief
+
+Keep aiReply to 1-2 SHORT sentences (under 20 words).
+
+EVALUATION:
+Also evaluate the learner's reply:
+- isRelevant: does it relate to the conversation?
+- isNatural: does it sound like natural English?
+- isComplete: is it more than one word?
+- score: 0-100
+- feedback: one short supportive sentence in Japanese
+- correction: if unnatural, provide a more natural version. null if already natural.
+- naturalAlternative: optional second way to say it. null if not needed.
+- followUp: a short follow-up question based on what they said
 
 Result:
 - "good" if score >= 50
@@ -61,29 +122,72 @@ Result:
 
 You MUST respond in this exact JSON format, no other text:
 {
-  "aiReply": "your next message to the student",
+  "aiReply": "your next message",
   "result": "good" or "retry",
   "evaluation": {
     "isRelevant": true/false,
     "isNatural": true/false,
     "isComplete": true/false,
     "score": 0-100,
-    "feedback": "Japanese feedback sentence",
-    "correction": "corrected English sentence or null"
+    "feedback": "Japanese feedback",
+    "correction": "natural version or null",
+    "naturalAlternative": "alternative or null",
+    "followUp": "short follow-up question"
   },
   "hint": "Japanese advice if retry, null if good",
-  "nextPrompt": "example English sentence if retry, null if good"
+  "nextPrompt": "example sentence if retry, null if good"
 }`
 
 export function buildSystemPrompt(lessonPhrase: string): string {
   return SYSTEM_PROMPT_TEMPLATE.replace('{lessonPhrase}', lessonPhrase)
 }
 
+/** Builds an optional flavor guidance section for the system prompt. */
+function buildFlavorSection(ctx: AiConversationFlavorContext | null | undefined): string {
+  if (!ctx) return ''
+
+  const lines: string[] = []
+  if (ctx.sceneId) lines.push(`- Scene: ${ctx.sceneId}`)
+  if (ctx.region) lines.push(`- Region: ${ctx.region}`)
+  if (ctx.ageGroup) lines.push(`- Age group: ${ctx.ageGroup}`)
+
+  const flavorLines: string[] = []
+  if (ctx.setting) flavorLines.push(`- Setting: ${ctx.setting}`)
+  if (ctx.topics && ctx.topics.length > 0) flavorLines.push(`- Topics: ${ctx.topics.join(', ')}`)
+  if (ctx.lifestyle && ctx.lifestyle.length > 0) flavorLines.push(`- Lifestyle: ${ctx.lifestyle.join(', ')}`)
+  if (ctx.references && ctx.references.length > 0) flavorLines.push(`- References: ${ctx.references.join(', ')}`)
+  if (ctx.cultureNotes && ctx.cultureNotes.length > 0) flavorLines.push(`- Culture notes: ${ctx.cultureNotes.join(', ')}`)
+
+  if (lines.length === 0 && flavorLines.length === 0) return ''
+
+  const parts: string[] = []
+  if (lines.length > 0) parts.push(`Context:\n${lines.join('\n')}`)
+  if (flavorLines.length > 0) {
+    parts.push([
+      'Optional flavor guidance:',
+      ...flavorLines,
+      '',
+      'How to use this guidance:',
+      '- Setting and lifestyle are IMPLICIT atmosphere — do NOT narrate or describe them. Let them shape your tone and word choice silently.',
+      '- Use topics and references ONLY when they fit naturally. Pick at most one per reply.',
+      '- Do NOT force all flavor elements into a single reply. Most should be ignored in any given turn.',
+      '- Prefer subtle influence: a casual word choice, a small cultural detail, a natural reaction — not a list.',
+      '- Keep the reply simple, natural, and appropriate for the learner\'s level. Still under 20 words.',
+      '- Prioritize realistic conversation over showing off the flavor data. Less is more.',
+    ].join('\n'))
+  }
+
+  return '\n\n' + parts.join('\n\n')
+}
+
 export function buildChatMessages(
   request: AiConversationRequest,
 ): ChatMessage[] {
+  const flavorSection = buildFlavorSection(request.flavorContext)
+  const regionPrompt = buildRegionPromptContext(request.flavorContext?.region ?? null)
+  const regionSection = regionPrompt ? `\n\nREGION:\n${regionPrompt}` : ''
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(request.lessonPhrase) },
+    { role: 'system', content: buildSystemPrompt(request.lessonPhrase) + flavorSection + regionSection },
   ]
 
   // Replay conversation history (includes the current turn's user message)
@@ -94,10 +198,15 @@ export function buildChatMessages(
     }
   }
 
-  // Instruction for current turn
+  // Instruction for current turn — reinforce continuity
+  const userSaid = request.userMessage.trim()
+  const isClosing = (request as Record<string, unknown>).isClosingTurn === true
+  const closingInstruction = isClosing
+    ? ' This is the closing turn. React to what they said, then include a short natural goodbye (e.g. "See you later!" or "Have a good day!"). The student will reply with a short goodbye after this.'
+    : ''
   messages.push({
     role: 'system',
-    content: `This is turn ${request.turnIndex} of 4. Evaluate the student's last message and provide your reply. Respond in JSON only.`,
+    content: `This is turn ${request.turnIndex} of 5. The student just said: "${userSaid}". React to what they said, evaluate it, and continue the conversation naturally. Your aiReply must connect to their answer — don't ignore what they told you.${closingInstruction} Respond in JSON only.`,
   })
 
   return messages
@@ -113,9 +222,11 @@ function parseEvaluationDetail(obj: unknown): AiConversationEvaluation {
       score: typeof e.score === 'number' ? Math.max(0, Math.min(100, e.score)) : 0,
       feedback: typeof e.feedback === 'string' ? e.feedback : '',
       correction: typeof e.correction === 'string' ? e.correction : null,
+      naturalAlternative: typeof e.naturalAlternative === 'string' ? e.naturalAlternative : null,
+      followUp: typeof e.followUp === 'string' ? e.followUp : null,
     }
   }
-  return { isRelevant: false, isNatural: false, isComplete: false, score: 0, feedback: '', correction: null }
+  return { isRelevant: false, isNatural: false, isComplete: false, score: 0, feedback: '', correction: null, naturalAlternative: null, followUp: null }
 }
 
 export function parseAiConversationResponse(raw: string): AiConversationResponse | null {

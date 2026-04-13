@@ -1,0 +1,1144 @@
+[
+  {
+    "id": "manual-en-us-051",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "errand",
+    "scene": "picking up dry cleaning",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-051-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I need to pick up my dry cleaning on the way home.",
+        "normalizedText": "i need to pick up my dry cleaning on the way home",
+        "meaningChunks": [
+          { "id": "manual-en-us-051-t0-mc0", "order": 0, "text": "I need to pick up my dry cleaning", "normalizedText": "i need to pick up my dry cleaning", "type": "meaning" },
+          { "id": "manual-en-us-051-t0-mc1", "order": 1, "text": "on the way home.", "normalizedText": "on the way home", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-051-t0-sc0", "order": 0, "text": "I need to pick up", "normalizedText": "i need to pick up", "type": "speech" },
+          { "id": "manual-en-us-051-t0-sc1", "order": 1, "text": "my dry cleaning", "normalizedText": "my dry cleaning", "type": "speech" },
+          { "id": "manual-en-us-051-t0-sc2", "order": 2, "text": "on the way home.", "normalizedText": "on the way home", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-051-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Oh, can you grab mine too? It's under my name.",
+        "normalizedText": "oh can you grab mine too it's under my name",
+        "meaningChunks": [
+          { "id": "manual-en-us-051-t1-mc0", "order": 0, "text": "Oh, can you grab mine too?", "normalizedText": "oh can you grab mine too", "type": "meaning" },
+          { "id": "manual-en-us-051-t1-mc1", "order": 1, "text": "It's under my name.", "normalizedText": "it's under my name", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-051-t1-sc0", "order": 0, "text": "Oh, can you grab mine too?", "normalizedText": "oh can you grab mine too", "type": "speech" },
+          { "id": "manual-en-us-051-t1-sc1", "order": 1, "text": "It's under my name.", "normalizedText": "it's under my name", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-052",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "appointment",
+    "scene": "rescheduling a doctor's appointment",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-052-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hi, I need to reschedule my appointment. Something came up.",
+        "normalizedText": "hi i need to reschedule my appointment something came up",
+        "meaningChunks": [
+          { "id": "manual-en-us-052-t0-mc0", "order": 0, "text": "Hi, I need to reschedule my appointment.", "normalizedText": "hi i need to reschedule my appointment", "type": "meaning" },
+          { "id": "manual-en-us-052-t0-mc1", "order": 1, "text": "Something came up.", "normalizedText": "something came up", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-052-t0-sc0", "order": 0, "text": "Hi,", "normalizedText": "hi", "type": "speech" },
+          { "id": "manual-en-us-052-t0-sc1", "order": 1, "text": "I need to reschedule my appointment.", "normalizedText": "i need to reschedule my appointment", "type": "speech" },
+          { "id": "manual-en-us-052-t0-sc2", "order": 2, "text": "Something came up.", "normalizedText": "something came up", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-052-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "No problem. I have an opening next Thursday at two. Does that work?",
+        "normalizedText": "no problem i have an opening next thursday at two does that work",
+        "meaningChunks": [
+          { "id": "manual-en-us-052-t1-mc0", "order": 0, "text": "No problem.", "normalizedText": "no problem", "type": "meaning" },
+          { "id": "manual-en-us-052-t1-mc1", "order": 1, "text": "I have an opening next Thursday at two.", "normalizedText": "i have an opening next thursday at two", "type": "meaning" },
+          { "id": "manual-en-us-052-t1-mc2", "order": 2, "text": "Does that work?", "normalizedText": "does that work", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-052-t1-sc0", "order": 0, "text": "No problem.", "normalizedText": "no problem", "type": "speech" },
+          { "id": "manual-en-us-052-t1-sc1", "order": 1, "text": "I have an opening", "normalizedText": "i have an opening", "type": "speech" },
+          { "id": "manual-en-us-052-t1-sc2", "order": 2, "text": "next Thursday at two.", "normalizedText": "next thursday at two", "type": "speech" },
+          { "id": "manual-en-us-052-t1-sc3", "order": 3, "text": "Does that work?", "normalizedText": "does that work", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-053",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "home routine",
+    "scene": "doing laundry together",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-053-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Can you throw the towels in the wash?",
+        "normalizedText": "can you throw the towels in the wash",
+        "meaningChunks": [
+          { "id": "manual-en-us-053-t0-mc0", "order": 0, "text": "Can you throw the towels in the wash?", "normalizedText": "can you throw the towels in the wash", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-053-t0-sc0", "order": 0, "text": "Can you throw the towels", "normalizedText": "can you throw the towels", "type": "speech" },
+          { "id": "manual-en-us-053-t0-sc1", "order": 1, "text": "in the wash?", "normalizedText": "in the wash", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-053-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Sure. Do you want me to add your stuff too?",
+        "normalizedText": "sure do you want me to add your stuff too",
+        "meaningChunks": [
+          { "id": "manual-en-us-053-t1-mc0", "order": 0, "text": "Sure.", "normalizedText": "sure", "type": "meaning" },
+          { "id": "manual-en-us-053-t1-mc1", "order": 1, "text": "Do you want me to add your stuff too?", "normalizedText": "do you want me to add your stuff too", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-053-t1-sc0", "order": 0, "text": "Sure.", "normalizedText": "sure", "type": "speech" },
+          { "id": "manual-en-us-053-t1-sc1", "order": 1, "text": "Do you want me to add your stuff too?", "normalizedText": "do you want me to add your stuff too", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-054",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "weather consequence",
+    "scene": "rain changing outdoor plans",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-054-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "It looks like it's gonna rain. Should we stay inside?",
+        "normalizedText": "it looks like it's gonna rain should we stay inside",
+        "meaningChunks": [
+          { "id": "manual-en-us-054-t0-mc0", "order": 0, "text": "It looks like it's gonna rain.", "normalizedText": "it looks like it's gonna rain", "type": "meaning" },
+          { "id": "manual-en-us-054-t0-mc1", "order": 1, "text": "Should we stay inside?", "normalizedText": "should we stay inside", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-054-t0-sc0", "order": 0, "text": "It looks like", "normalizedText": "it looks like", "type": "speech" },
+          { "id": "manual-en-us-054-t0-sc1", "order": 1, "text": "it's gonna rain.", "normalizedText": "it's gonna rain", "type": "speech" },
+          { "id": "manual-en-us-054-t0-sc2", "order": 2, "text": "Should we stay inside?", "normalizedText": "should we stay inside", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-054-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Yeah, let's just watch a movie instead.",
+        "normalizedText": "yeah let's just watch a movie instead",
+        "meaningChunks": [
+          { "id": "manual-en-us-054-t1-mc0", "order": 0, "text": "Yeah, let's just watch a movie instead.", "normalizedText": "yeah let's just watch a movie instead", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-054-t1-sc0", "order": 0, "text": "Yeah,", "normalizedText": "yeah", "type": "speech" },
+          { "id": "manual-en-us-054-t1-sc1", "order": 1, "text": "let's just watch a movie", "normalizedText": "let's just watch a movie", "type": "speech" },
+          { "id": "manual-en-us-054-t1-sc2", "order": 2, "text": "instead.", "normalizedText": "instead", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-055",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "encouragement",
+    "scene": "encouraging before a job interview",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-055-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I'm so nervous about the interview tomorrow.",
+        "normalizedText": "i'm so nervous about the interview tomorrow",
+        "meaningChunks": [
+          { "id": "manual-en-us-055-t0-mc0", "order": 0, "text": "I'm so nervous about the interview", "normalizedText": "i'm so nervous about the interview", "type": "meaning" },
+          { "id": "manual-en-us-055-t0-mc1", "order": 1, "text": "tomorrow.", "normalizedText": "tomorrow", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-055-t0-sc0", "order": 0, "text": "I'm so nervous", "normalizedText": "i'm so nervous", "type": "speech" },
+          { "id": "manual-en-us-055-t0-sc1", "order": 1, "text": "about the interview tomorrow.", "normalizedText": "about the interview tomorrow", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-055-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "You're gonna do great. Just be yourself and take it one question at a time.",
+        "normalizedText": "you're gonna do great just be yourself and take it one question at a time",
+        "meaningChunks": [
+          { "id": "manual-en-us-055-t1-mc0", "order": 0, "text": "You're gonna do great.", "normalizedText": "you're gonna do great", "type": "meaning" },
+          { "id": "manual-en-us-055-t1-mc1", "order": 1, "text": "Just be yourself and take it one question at a time.", "normalizedText": "just be yourself and take it one question at a time", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-055-t1-sc0", "order": 0, "text": "You're gonna do great.", "normalizedText": "you're gonna do great", "type": "speech" },
+          { "id": "manual-en-us-055-t1-sc1", "order": 1, "text": "Just be yourself", "normalizedText": "just be yourself", "type": "speech" },
+          { "id": "manual-en-us-055-t1-sc2", "order": 2, "text": "and take it one question at a time.", "normalizedText": "and take it one question at a time", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-056",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "clarification",
+    "scene": "asking someone to repeat themselves",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-056-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "The meeting is at three on Wednesday.",
+        "normalizedText": "the meeting is at three on wednesday",
+        "meaningChunks": [
+          { "id": "manual-en-us-056-t0-mc0", "order": 0, "text": "The meeting is at three", "normalizedText": "the meeting is at three", "type": "meaning" },
+          { "id": "manual-en-us-056-t0-mc1", "order": 1, "text": "on Wednesday.", "normalizedText": "on wednesday", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-056-t0-sc0", "order": 0, "text": "The meeting is at three", "normalizedText": "the meeting is at three", "type": "speech" },
+          { "id": "manual-en-us-056-t0-sc1", "order": 1, "text": "on Wednesday.", "normalizedText": "on wednesday", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-056-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Sorry, what time did you say? I didn't catch that.",
+        "normalizedText": "sorry what time did you say i didn't catch that",
+        "meaningChunks": [
+          { "id": "manual-en-us-056-t1-mc0", "order": 0, "text": "Sorry, what time did you say?", "normalizedText": "sorry what time did you say", "type": "meaning" },
+          { "id": "manual-en-us-056-t1-mc1", "order": 1, "text": "I didn't catch that.", "normalizedText": "i didn't catch that", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-056-t1-sc0", "order": 0, "text": "Sorry,", "normalizedText": "sorry", "type": "speech" },
+          { "id": "manual-en-us-056-t1-sc1", "order": 1, "text": "what time did you say?", "normalizedText": "what time did you say", "type": "speech" },
+          { "id": "manual-en-us-056-t1-sc2", "order": 2, "text": "I didn't catch that.", "normalizedText": "i didn't catch that", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-056-t2",
+        "order": 2,
+        "speaker": "A",
+        "text": "Three o'clock. Wednesday.",
+        "normalizedText": "three o'clock wednesday",
+        "meaningChunks": [
+          { "id": "manual-en-us-056-t2-mc0", "order": 0, "text": "Three o'clock.", "normalizedText": "three o'clock", "type": "meaning" },
+          { "id": "manual-en-us-056-t2-mc1", "order": 1, "text": "Wednesday.", "normalizedText": "wednesday", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-056-t2-sc0", "order": 0, "text": "Three o'clock.", "normalizedText": "three o'clock", "type": "speech" },
+          { "id": "manual-en-us-056-t2-sc1", "order": 1, "text": "Wednesday.", "normalizedText": "wednesday", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-057",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "mild conflict",
+    "scene": "disagreeing about where to eat",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-057-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I don't really feel like pizza again. Can we try something different?",
+        "normalizedText": "i don't really feel like pizza again can we try something different",
+        "meaningChunks": [
+          { "id": "manual-en-us-057-t0-mc0", "order": 0, "text": "I don't really feel like pizza again.", "normalizedText": "i don't really feel like pizza again", "type": "meaning" },
+          { "id": "manual-en-us-057-t0-mc1", "order": 1, "text": "Can we try something different?", "normalizedText": "can we try something different", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-057-t0-sc0", "order": 0, "text": "I don't really feel like", "normalizedText": "i don't really feel like", "type": "speech" },
+          { "id": "manual-en-us-057-t0-sc1", "order": 1, "text": "pizza again.", "normalizedText": "pizza again", "type": "speech" },
+          { "id": "manual-en-us-057-t0-sc2", "order": 2, "text": "Can we try something different?", "normalizedText": "can we try something different", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-057-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Okay, that's fair. How about that Thai place?",
+        "normalizedText": "okay that's fair how about that thai place",
+        "meaningChunks": [
+          { "id": "manual-en-us-057-t1-mc0", "order": 0, "text": "Okay, that's fair.", "normalizedText": "okay that's fair", "type": "meaning" },
+          { "id": "manual-en-us-057-t1-mc1", "order": 1, "text": "How about that Thai place?", "normalizedText": "how about that thai place", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-057-t1-sc0", "order": 0, "text": "Okay, that's fair.", "normalizedText": "okay that's fair", "type": "speech" },
+          { "id": "manual-en-us-057-t1-sc1", "order": 1, "text": "How about that Thai place?", "normalizedText": "how about that thai place", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-058",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "checking in",
+    "scene": "following up after someone was sick",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-058-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hey, are you feeling better today?",
+        "normalizedText": "hey are you feeling better today",
+        "meaningChunks": [
+          { "id": "manual-en-us-058-t0-mc0", "order": 0, "text": "Hey, are you feeling better", "normalizedText": "hey are you feeling better", "type": "meaning" },
+          { "id": "manual-en-us-058-t0-mc1", "order": 1, "text": "today?", "normalizedText": "today", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-058-t0-sc0", "order": 0, "text": "Hey,", "normalizedText": "hey", "type": "speech" },
+          { "id": "manual-en-us-058-t0-sc1", "order": 1, "text": "are you feeling better today?", "normalizedText": "are you feeling better today", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-058-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Yeah, much better. Thanks for checking in.",
+        "normalizedText": "yeah much better thanks for checking in",
+        "meaningChunks": [
+          { "id": "manual-en-us-058-t1-mc0", "order": 0, "text": "Yeah, much better.", "normalizedText": "yeah much better", "type": "meaning" },
+          { "id": "manual-en-us-058-t1-mc1", "order": 1, "text": "Thanks for checking in.", "normalizedText": "thanks for checking in", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-058-t1-sc0", "order": 0, "text": "Yeah, much better.", "normalizedText": "yeah much better", "type": "speech" },
+          { "id": "manual-en-us-058-t1-sc1", "order": 1, "text": "Thanks for checking in.", "normalizedText": "thanks for checking in", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-059",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "tech trouble",
+    "scene": "Wi-Fi not working at home",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-059-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "The Wi-Fi is down again. I can't get anything to load.",
+        "normalizedText": "the wi fi is down again i can't get anything to load",
+        "meaningChunks": [
+          { "id": "manual-en-us-059-t0-mc0", "order": 0, "text": "The Wi-Fi is down again.", "normalizedText": "the wi fi is down again", "type": "meaning" },
+          { "id": "manual-en-us-059-t0-mc1", "order": 1, "text": "I can't get anything to load.", "normalizedText": "i can't get anything to load", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-059-t0-sc0", "order": 0, "text": "The Wi-Fi is down again.", "normalizedText": "the wi fi is down again", "type": "speech" },
+          { "id": "manual-en-us-059-t0-sc1", "order": 1, "text": "I can't get anything to load.", "normalizedText": "i can't get anything to load", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-059-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Try unplugging the router and waiting a minute. That usually fixes it.",
+        "normalizedText": "try unplugging the router and waiting a minute that usually fixes it",
+        "meaningChunks": [
+          { "id": "manual-en-us-059-t1-mc0", "order": 0, "text": "Try unplugging the router and waiting a minute.", "normalizedText": "try unplugging the router and waiting a minute", "type": "meaning" },
+          { "id": "manual-en-us-059-t1-mc1", "order": 1, "text": "That usually fixes it.", "normalizedText": "that usually fixes it", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-059-t1-sc0", "order": 0, "text": "Try unplugging the router", "normalizedText": "try unplugging the router", "type": "speech" },
+          { "id": "manual-en-us-059-t1-sc1", "order": 1, "text": "and waiting a minute.", "normalizedText": "and waiting a minute", "type": "speech" },
+          { "id": "manual-en-us-059-t1-sc2", "order": 2, "text": "That usually fixes it.", "normalizedText": "that usually fixes it", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-060",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "child-parent",
+    "scene": "child asking why the sky is blue",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-060-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Dad, why is the sky blue?",
+        "normalizedText": "dad why is the sky blue",
+        "meaningChunks": [
+          { "id": "manual-en-us-060-t0-mc0", "order": 0, "text": "Dad, why is the sky blue?", "normalizedText": "dad why is the sky blue", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-060-t0-sc0", "order": 0, "text": "Dad,", "normalizedText": "dad", "type": "speech" },
+          { "id": "manual-en-us-060-t0-sc1", "order": 1, "text": "why is the sky blue?", "normalizedText": "why is the sky blue", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-060-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "That's a great question! It's because of the way sunlight hits the air.",
+        "normalizedText": "that's a great question it's because of the way sunlight hits the air",
+        "meaningChunks": [
+          { "id": "manual-en-us-060-t1-mc0", "order": 0, "text": "That's a great question!", "normalizedText": "that's a great question", "type": "meaning" },
+          { "id": "manual-en-us-060-t1-mc1", "order": 1, "text": "It's because of the way sunlight hits the air.", "normalizedText": "it's because of the way sunlight hits the air", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-060-t1-sc0", "order": 0, "text": "That's a great question!", "normalizedText": "that's a great question", "type": "speech" },
+          { "id": "manual-en-us-060-t1-sc1", "order": 1, "text": "It's because of the way", "normalizedText": "it's because of the way", "type": "speech" },
+          { "id": "manual-en-us-060-t1-sc2", "order": 2, "text": "sunlight hits the air.", "normalizedText": "sunlight hits the air", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-061",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "teenager daily",
+    "scene": "teenager asking to borrow the car",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-061-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hey Mom, can I borrow the car tonight? I'll be back by ten.",
+        "normalizedText": "hey mom can i borrow the car tonight i'll be back by ten",
+        "meaningChunks": [
+          { "id": "manual-en-us-061-t0-mc0", "order": 0, "text": "Hey Mom, can I borrow the car tonight?", "normalizedText": "hey mom can i borrow the car tonight", "type": "meaning" },
+          { "id": "manual-en-us-061-t0-mc1", "order": 1, "text": "I'll be back by ten.", "normalizedText": "i'll be back by ten", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-061-t0-sc0", "order": 0, "text": "Hey Mom,", "normalizedText": "hey mom", "type": "speech" },
+          { "id": "manual-en-us-061-t0-sc1", "order": 1, "text": "can I borrow the car tonight?", "normalizedText": "can i borrow the car tonight", "type": "speech" },
+          { "id": "manual-en-us-061-t0-sc2", "order": 2, "text": "I'll be back by ten.", "normalizedText": "i'll be back by ten", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-061-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Okay, but drive carefully. And text me when you get there.",
+        "normalizedText": "okay but drive carefully and text me when you get there",
+        "meaningChunks": [
+          { "id": "manual-en-us-061-t1-mc0", "order": 0, "text": "Okay, but drive carefully.", "normalizedText": "okay but drive carefully", "type": "meaning" },
+          { "id": "manual-en-us-061-t1-mc1", "order": 1, "text": "And text me when you get there.", "normalizedText": "and text me when you get there", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-061-t1-sc0", "order": 0, "text": "Okay, but drive carefully.", "normalizedText": "okay but drive carefully", "type": "speech" },
+          { "id": "manual-en-us-061-t1-sc1", "order": 1, "text": "And text me", "normalizedText": "and text me", "type": "speech" },
+          { "id": "manual-en-us-061-t1-sc2", "order": 2, "text": "when you get there.", "normalizedText": "when you get there", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-062",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "older adult",
+    "scene": "older adult reminiscing about a trip",
+    "level": "advanced",
+    "turns": [
+      {
+        "id": "manual-en-us-062-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Do you remember that trip we took to the coast years ago? The kids were so little back then.",
+        "normalizedText": "do you remember that trip we took to the coast years ago the kids were so little back then",
+        "meaningChunks": [
+          { "id": "manual-en-us-062-t0-mc0", "order": 0, "text": "Do you remember that trip we took to the coast years ago?", "normalizedText": "do you remember that trip we took to the coast years ago", "type": "meaning" },
+          { "id": "manual-en-us-062-t0-mc1", "order": 1, "text": "The kids were so little back then.", "normalizedText": "the kids were so little back then", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-062-t0-sc0", "order": 0, "text": "Do you remember that trip", "normalizedText": "do you remember that trip", "type": "speech" },
+          { "id": "manual-en-us-062-t0-sc1", "order": 1, "text": "we took to the coast", "normalizedText": "we took to the coast", "type": "speech" },
+          { "id": "manual-en-us-062-t0-sc2", "order": 2, "text": "years ago?", "normalizedText": "years ago", "type": "speech" },
+          { "id": "manual-en-us-062-t0-sc3", "order": 3, "text": "The kids were so little back then.", "normalizedText": "the kids were so little back then", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-062-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Of course. That was one of our best vacations. We should go back sometime.",
+        "normalizedText": "of course that was one of our best vacations we should go back sometime",
+        "meaningChunks": [
+          { "id": "manual-en-us-062-t1-mc0", "order": 0, "text": "Of course.", "normalizedText": "of course", "type": "meaning" },
+          { "id": "manual-en-us-062-t1-mc1", "order": 1, "text": "That was one of our best vacations.", "normalizedText": "that was one of our best vacations", "type": "meaning" },
+          { "id": "manual-en-us-062-t1-mc2", "order": 2, "text": "We should go back sometime.", "normalizedText": "we should go back sometime", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-062-t1-sc0", "order": 0, "text": "Of course.", "normalizedText": "of course", "type": "speech" },
+          { "id": "manual-en-us-062-t1-sc1", "order": 1, "text": "That was one of our best vacations.", "normalizedText": "that was one of our best vacations", "type": "speech" },
+          { "id": "manual-en-us-062-t1-sc2", "order": 2, "text": "We should go back sometime.", "normalizedText": "we should go back sometime", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-063",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "rescheduling",
+    "scene": "moving a lunch plan to another day",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-063-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hey, can we move lunch to Thursday instead? I've got a meeting on Wednesday.",
+        "normalizedText": "hey can we move lunch to thursday instead i've got a meeting on wednesday",
+        "meaningChunks": [
+          { "id": "manual-en-us-063-t0-mc0", "order": 0, "text": "Hey, can we move lunch to Thursday instead?", "normalizedText": "hey can we move lunch to thursday instead", "type": "meaning" },
+          { "id": "manual-en-us-063-t0-mc1", "order": 1, "text": "I've got a meeting on Wednesday.", "normalizedText": "i've got a meeting on wednesday", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-063-t0-sc0", "order": 0, "text": "Hey,", "normalizedText": "hey", "type": "speech" },
+          { "id": "manual-en-us-063-t0-sc1", "order": 1, "text": "can we move lunch to Thursday instead?", "normalizedText": "can we move lunch to thursday instead", "type": "speech" },
+          { "id": "manual-en-us-063-t0-sc2", "order": 2, "text": "I've got a meeting on Wednesday.", "normalizedText": "i've got a meeting on wednesday", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-063-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Thursday works for me. Same time?",
+        "normalizedText": "thursday works for me same time",
+        "meaningChunks": [
+          { "id": "manual-en-us-063-t1-mc0", "order": 0, "text": "Thursday works for me.", "normalizedText": "thursday works for me", "type": "meaning" },
+          { "id": "manual-en-us-063-t1-mc1", "order": 1, "text": "Same time?", "normalizedText": "same time", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-063-t1-sc0", "order": 0, "text": "Thursday works for me.", "normalizedText": "thursday works for me", "type": "speech" },
+          { "id": "manual-en-us-063-t1-sc1", "order": 1, "text": "Same time?", "normalizedText": "same time", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-064",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "hobby",
+    "scene": "talking about gardening",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-064-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I planted some tomatoes last month and they're already growing fast.",
+        "normalizedText": "i planted some tomatoes last month and they're already growing fast",
+        "meaningChunks": [
+          { "id": "manual-en-us-064-t0-mc0", "order": 0, "text": "I planted some tomatoes last month", "normalizedText": "i planted some tomatoes last month", "type": "meaning" },
+          { "id": "manual-en-us-064-t0-mc1", "order": 1, "text": "and they're already growing fast.", "normalizedText": "and they're already growing fast", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-064-t0-sc0", "order": 0, "text": "I planted some tomatoes", "normalizedText": "i planted some tomatoes", "type": "speech" },
+          { "id": "manual-en-us-064-t0-sc1", "order": 1, "text": "last month", "normalizedText": "last month", "type": "speech" },
+          { "id": "manual-en-us-064-t0-sc2", "order": 2, "text": "and they're already growing fast.", "normalizedText": "and they're already growing fast", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-064-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Nice! I tried growing herbs last year, but I kept forgetting to water them.",
+        "normalizedText": "nice i tried growing herbs last year but i kept forgetting to water them",
+        "meaningChunks": [
+          { "id": "manual-en-us-064-t1-mc0", "order": 0, "text": "Nice!", "normalizedText": "nice", "type": "meaning" },
+          { "id": "manual-en-us-064-t1-mc1", "order": 1, "text": "I tried growing herbs last year,", "normalizedText": "i tried growing herbs last year", "type": "meaning" },
+          { "id": "manual-en-us-064-t1-mc2", "order": 2, "text": "but I kept forgetting to water them.", "normalizedText": "but i kept forgetting to water them", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-064-t1-sc0", "order": 0, "text": "Nice!", "normalizedText": "nice", "type": "speech" },
+          { "id": "manual-en-us-064-t1-sc1", "order": 1, "text": "I tried growing herbs last year,", "normalizedText": "i tried growing herbs last year", "type": "speech" },
+          { "id": "manual-en-us-064-t1-sc2", "order": 2, "text": "but I kept forgetting to water them.", "normalizedText": "but i kept forgetting to water them", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-065",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "emotional recovery",
+    "scene": "calming down after an argument",
+    "level": "advanced",
+    "turns": [
+      {
+        "id": "manual-en-us-065-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I'm sorry about what I said earlier. I didn't mean it.",
+        "normalizedText": "i'm sorry about what i said earlier i didn't mean it",
+        "meaningChunks": [
+          { "id": "manual-en-us-065-t0-mc0", "order": 0, "text": "I'm sorry about what I said earlier.", "normalizedText": "i'm sorry about what i said earlier", "type": "meaning" },
+          { "id": "manual-en-us-065-t0-mc1", "order": 1, "text": "I didn't mean it.", "normalizedText": "i didn't mean it", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-065-t0-sc0", "order": 0, "text": "I'm sorry", "normalizedText": "i'm sorry", "type": "speech" },
+          { "id": "manual-en-us-065-t0-sc1", "order": 1, "text": "about what I said earlier.", "normalizedText": "about what i said earlier", "type": "speech" },
+          { "id": "manual-en-us-065-t0-sc2", "order": 2, "text": "I didn't mean it.", "normalizedText": "i didn't mean it", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-065-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "I know. I was upset too. Let's just forget about it and move on.",
+        "normalizedText": "i know i was upset too let's just forget about it and move on",
+        "meaningChunks": [
+          { "id": "manual-en-us-065-t1-mc0", "order": 0, "text": "I know.", "normalizedText": "i know", "type": "meaning" },
+          { "id": "manual-en-us-065-t1-mc1", "order": 1, "text": "I was upset too.", "normalizedText": "i was upset too", "type": "meaning" },
+          { "id": "manual-en-us-065-t1-mc2", "order": 2, "text": "Let's just forget about it and move on.", "normalizedText": "let's just forget about it and move on", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-065-t1-sc0", "order": 0, "text": "I know.", "normalizedText": "i know", "type": "speech" },
+          { "id": "manual-en-us-065-t1-sc1", "order": 1, "text": "I was upset too.", "normalizedText": "i was upset too", "type": "speech" },
+          { "id": "manual-en-us-065-t1-sc2", "order": 2, "text": "Let's just forget about it", "normalizedText": "let's just forget about it", "type": "speech" },
+          { "id": "manual-en-us-065-t1-sc3", "order": 3, "text": "and move on.", "normalizedText": "and move on", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-066",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "neighbor",
+    "scene": "asking neighbor to keep noise down",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-066-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hey, sorry to bother you. Would you mind keeping it down a bit? My kids are trying to sleep.",
+        "normalizedText": "hey sorry to bother you would you mind keeping it down a bit my kids are trying to sleep",
+        "meaningChunks": [
+          { "id": "manual-en-us-066-t0-mc0", "order": 0, "text": "Hey, sorry to bother you.", "normalizedText": "hey sorry to bother you", "type": "meaning" },
+          { "id": "manual-en-us-066-t0-mc1", "order": 1, "text": "Would you mind keeping it down a bit?", "normalizedText": "would you mind keeping it down a bit", "type": "meaning" },
+          { "id": "manual-en-us-066-t0-mc2", "order": 2, "text": "My kids are trying to sleep.", "normalizedText": "my kids are trying to sleep", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-066-t0-sc0", "order": 0, "text": "Hey, sorry to bother you.", "normalizedText": "hey sorry to bother you", "type": "speech" },
+          { "id": "manual-en-us-066-t0-sc1", "order": 1, "text": "Would you mind keeping it down a bit?", "normalizedText": "would you mind keeping it down a bit", "type": "speech" },
+          { "id": "manual-en-us-066-t0-sc2", "order": 2, "text": "My kids are trying to sleep.", "normalizedText": "my kids are trying to sleep", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-066-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Oh, I'm sorry! I didn't realize it was that loud. I'll turn it down right now.",
+        "normalizedText": "oh i'm sorry i didn't realize it was that loud i'll turn it down right now",
+        "meaningChunks": [
+          { "id": "manual-en-us-066-t1-mc0", "order": 0, "text": "Oh, I'm sorry!", "normalizedText": "oh i'm sorry", "type": "meaning" },
+          { "id": "manual-en-us-066-t1-mc1", "order": 1, "text": "I didn't realize it was that loud.", "normalizedText": "i didn't realize it was that loud", "type": "meaning" },
+          { "id": "manual-en-us-066-t1-mc2", "order": 2, "text": "I'll turn it down right now.", "normalizedText": "i'll turn it down right now", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-066-t1-sc0", "order": 0, "text": "Oh, I'm sorry!", "normalizedText": "oh i'm sorry", "type": "speech" },
+          { "id": "manual-en-us-066-t1-sc1", "order": 1, "text": "I didn't realize it was that loud.", "normalizedText": "i didn't realize it was that loud", "type": "speech" },
+          { "id": "manual-en-us-066-t1-sc2", "order": 2, "text": "I'll turn it down right now.", "normalizedText": "i'll turn it down right now", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-067",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "support",
+    "scene": "supporting a friend after a breakup",
+    "level": "advanced",
+    "turns": [
+      {
+        "id": "manual-en-us-067-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "We broke up. I don't really wanna talk about the details, but I'm not doing great.",
+        "normalizedText": "we broke up i don't really wanna talk about the details but i'm not doing great",
+        "meaningChunks": [
+          { "id": "manual-en-us-067-t0-mc0", "order": 0, "text": "We broke up.", "normalizedText": "we broke up", "type": "meaning" },
+          { "id": "manual-en-us-067-t0-mc1", "order": 1, "text": "I don't really wanna talk about the details,", "normalizedText": "i don't really wanna talk about the details", "type": "meaning" },
+          { "id": "manual-en-us-067-t0-mc2", "order": 2, "text": "but I'm not doing great.", "normalizedText": "but i'm not doing great", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-067-t0-sc0", "order": 0, "text": "We broke up.", "normalizedText": "we broke up", "type": "speech" },
+          { "id": "manual-en-us-067-t0-sc1", "order": 1, "text": "I don't really wanna talk about the details,", "normalizedText": "i don't really wanna talk about the details", "type": "speech" },
+          { "id": "manual-en-us-067-t0-sc2", "order": 2, "text": "but I'm not doing great.", "normalizedText": "but i'm not doing great", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-067-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "I'm sorry. You don't have to explain anything. I'm here if you need me.",
+        "normalizedText": "i'm sorry you don't have to explain anything i'm here if you need me",
+        "meaningChunks": [
+          { "id": "manual-en-us-067-t1-mc0", "order": 0, "text": "I'm sorry.", "normalizedText": "i'm sorry", "type": "meaning" },
+          { "id": "manual-en-us-067-t1-mc1", "order": 1, "text": "You don't have to explain anything.", "normalizedText": "you don't have to explain anything", "type": "meaning" },
+          { "id": "manual-en-us-067-t1-mc2", "order": 2, "text": "I'm here if you need me.", "normalizedText": "i'm here if you need me", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-067-t1-sc0", "order": 0, "text": "I'm sorry.", "normalizedText": "i'm sorry", "type": "speech" },
+          { "id": "manual-en-us-067-t1-sc1", "order": 1, "text": "You don't have to explain anything.", "normalizedText": "you don't have to explain anything", "type": "speech" },
+          { "id": "manual-en-us-067-t1-sc2", "order": 2, "text": "I'm here if you need me.", "normalizedText": "i'm here if you need me", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-068",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "home routine",
+    "scene": "deciding what to watch on TV",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-068-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "What do you wanna watch tonight?",
+        "normalizedText": "what do you wanna watch tonight",
+        "meaningChunks": [
+          { "id": "manual-en-us-068-t0-mc0", "order": 0, "text": "What do you wanna watch", "normalizedText": "what do you wanna watch", "type": "meaning" },
+          { "id": "manual-en-us-068-t0-mc1", "order": 1, "text": "tonight?", "normalizedText": "tonight", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-068-t0-sc0", "order": 0, "text": "What do you wanna watch tonight?", "normalizedText": "what do you wanna watch tonight", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-068-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "I don't know. You pick. I'm fine with anything.",
+        "normalizedText": "i don't know you pick i'm fine with anything",
+        "meaningChunks": [
+          { "id": "manual-en-us-068-t1-mc0", "order": 0, "text": "I don't know.", "normalizedText": "i don't know", "type": "meaning" },
+          { "id": "manual-en-us-068-t1-mc1", "order": 1, "text": "You pick.", "normalizedText": "you pick", "type": "meaning" },
+          { "id": "manual-en-us-068-t1-mc2", "order": 2, "text": "I'm fine with anything.", "normalizedText": "i'm fine with anything", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-068-t1-sc0", "order": 0, "text": "I don't know.", "normalizedText": "i don't know", "type": "speech" },
+          { "id": "manual-en-us-068-t1-sc1", "order": 1, "text": "You pick.", "normalizedText": "you pick", "type": "speech" },
+          { "id": "manual-en-us-068-t1-sc2", "order": 2, "text": "I'm fine with anything.", "normalizedText": "i'm fine with anything", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-069",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "working adult",
+    "scene": "discussing a pay raise",
+    "level": "advanced",
+    "turns": [
+      {
+        "id": "manual-en-us-069-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I've been thinking about asking for a raise. I've taken on a lot more responsibility this year.",
+        "normalizedText": "i've been thinking about asking for a raise i've taken on a lot more responsibility this year",
+        "meaningChunks": [
+          { "id": "manual-en-us-069-t0-mc0", "order": 0, "text": "I've been thinking about asking for a raise.", "normalizedText": "i've been thinking about asking for a raise", "type": "meaning" },
+          { "id": "manual-en-us-069-t0-mc1", "order": 1, "text": "I've taken on a lot more responsibility this year.", "normalizedText": "i've taken on a lot more responsibility this year", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-069-t0-sc0", "order": 0, "text": "I've been thinking about", "normalizedText": "i've been thinking about", "type": "speech" },
+          { "id": "manual-en-us-069-t0-sc1", "order": 1, "text": "asking for a raise.", "normalizedText": "asking for a raise", "type": "speech" },
+          { "id": "manual-en-us-069-t0-sc2", "order": 2, "text": "I've taken on a lot more responsibility", "normalizedText": "i've taken on a lot more responsibility", "type": "speech" },
+          { "id": "manual-en-us-069-t0-sc3", "order": 3, "text": "this year.", "normalizedText": "this year", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-069-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "You should. You definitely deserve it. Just make sure you have some examples ready.",
+        "normalizedText": "you should you definitely deserve it just make sure you have some examples ready",
+        "meaningChunks": [
+          { "id": "manual-en-us-069-t1-mc0", "order": 0, "text": "You should.", "normalizedText": "you should", "type": "meaning" },
+          { "id": "manual-en-us-069-t1-mc1", "order": 1, "text": "You definitely deserve it.", "normalizedText": "you definitely deserve it", "type": "meaning" },
+          { "id": "manual-en-us-069-t1-mc2", "order": 2, "text": "Just make sure you have some examples ready.", "normalizedText": "just make sure you have some examples ready", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-069-t1-sc0", "order": 0, "text": "You should.", "normalizedText": "you should", "type": "speech" },
+          { "id": "manual-en-us-069-t1-sc1", "order": 1, "text": "You definitely deserve it.", "normalizedText": "you definitely deserve it", "type": "speech" },
+          { "id": "manual-en-us-069-t1-sc2", "order": 2, "text": "Just make sure you have some examples ready.", "normalizedText": "just make sure you have some examples ready", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-070",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "errand",
+    "scene": "returning an item at a store",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-070-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hi, I'd like to return this. It didn't fit right.",
+        "normalizedText": "hi i'd like to return this it didn't fit right",
+        "meaningChunks": [
+          { "id": "manual-en-us-070-t0-mc0", "order": 0, "text": "Hi, I'd like to return this.", "normalizedText": "hi i'd like to return this", "type": "meaning" },
+          { "id": "manual-en-us-070-t0-mc1", "order": 1, "text": "It didn't fit right.", "normalizedText": "it didn't fit right", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-070-t0-sc0", "order": 0, "text": "Hi,", "normalizedText": "hi", "type": "speech" },
+          { "id": "manual-en-us-070-t0-sc1", "order": 1, "text": "I'd like to return this.", "normalizedText": "i'd like to return this", "type": "speech" },
+          { "id": "manual-en-us-070-t0-sc2", "order": 2, "text": "It didn't fit right.", "normalizedText": "it didn't fit right", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-070-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "No problem. Do you have the receipt? I can process a refund or an exchange.",
+        "normalizedText": "no problem do you have the receipt i can process a refund or an exchange",
+        "meaningChunks": [
+          { "id": "manual-en-us-070-t1-mc0", "order": 0, "text": "No problem.", "normalizedText": "no problem", "type": "meaning" },
+          { "id": "manual-en-us-070-t1-mc1", "order": 1, "text": "Do you have the receipt?", "normalizedText": "do you have the receipt", "type": "meaning" },
+          { "id": "manual-en-us-070-t1-mc2", "order": 2, "text": "I can process a refund or an exchange.", "normalizedText": "i can process a refund or an exchange", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-070-t1-sc0", "order": 0, "text": "No problem.", "normalizedText": "no problem", "type": "speech" },
+          { "id": "manual-en-us-070-t1-sc1", "order": 1, "text": "Do you have the receipt?", "normalizedText": "do you have the receipt", "type": "speech" },
+          { "id": "manual-en-us-070-t1-sc2", "order": 2, "text": "I can process a refund or an exchange.", "normalizedText": "i can process a refund or an exchange", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-071",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "follow-up",
+    "scene": "asking how a weekend trip went",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-071-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "So how was the camping trip? Did you guys have fun?",
+        "normalizedText": "so how was the camping trip did you guys have fun",
+        "meaningChunks": [
+          { "id": "manual-en-us-071-t0-mc0", "order": 0, "text": "So how was the camping trip?", "normalizedText": "so how was the camping trip", "type": "meaning" },
+          { "id": "manual-en-us-071-t0-mc1", "order": 1, "text": "Did you guys have fun?", "normalizedText": "did you guys have fun", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-071-t0-sc0", "order": 0, "text": "So how was the camping trip?", "normalizedText": "so how was the camping trip", "type": "speech" },
+          { "id": "manual-en-us-071-t0-sc1", "order": 1, "text": "Did you guys have fun?", "normalizedText": "did you guys have fun", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-071-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "It was awesome! The weather was perfect. We should all go next time.",
+        "normalizedText": "it was awesome the weather was perfect we should all go next time",
+        "meaningChunks": [
+          { "id": "manual-en-us-071-t1-mc0", "order": 0, "text": "It was awesome!", "normalizedText": "it was awesome", "type": "meaning" },
+          { "id": "manual-en-us-071-t1-mc1", "order": 1, "text": "The weather was perfect.", "normalizedText": "the weather was perfect", "type": "meaning" },
+          { "id": "manual-en-us-071-t1-mc2", "order": 2, "text": "We should all go next time.", "normalizedText": "we should all go next time", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-071-t1-sc0", "order": 0, "text": "It was awesome!", "normalizedText": "it was awesome", "type": "speech" },
+          { "id": "manual-en-us-071-t1-sc1", "order": 1, "text": "The weather was perfect.", "normalizedText": "the weather was perfect", "type": "speech" },
+          { "id": "manual-en-us-071-t1-sc2", "order": 2, "text": "We should all go next time.", "normalizedText": "we should all go next time", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-072",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "parent daily",
+    "scene": "parent reminding teen about chores",
+    "level": "beginner",
+    "turns": [
+      {
+        "id": "manual-en-us-072-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Don't forget to take out the trash before dinner.",
+        "normalizedText": "don't forget to take out the trash before dinner",
+        "meaningChunks": [
+          { "id": "manual-en-us-072-t0-mc0", "order": 0, "text": "Don't forget to take out the trash", "normalizedText": "don't forget to take out the trash", "type": "meaning" },
+          { "id": "manual-en-us-072-t0-mc1", "order": 1, "text": "before dinner.", "normalizedText": "before dinner", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-072-t0-sc0", "order": 0, "text": "Don't forget to take out the trash", "normalizedText": "don't forget to take out the trash", "type": "speech" },
+          { "id": "manual-en-us-072-t0-sc1", "order": 1, "text": "before dinner.", "normalizedText": "before dinner", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-072-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Yeah yeah, I'll do it in a minute.",
+        "normalizedText": "yeah yeah i'll do it in a minute",
+        "meaningChunks": [
+          { "id": "manual-en-us-072-t1-mc0", "order": 0, "text": "Yeah yeah, I'll do it", "normalizedText": "yeah yeah i'll do it", "type": "meaning" },
+          { "id": "manual-en-us-072-t1-mc1", "order": 1, "text": "in a minute.", "normalizedText": "in a minute", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-072-t1-sc0", "order": 0, "text": "Yeah yeah,", "normalizedText": "yeah yeah", "type": "speech" },
+          { "id": "manual-en-us-072-t1-sc1", "order": 1, "text": "I'll do it in a minute.", "normalizedText": "i'll do it in a minute", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-073",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "transportation",
+    "scene": "ride-share conversation",
+    "level": "intermediate",
+    "turns": [
+      {
+        "id": "manual-en-us-073-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hi, are you heading to the airport?",
+        "normalizedText": "hi are you heading to the airport",
+        "meaningChunks": [
+          { "id": "manual-en-us-073-t0-mc0", "order": 0, "text": "Hi, are you heading to the airport?", "normalizedText": "hi are you heading to the airport", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-073-t0-sc0", "order": 0, "text": "Hi,", "normalizedText": "hi", "type": "speech" },
+          { "id": "manual-en-us-073-t0-sc1", "order": 1, "text": "are you heading to the airport?", "normalizedText": "are you heading to the airport", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-073-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Yep, that's me. Is it okay if I put my bag in the trunk?",
+        "normalizedText": "yep that's me is it okay if i put my bag in the trunk",
+        "meaningChunks": [
+          { "id": "manual-en-us-073-t1-mc0", "order": 0, "text": "Yep, that's me.", "normalizedText": "yep that's me", "type": "meaning" },
+          { "id": "manual-en-us-073-t1-mc1", "order": 1, "text": "Is it okay if I put my bag in the trunk?", "normalizedText": "is it okay if i put my bag in the trunk", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-073-t1-sc0", "order": 0, "text": "Yep, that's me.", "normalizedText": "yep that's me", "type": "speech" },
+          { "id": "manual-en-us-073-t1-sc1", "order": 1, "text": "Is it okay if I put my bag", "normalizedText": "is it okay if i put my bag", "type": "speech" },
+          { "id": "manual-en-us-073-t1-sc2", "order": 2, "text": "in the trunk?", "normalizedText": "in the trunk", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-074",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "encouragement",
+    "scene": "encouraging a child before a game",
+    "level": "advanced",
+    "turns": [
+      {
+        "id": "manual-en-us-074-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "I'm scared I'm gonna mess up in the game today.",
+        "normalizedText": "i'm scared i'm gonna mess up in the game today",
+        "meaningChunks": [
+          { "id": "manual-en-us-074-t0-mc0", "order": 0, "text": "I'm scared I'm gonna mess up", "normalizedText": "i'm scared i'm gonna mess up", "type": "meaning" },
+          { "id": "manual-en-us-074-t0-mc1", "order": 1, "text": "in the game today.", "normalizedText": "in the game today", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-074-t0-sc0", "order": 0, "text": "I'm scared", "normalizedText": "i'm scared", "type": "speech" },
+          { "id": "manual-en-us-074-t0-sc1", "order": 1, "text": "I'm gonna mess up", "normalizedText": "i'm gonna mess up", "type": "speech" },
+          { "id": "manual-en-us-074-t0-sc2", "order": 2, "text": "in the game today.", "normalizedText": "in the game today", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-074-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Hey, listen. Everyone makes mistakes. Just go out there, have fun, and do your best. That's all that matters.",
+        "normalizedText": "hey listen everyone makes mistakes just go out there have fun and do your best that's all that matters",
+        "meaningChunks": [
+          { "id": "manual-en-us-074-t1-mc0", "order": 0, "text": "Hey, listen.", "normalizedText": "hey listen", "type": "meaning" },
+          { "id": "manual-en-us-074-t1-mc1", "order": 1, "text": "Everyone makes mistakes.", "normalizedText": "everyone makes mistakes", "type": "meaning" },
+          { "id": "manual-en-us-074-t1-mc2", "order": 2, "text": "Just go out there, have fun, and do your best.", "normalizedText": "just go out there have fun and do your best", "type": "meaning" },
+          { "id": "manual-en-us-074-t1-mc3", "order": 3, "text": "That's all that matters.", "normalizedText": "that's all that matters", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-074-t1-sc0", "order": 0, "text": "Hey, listen.", "normalizedText": "hey listen", "type": "speech" },
+          { "id": "manual-en-us-074-t1-sc1", "order": 1, "text": "Everyone makes mistakes.", "normalizedText": "everyone makes mistakes", "type": "speech" },
+          { "id": "manual-en-us-074-t1-sc2", "order": 2, "text": "Just go out there, have fun,", "normalizedText": "just go out there have fun", "type": "speech" },
+          { "id": "manual-en-us-074-t1-sc3", "order": 3, "text": "and do your best.", "normalizedText": "and do your best", "type": "speech" },
+          { "id": "manual-en-us-074-t1-sc4", "order": 4, "text": "That's all that matters.", "normalizedText": "that's all that matters", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  },
+  {
+    "id": "manual-en-us-075",
+    "source": "manual",
+    "sourceLicense": "owned",
+    "isCommerciallySafe": true,
+    "topic": "casual follow-up",
+    "scene": "checking if someone got home safe",
+    "level": "advanced",
+    "turns": [
+      {
+        "id": "manual-en-us-075-t0",
+        "order": 0,
+        "speaker": "A",
+        "text": "Hey, just wanted to make sure you got home okay. The roads were pretty bad tonight.",
+        "normalizedText": "hey just wanted to make sure you got home okay the roads were pretty bad tonight",
+        "meaningChunks": [
+          { "id": "manual-en-us-075-t0-mc0", "order": 0, "text": "Hey, just wanted to make sure you got home okay.", "normalizedText": "hey just wanted to make sure you got home okay", "type": "meaning" },
+          { "id": "manual-en-us-075-t0-mc1", "order": 1, "text": "The roads were pretty bad tonight.", "normalizedText": "the roads were pretty bad tonight", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-075-t0-sc0", "order": 0, "text": "Hey,", "normalizedText": "hey", "type": "speech" },
+          { "id": "manual-en-us-075-t0-sc1", "order": 1, "text": "just wanted to make sure", "normalizedText": "just wanted to make sure", "type": "speech" },
+          { "id": "manual-en-us-075-t0-sc2", "order": 2, "text": "you got home okay.", "normalizedText": "you got home okay", "type": "speech" },
+          { "id": "manual-en-us-075-t0-sc3", "order": 3, "text": "The roads were pretty bad tonight.", "normalizedText": "the roads were pretty bad tonight", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      },
+      {
+        "id": "manual-en-us-075-t1",
+        "order": 1,
+        "speaker": "B",
+        "text": "Yeah, I just walked in. Thanks for checking. Drive safe yourself!",
+        "normalizedText": "yeah i just walked in thanks for checking drive safe yourself",
+        "meaningChunks": [
+          { "id": "manual-en-us-075-t1-mc0", "order": 0, "text": "Yeah, I just walked in.", "normalizedText": "yeah i just walked in", "type": "meaning" },
+          { "id": "manual-en-us-075-t1-mc1", "order": 1, "text": "Thanks for checking.", "normalizedText": "thanks for checking", "type": "meaning" },
+          { "id": "manual-en-us-075-t1-mc2", "order": 2, "text": "Drive safe yourself!", "normalizedText": "drive safe yourself", "type": "meaning" }
+        ],
+        "speechChunks": [
+          { "id": "manual-en-us-075-t1-sc0", "order": 0, "text": "Yeah, I just walked in.", "normalizedText": "yeah i just walked in", "type": "speech" },
+          { "id": "manual-en-us-075-t1-sc1", "order": 1, "text": "Thanks for checking.", "normalizedText": "thanks for checking", "type": "speech" },
+          { "id": "manual-en-us-075-t1-sc2", "order": 2, "text": "Drive safe yourself!", "normalizedText": "drive safe yourself", "type": "speech" }
+        ],
+        "audioAssetKey": null
+      }
+    ]
+  }
+]

@@ -1,0 +1,187 @@
+{
+  "shared": {
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "or": "または",
+    "next": "Next",
+    "back": "戻る",
+    "save": "保存する",
+    "cancel": "キャンセル"
+  },
+  "auth": {
+    "login": {
+      "title": "ログイン",
+      "subtitle": "お好みの方法でログインしてください。",
+      "googleButton": "Googleでログイン",
+      "googleLoading": "リダイレクト中...",
+      "magicLinkLabel": "メールアドレス",
+      "magicLinkButton": "ログインリンクを送信",
+      "magicLinkSending": "送信中...",
+      "magicLinkSentTitle": "ログインリンクを送信しました",
+      "magicLinkSentBody": "メールに届いたリンクをクリックしてログインしてください。",
+      "magicLinkRetry": "別のメールアドレスで試す",
+      "passwordToggleOpen": "パスワードでログイン",
+      "passwordToggleClose": "パスワードログインを閉じる",
+      "passwordLabel": "パスワード",
+      "passwordPlaceholder": "8文字以上",
+      "passwordButton": "パスワードでログイン",
+      "passwordSubmitting": "ログイン中...",
+      "forgotPassword": "パスワードを忘れた方はこちら",
+      "signupPrompt": "初めての方は",
+      "signupLink": "新規登録",
+      "emailLabel": "メールアドレス",
+      "emailPlaceholder": "example@email.com",
+      "emailRequired": "メールアドレスを入力してください",
+      "emailInvalid": "正しいメールアドレスを入力してください",
+      "passwordRequired": "パスワードを入力してください",
+      "errorInvalidCredentials": "メールアドレスまたはパスワードが正しくありません",
+      "errorEmailNotConfirmed": "メール認証が完了していません。\n確認メールをご確認ください。",
+      "errorGeneric": "ログインに失敗しました。時間をおいて再度お試しください",
+      "errorGoogleFailed": "Googleログインに失敗しました。時間をおいて再度お試しください。",
+      "errorMagicLinkFailed": "マジックリンクの送信に失敗しました。時間をおいて再度お試しください。",
+      "errorRateLimit": "送信回数の上限に達しました。しばらく時間をおいて再度お試しください。",
+      "bannerConfirmError": "メールアドレスの確認に失敗しました。もう一度お試しください。",
+      "bannerConfirmed": "メールアドレスの確認が完了しました。ログインしてください。",
+      "bannerRegistered": "アカウント登録が完了しました。ログインしてください。",
+      "bannerReset": "パスワードを再設定しました。ログインしてください。"
+    },
+    "signup": {
+      "title": "新規登録",
+      "subtitle": "お好みの方法でアカウントを作成してください。",
+      "googleButton": "Googleで登録",
+      "googleLoading": "リダイレクト中...",
+      "magicLinkButton": "登録リンクを送信",
+      "magicLinkSending": "送信中...",
+      "magicLinkSentTitle": "登録リンクを送信しました",
+      "magicLinkSentBody": "メールに届いたリンクをクリックして登録を完了してください。",
+      "magicLinkRetry": "別のメールアドレスで試す",
+      "emailLabel": "メールアドレス",
+      "emailPlaceholder": "example@email.com",
+      "emailRequired": "メールアドレスを入力してください",
+      "emailInvalid": "正しいメールアドレスを入力してください",
+      "loginPrompt": "すでにアカウントをお持ちの方は",
+      "loginLink": "ログイン",
+      "errorGoogleFailed": "Googleアカウントでの登録に失敗しました。時間をおいて再度お試しください。",
+      "errorGeneric": "登録に失敗しました。時間をおいて再度お試しください",
+      "errorAlreadyRegistered": "このメールアドレスは既に登録されています。ログインページからお試しください。",
+      "errorSignupDisabled": "現在この方法では登録できません。管理者設定をご確認ください",
+      "errorInvalidEmail": "正しいメールアドレスを入力してください",
+      "errorRateLimit": "メール送信回数の上限に達しました。\n少し時間をおいて再度お試しください",
+      "planBadge": "選択中のプラン",
+      "planMonthly": "月額プラン",
+      "planYearly": "年額プラン",
+      "planYearlySaving": "約33%お得！",
+      "planTrialNote": "まずは7日間無料でお試しください。無料期間終了後にご選択のプランで課金が開始されます。",
+      "planChangeLink": "プランを変更",
+      "noPlanTitle": "無料トライアルを開始",
+      "noPlanSubtitle": "7日間は無料です",
+      "noPlanNote": "プランは登録後に選べます。",
+      "noPlanLink": "料金プランを見る",
+      "divider": "または"
+    }
+  },
+  "onboarding": {
+    "loading": "読み込み中...",
+    "badge": "最初の一歩",
+    "title": "NativeFlow へようこそ",
+    "intro": "少しだけ教えてください。あなたに合った学習プランを作成します。",
+    "requiredMark": "必須",
+    "labels": {
+      "uiLanguage": "アプリの表示言語",
+      "targetLanguage": "学習したい言語",
+      "targetCountry": "学習したい対象国",
+      "regionOptional": "学習したい対象地域（任意）",
+      "currentLevel": "現在のレベル",
+      "speakByDeadline": "いつまでに話せるようになりたい？",
+      "targetOutcome": "目指したいこと"
+    },
+    "hints": {
+      "uiLanguage": "後から設定で変更できます",
+      "targetCountry": "その地域特有の内容が盛り込まれます",
+      "region": "その地域特有の内容が盛り込まれます。",
+      "currentLevel": "今の英語力に近いものを選んでください。",
+      "speakByDeadline": "目標時期から逆算して、毎日の学習量を提案します。",
+      "targetOutcome": "一言でOK。例：日常会話、仕事でメールなど。"
+    },
+    "placeholders": {
+      "select": "選んでください",
+      "region": "例: california, Osaka",
+      "speakByDeadline": "例: 3ヶ月、1年、6 months",
+      "targetOutcome": "例: 日常会話で困らない、仕事でメールを書けるようになりたい"
+    },
+    "errors": {
+      "validationRequired": "必須項目を入力してください。",
+      "loginRequired": "ログインしてください。プロフィールを保存するにはサインインが必要です。",
+      "saveFailed": "保存に失敗しました。",
+      "saveError": "保存中にエラーが発生しました。",
+      "usernameTaken": "このユーザー名は既に使われています"
+    },
+    "buttons": {
+      "saving": "保存中...",
+      "save": "保存する",
+      "createPlan": "マイ学習プランを作成する",
+      "startTrial": "7日間無料を開始する"
+    }
+  },
+  "lesson": {
+    "instructions": {
+      "listenFirst": "Let's listen first",
+      "playing": "Playing...",
+      "gotItRepeat": "Got it! Now try repeating",
+      "listening": "Listening..."
+    },
+    "buttons": {
+      "next": "Next",
+      "replay": "Replay",
+      "speak": "Speak",
+      "tryAgain": "Try again",
+      "send": "Send",
+      "done": "Done",
+      "slow": "Slow",
+      "normal": "Normal",
+      "continueNext": "Continue to next practice",
+      "viewPlans": "View plans"
+    },
+    "status": {
+      "recording": "Recording...",
+      "evaluating": "Evaluating...",
+      "sending": "Sending...",
+      "you": "You"
+    },
+    "placeholders": {
+      "replyInEnglish": "Reply in English",
+      "typeInEnglish": "Type in English"
+    },
+    "errors": {
+      "generic": "Error",
+      "subscriptionRequired": "A subscription is required to continue lessons",
+      "noReviewItems": "No review items available",
+      "failedStartReview": "Failed to start review",
+      "failedStartChallenge": "Failed to start the challenge",
+      "failedStartLesson": "Failed to start the lesson. Please check the data structure.",
+      "missingLessonData": "Cannot start: lesson data is missing.",
+      "missingUserId": "Cannot start: user ID is missing.",
+      "lessonStarting": "Lesson is starting...",
+      "startInProgress": "Cannot start: a previous start is still in progress."
+    },
+    "phases": {
+      "reviewSession": "Review Session",
+      "weeklyChallenge": "Weekly Review Challenge",
+      "listenRepeatComplete": "Listen & Repeat practice is complete",
+      "listenRepeatBody": "You practiced listening and repeating what you heard.",
+      "nextPractice": "Next, let's practice answering AI questions in English."
+    },
+    "onboarding": {
+      "headline": "Just listen and repeat",
+      "noTranslation": "No translation required",
+      "imitateSounds": "Imitate the sounds directly",
+      "okNotUnderstand": "It's OK not to understand at first",
+      "threeTriesLearn": "You'll get it after 3 tries",
+      "tryItOut": "Try it out",
+      "letsStart": "Let's start the lesson",
+      "youCanDoThis": "You can do this",
+      "nice": "Nice!",
+      "letsTry": "Let's try it"
+    }
+  }
+}

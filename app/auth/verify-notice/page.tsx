@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
+import AppHeader from '@/components/header/app-header'
 
 const CONTAINER_CLASS = 'mx-auto max-w-xl px-6 py-10 sm:py-12'
 const CARD_CLASS = 'rounded-2xl border border-[#ede9e2] bg-white px-6 py-8 shadow-sm sm:px-8 sm:py-9'
@@ -10,24 +11,7 @@ export default function VerifyNoticePage() {
       className="min-h-screen flex flex-col bg-[#f7f4ef]"
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-        <div className="mx-auto flex h-16 max-w-[960px] items-center justify-between px-6 sm:px-10">
-          <Link
-            href="/"
-            className="flex items-center"
-            aria-label="NativeFlow トップへ"
-          >
-            <Image
-              src="/images/branding/header_logo.svg"
-              alt="NativeFlow"
-              width={200}
-              height={48}
-              className="h-9 w-auto object-contain sm:h-10"
-              priority
-            />
-          </Link>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>

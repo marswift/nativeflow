@@ -19,7 +19,7 @@ function isValidRequest(body: unknown): body is AiConversationRequest {
   return (
     typeof b.turnIndex === 'number' &&
     b.turnIndex >= 0 &&
-    b.turnIndex <= 3 &&
+    b.turnIndex <= 4 &&
     typeof b.userMessage === 'string' &&
     typeof b.lessonPhrase === 'string' &&
     Array.isArray(b.conversationHistory)
@@ -39,7 +39,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     const { text } = await generateChatCompletion({
       messages,
       temperature: 0.7,
-      maxTokens: 200,
+      maxTokens: 300,
     })
 
     if (!text) {

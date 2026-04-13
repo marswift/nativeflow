@@ -2,9 +2,7 @@
  * Updates user_profiles streak fields when a study day is recorded.
  * Uses progression-utils for pure logic; this module handles DB read/write.
  *
- * Note:
- * rank_code and avatar_level are no longer updated here because NativeFlow's
- * main rank progression is Flow Point-based.
+ * Supports streak freeze: if freeze is consumed, clears freeze fields.
  */
 import type { PostgrestError } from '@supabase/supabase-js'
 import { computeUpdatedStreakProfile } from './progression-utils'
@@ -15,13 +13,12 @@ export type ProgressionUpdateResult = {
 }
 
 const PROGRESSION_COLUMNS =
-  'current_streak_days, best_streak_days, last_streak_date'
+  'current_streak_days, best_streak_days, last_streak_date, streak_frozen_date, streak_freeze_expiry'
 
 /**
  * Updates streak fields on user_profiles for the given study day.
  * Idempotent: if last_streak_date is already statDate, no double increment.
- * Does not modify rank_code, avatar_level, avatar_character_code,
- * avatar_image_url, or avatar_badge_image_url.
+ * If a streak freeze is consumed, clears streak_frozen_date and streak_freeze_expiry.
  */
 export async function updateProgressionForStudyDay(
   supabase: SupabaseClient,
@@ -42,21 +39,35 @@ export async function updateProgressionForStudyDay(
   const lastStreakDate = (current.last_streak_date as string | null) ?? null
   const currentStreakDays = Number(current.current_streak_days) || 0
   const bestStreakDays = Number(current.best_streak_days) || 0
+  const streakFrozenDate = (current.streak_frozen_date as string | null) ?? null
+  const streakFreezeExpiry = (current.streak_freeze_expiry as string | null) ?? null
 
   const update = computeUpdatedStreakProfile({
     todayYmd: statDate,
     lastStreakDate,
     currentStreakDays,
     bestStreakDays,
+    streakFrozenDate,
+    streakFreezeExpiry,
   })
+
+  const dbUpdate: Record<string, unknown> = {
+    current_streak_days: update.current_streak_days,
+    best_streak_days: update.best_streak_days,
+    last_streak_date: update.last_streak_date,
+  }
+
+  // Clear freeze if consumed
+  if (update.freezeConsumed) {
+    dbUpdate.streak_frozen_date = null
+    dbUpdate.streak_freeze_expiry = null
+    // eslint-disable-next-line no-console
+    console.log('[streak-freeze-consumed]', { userId: userId.slice(0, 8), frozenDate: streakFrozenDate })
+  }
 
   const { error: updateError } = await supabase
     .from('user_profiles')
-    .update({
-      current_streak_days: update.current_streak_days,
-      best_streak_days: update.best_streak_days,
-      last_streak_date: update.last_streak_date,
-    })
+    .update(dbUpdate)
     .eq('id', userId)
 
   return { error: updateError ?? null }

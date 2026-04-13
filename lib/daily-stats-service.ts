@@ -92,7 +92,10 @@ if (fetchError) {
 }
 
 const base: Partial<DailyStatRow> = existing ?? {
+  lesson_runs_started: 0,
   lesson_runs_completed: 0,
+  lesson_items_completed: 0,
+  typing_items_correct: 0,
   study_minutes: 0,
   flow_points_today: 0,
 }
@@ -100,12 +103,15 @@ const base: Partial<DailyStatRow> = existing ?? {
 const payload = {
   user_id: userId,
   stat_date: date,
+  lesson_runs_started: Math.max(0, base.lesson_runs_started ?? 0),
   lesson_runs_completed:
     Math.max(0, base.lesson_runs_completed ?? 0) +
     safeIncrements.lesson_runs_completed,
+  lesson_items_completed: Math.max(0, base.lesson_items_completed ?? 0),
+  typing_items_correct: Math.max(0, base.typing_items_correct ?? 0),
   study_minutes:
     Math.max(0, base.study_minutes ?? 0) + safeIncrements.study_minutes,
-    flow_points_today:
+  flow_points_today:
     Math.max(0, base.flow_points_today ?? 0) + safeIncrements.flow_points_today,
 }
 

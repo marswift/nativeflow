@@ -113,26 +113,31 @@ export type ProgressionProfileInput = {
   lastStreakDate: string | null
   currentStreakDays: number
   bestStreakDays: number
+  /** If set, this date is protected from breaking streak (freeze feature) */
+  streakFrozenDate?: string | null
+  /** ISO timestamp — freeze is only valid if not expired */
+  streakFreezeExpiry?: string | null
 }
 
 export type ProgressionProfileUpdate = {
   current_streak_days: number
   best_streak_days: number
   last_streak_date: string
+  /** True if freeze was consumed on this update */
+  freezeConsumed?: boolean
 }
 
 /**
  * Computes updated streak and derived rank/avatar for a study day.
  * Idempotent for same day: if lastStreakDate === todayYmd, returns values that imply no change.
  *
- * Note:
- * This function remains streak-based for legacy progression compatibility.
- * Flow Point-based rank helpers should be used for the main NativeFlow rank UI.
+ * Freeze support: if the missed day matches streakFrozenDate and freeze hasn't expired,
+ * the streak continues as if that day was studied. Freeze is consumed.
  */
 export function computeUpdatedStreakProfile(
   input: ProgressionProfileInput
 ): ProgressionProfileUpdate {
-  const { todayYmd, lastStreakDate, currentStreakDays, bestStreakDays } = input
+  const { todayYmd, lastStreakDate, currentStreakDays, bestStreakDays, streakFrozenDate, streakFreezeExpiry } = input
   const yesterday = prevDay(todayYmd)
 
   if (lastStreakDate === todayYmd) {
@@ -144,8 +149,22 @@ export function computeUpdatedStreakProfile(
   }
 
   let newCurrent: number
+  let freezeConsumed = false
+
   if (lastStreakDate === yesterday) {
+    // Normal continuation
     newCurrent = currentStreakDays + 1
+  } else if (
+    // Freeze check: last study was 2 days ago (yesterday missed),
+    // and yesterday matches the frozen date, and freeze hasn't expired
+    lastStreakDate === prevDay(yesterday) &&
+    streakFrozenDate === yesterday &&
+    streakFreezeExpiry &&
+    new Date(streakFreezeExpiry) > new Date()
+  ) {
+    // Freeze protects yesterday — continue streak as if studied
+    newCurrent = currentStreakDays + 2 // +1 for frozen day, +1 for today
+    freezeConsumed = true
   } else {
     newCurrent = 1
   }
@@ -156,5 +175,6 @@ export function computeUpdatedStreakProfile(
     current_streak_days: newCurrent,
     best_streak_days: newBest,
     last_streak_date: todayYmd,
+    freezeConsumed,
   }
 }

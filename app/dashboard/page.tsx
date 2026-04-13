@@ -190,6 +190,7 @@ export default function DashboardPage() {
   const [dailyStatsError, setDailyStatsError] = useState(false)
   const [pageError, setPageError] = useState('')
   const [streakDays, setStreakDays] = useState(0)
+  const [urgentAnnouncement, setUrgentAnnouncement] = useState<{ id: string; title: string; published_at: string } | null>(null)
   const [nowMs, setNowMs] = useState<number | null>(null)
 
   const copy = DASHBOARD_COPY_JA
@@ -219,7 +220,7 @@ export default function DashboardPage() {
 
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
-          .select('id, daily_study_minutes_goal, current_streak_days, best_streak_days, last_streak_date, avatar_character_code, avatar_level, avatar_image_url, planned_plan_code, subscription_status, current_period_end, total_flow_points, username, current_learning_language, target_language_code')
+          .select('id, daily_study_minutes_goal, current_streak_days, best_streak_days, last_streak_date, avatar_character_code, avatar_level, avatar_image_url, planned_plan_code, subscription_status, current_period_end, total_flow_points, total_diamonds, username, current_learning_language, target_language_code')
           .eq('id', userId)
           .maybeSingle()
 
@@ -258,6 +259,44 @@ export default function DashboardPage() {
           .from('daily_stats').select().eq('user_id', userId).eq('stat_date', getTodayStatDate()).maybeSingle()
         if (statError && isActive) setDailyStatsError(true)
         stat = (statResult as DailyStatRow) ?? null
+
+        // Supplementary: if daily_stats has 0 study_minutes (or no row), derive from lesson_runs
+        if (!stat || stat.study_minutes === 0) {
+          const todayStart = getTodayStatDate() + 'T00:00:00'
+          const { data: runs } = await supabase
+            .from('lesson_runs')
+            .select('started_at, completed_at, abandoned_at, status')
+            .eq('user_id', userId)
+            .gte('started_at', todayStart)
+
+          if (runs && runs.length > 0) {
+            let totalMinutes = 0
+            let completedCount = 0
+            const MAX_ABANDONED_MINUTES = 30
+            for (const run of runs) {
+              const s = run.started_at ? new Date(run.started_at as string).getTime() : 0
+              if (s <= 0) continue
+              const isCompleted = (run.status as string) === 'completed'
+              if (isCompleted && run.completed_at) {
+                const e = new Date(run.completed_at as string).getTime()
+                totalMinutes += Math.max(1, Math.floor((e - s) / 60000))
+                completedCount++
+              } else if (run.abandoned_at) {
+                const e = new Date(run.abandoned_at as string).getTime()
+                totalMinutes += Math.min(Math.max(1, Math.floor((e - s) / 60000)), MAX_ABANDONED_MINUTES)
+                // abandoned — do NOT count as completed
+              } else {
+                // Still in-progress: cap to avoid inflated values
+                const elapsed = Math.floor((Date.now() - s) / 60000)
+                totalMinutes += Math.min(Math.max(1, elapsed), MAX_ABANDONED_MINUTES)
+              }
+            }
+            if (totalMinutes > 0) {
+              const base = stat ?? { study_minutes: 0, lesson_runs_completed: 0 } as DailyStatRow
+              stat = { ...base, study_minutes: totalMinutes, lesson_runs_completed: Math.max(base.lesson_runs_completed ?? 0, completedCount) }
+            }
+          }
+        }
       } catch { if (isActive) setDailyStatsError(true) }
 
       try {
@@ -265,6 +304,23 @@ export default function DashboardPage() {
           .from('daily_stats').select('stat_date').eq('user_id', userId).order('stat_date', { ascending: false }).limit(400)
         recentStats = (historyResult as DailyStatRow[]) ?? []
       } catch { recentStats = [] }
+
+      // Fetch latest urgent announcement (non-blocking)
+      try {
+        const now = new Date().toISOString()
+        const { data: urgentRow } = await supabase
+          .from('announcements')
+          .select('id, title, published_at')
+          .eq('is_published', true)
+          .eq('type', 'urgent')
+          .or(`urgent_until.is.null,urgent_until.gt.${now}`)
+          .order('published_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (isActive) {
+          setUrgentAnnouncement((urgentRow as { id: string; title: string; published_at: string } | null) ?? null)
+        }
+      } catch { /* non-blocking */ }
 
       if (isActive) {
         setTodayStat(stat)
@@ -280,7 +336,10 @@ export default function DashboardPage() {
   if (loading) return <DashboardLoadingState loadingMessage="読み込み中です..." onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
   if (!profile || pageError) return <DashboardErrorState message="データの読み込みに失敗しました" onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
 
-  const studyMinutesActual = todayStat?.study_minutes ?? 0
+  // Defensive cap: single day cannot exceed 480 minutes (8 hours)
+  const MAX_DAILY_MINUTES = 480
+  const studyMinutesActual = Math.min(todayStat?.study_minutes ?? 0, MAX_DAILY_MINUTES)
+  const todayLessonRunsCompleted = todayStat?.lesson_runs_completed ?? 0
   const studyGoal = learningProfile?.daily_study_minutes_goal ?? profile?.daily_study_minutes_goal ?? 0
   const displayStreak = (profile.current_streak_days != null && profile.current_streak_days > 0) ? profile.current_streak_days : streakDays
   const displayedTotalFlowPoints = profile.total_flow_points ?? 0
@@ -296,21 +355,32 @@ export default function DashboardPage() {
             <span className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[rgba(245,166,35,0.10)]" />
             <span className="pointer-events-none absolute bottom-[-18px] right-[72px] h-24 w-24 rounded-full bg-[rgba(245,166,35,0.07)]" />
             <div className="relative z-10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(245,166,35,0.28)] bg-[rgba(245,166,35,0.14)] px-3 py-1 text-[13px] font-bold text-[#B7791F]">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#F5A623]" />
-                My Page
+              <div className="flex items-center justify-between gap-4">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(245,166,35,0.28)] bg-[rgba(245,166,35,0.14)] px-3 py-1 text-[13px] font-bold text-[#B7791F]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#F5A623]" />
+                  My Page
+                </div>
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E8E4DF] bg-white/80 px-3 py-1 text-sm text-[#5a5a7a]">
+                  <span aria-hidden="true">💎</span>
+                  <span className="font-bold text-[#1a1a2e]">{profile.total_diamonds ?? 0}</span>
+                </div>
               </div>
-              <h1 className="mt-4 text-[1.9rem] font-black leading-[1.15] text-[#1a1a2e] sm:text-[2.2rem]">
-                あなたの学習ステータスを確認して<br className="hidden sm:block" />今日のレッスンを始めましょう
-              </h1>
-              <p className="mt-4 max-w-2xl text-sm leading-6 text-[#5a5a7a]">
-                継続日数、Flowポイント、今日のレッスン状況を見ながら、<br className="hidden sm:block" />あなたに合ったペースで学習を進められます。
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-[#E8E4DF] bg-white px-3 py-1 text-xs text-[#5a5a7a]">継続日数: <strong className="text-[#1a1a2e]">{displayStreak}日</strong></span>
-                <span className="rounded-full border border-[#E8E4DF] bg-white px-3 py-1 text-xs text-[#5a5a7a]">Flowポイント: <strong className="text-[#1a1a2e]">{displayedTotalFlowPoints}</strong></span>
-                <span className="rounded-full border border-[#E8E4DF] bg-white px-3 py-1 text-xs text-[#5a5a7a]">今日のレッスン時間: <strong className="text-[#1a1a2e]">{studyMinutesActual}分</strong></span>
-              </div>
+              {/* ── Urgent announcement ── */}
+              {urgentAnnouncement && (
+                <div className="mt-4">
+                  <Link
+                    href={`/announcements/${urgentAnnouncement.id}`}
+                    className="flex items-center gap-2 rounded-[16px] border border-red-200 bg-red-50 pl-5 pr-4 py-3 shadow-[0_2px_8px_rgba(15,23,42,0.03)] transition hover:bg-red-100 cursor-pointer"
+                  >
+                    <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">緊急</span>
+                    <div className="flex min-w-0 flex-1 items-baseline gap-2">
+                      <span className="shrink-0 text-[11px] text-red-400">{new Date(urgentAnnouncement.published_at).toLocaleDateString('ja-JP')}</span>
+                      <p className="min-w-0 truncate text-sm font-bold text-red-900">{urgentAnnouncement.title}</p>
+                    </div>
+                    <span className="shrink-0 text-xs text-red-400">{'>'}</span>
+                  </Link>
+                </div>
+              )}
             </div>
           </section>
 
@@ -327,18 +397,19 @@ export default function DashboardPage() {
           )}
 
           <section className="mt-8 flex justify-center">
-            <div className="grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid w-full max-w-4xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <DashboardCard title="Lesson" description="学習を始める" href="/lesson" icon="📖" isCompleted={(todayStat?.study_minutes ?? 0) >= 5} />
               <DashboardCard title="My Settings" description="ユーザー登録と学習設定を確認" href="/settings" icon="👤" />
               <DashboardCard title="Billing" description="お支払い・契約内容を確認" href="/settings/billing" icon="💳" />
+              <DashboardCard title="News" description="NativeFlowの最新情報" href="/announcements" icon="📢" />
             </div>
           </section>
 
-          <section className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <section className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className={`${CARD_CLASS} px-5 py-5`}>
               <p className="text-sm font-bold tracking-[0.04em] text-[#1a1a2e]">継続日数</p>
               <p className="mt-3 text-center text-3xl font-extrabold tracking-tight text-[#1a1a2e]">{displayStreak}日</p>
-              <p className="mt-2 text-center text-sm text-[#6b7280]">毎日の積み重ねが成長につながります。</p>
+              <p className="mt-2 text-center text-sm text-[#6b7280]">毎日の積み重ねが大切です。</p>
             </div>
             <div className={`${CARD_CLASS} px-5 py-5`}>
               <p className="text-sm font-bold tracking-[0.04em] text-[#1a1a2e]">Flowポイント</p>
@@ -351,7 +422,14 @@ export default function DashboardPage() {
               <p className="mt-2 text-center text-sm text-[#6b7280]">目標レッスン時間 {studyGoal} 分</p>
               {dailyStatsError && <p className="mt-2 text-center text-sm text-amber-700">{DAILY_STATS_ERROR}</p>}
             </div>
+            <div className={`${CARD_CLASS} px-5 py-5`}>
+              <p className="text-sm font-bold tracking-[0.04em] text-[#1a1a2e]">今日完了したレッスン</p>
+              <p className="mt-3 text-center text-3xl font-extrabold tracking-tight text-[#1a1a2e]">{todayLessonRunsCompleted}<span className="ml-1 text-base font-medium text-[#8a8a9a]">回</span></p>
+              <p className="mt-2 text-center text-sm text-[#6b7280]">完了するたびに記録されます。</p>
+            </div>
           </section>
+
+
         </div>
       </main>
       <AppFooter />

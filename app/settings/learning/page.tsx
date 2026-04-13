@@ -28,7 +28,6 @@ type UserProfileRow = {
   id: string
   ui_language_code?: string | null
   current_learning_language?: string | null
-  target_country_code?: string | null
 }
 
 type UserLearningProfileRow = {
@@ -51,7 +50,6 @@ export default function LearningSettingsPage() {
   const [uiLanguageCode, setUiLanguageCode] = useState('')
   const [targetLanguageCode, setTargetLanguageCode] = useState('')
   const [initialLanguageCode, setInitialLanguageCode] = useState('')
-  const [targetCountryCode, setTargetCountryCode] = useState('')
   const [targetRegionSlug, setTargetRegionSlug] = useState('')
   const [currentLevel, setCurrentLevel] = useState<CurrentLevel | ''>('')
   const [speakByDeadlineText, setSpeakByDeadlineText] = useState('')
@@ -66,10 +64,6 @@ export default function LearningSettingsPage() {
 
       if (profile.ui_language_code != null) {
         setUiLanguageCode(profile.ui_language_code)
-      }
-      
-      if (profile.target_country_code != null) {
-        setTargetCountryCode(profile.target_country_code)
       }
       
       const activeLanguageCode =
@@ -108,7 +102,7 @@ export default function LearningSettingsPage() {
 
         const { data: profileRow, error: profileError } = await supabase
           .from('user_profiles')
-          .select('id, ui_language_code, current_learning_language, target_country_code')
+          .select('id, ui_language_code, current_learning_language')
           .eq('id', session.user.id)
           .maybeSingle()
 
@@ -166,10 +160,10 @@ export default function LearningSettingsPage() {
     }
 
     const targetLanguage = targetLanguageCode || null
-    const targetCountry = targetCountryCode || null
+    const region = targetRegionSlug.trim() || null
     const level = currentLevel || null
 
-    if (!targetLanguage || !targetCountry || !level) {
+    if (!targetLanguage || !region || !level) {
       setError(copy.errors.validationRequired)
       return
     }
@@ -180,7 +174,6 @@ export default function LearningSettingsPage() {
       const profilePayload = {
         ui_language_code: uiLanguageCode || null,
         target_language_code: targetLanguage,
-        target_country_code: targetCountry,
       }
 
       const learningPayload = {
@@ -317,13 +310,13 @@ export default function LearningSettingsPage() {
           </div>
 
           <div className="mt-4">
-            <label htmlFor="target_country_code" className="block text-sm font-medium text-[#2c2c2c]">
+            <label htmlFor="target_region_slug" className="block text-sm font-medium text-[#2c2c2c]">
               {copy.labels.targetCountry}
             </label>
             <select
-              id="target_country_code"
-              value={targetCountryCode}
-              onChange={(e) => setTargetCountryCode(e.target.value)}
+              id="target_region_slug"
+              value={targetRegionSlug}
+              onChange={(e) => setTargetRegionSlug(e.target.value)}
               className={SELECT_CLASS}
               disabled={submitting}
             >

@@ -1,0 +1,11 @@
+{
+  "locale": "en",
+  "ui_language": "en",
+  "target_language": "en",
+  "target_region_slug": "en_gb_london",
+  "native_language": "en",
+  "username": "TestUser",
+  "age_group": "30s",
+  "origin_country": "US",
+  "current_level": "intermediate"
+}

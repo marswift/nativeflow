@@ -3,11 +3,14 @@ import type { LessonSession } from './lesson-engine'
 import { createSession } from './lesson-runtime'
 import { generateLessonSessionInput, type LessonSessionInput } from './lesson-generator-service'
 import { createLessonSessionConfig, type LessonSessionFactoryOutput } from './lesson-session-factory'
-import { createLessonBlueprint, type LessonBlueprint } from './lesson-blueprint-service'
+import { createLessonBlueprint, createLessonBlueprintFromScenes, type LessonBlueprint } from './lesson-blueprint-service'
 import { createLessonBlueprintDraft, type LessonBlueprintDraft } from './lesson-blueprint-adapter'
 import { createLessonDraftSession, type LessonDraftSession } from './lesson-draft-session-mapper'
 import { createLessonAIPromptPayload, type LessonAIPromptPayload } from './lesson-ai-prompt-builder'
 import { createLessonAIMessages, type LessonAIMessage } from './lesson-ai-message-builder'
+import { getSceneImagePath, isSceneMapped } from './scene-image-map'
+import type { CorpusSelectionMetadata } from './corpus/lesson-selection-adapter'
+import { getLanguageLearningMode, type LanguageLearningMode } from './language-learning-mode'
 
 type LessonCharacterKey = 'alex' | 'emma' | 'leo'
 
@@ -634,6 +637,10 @@ export type LessonPageData = {
   lessonAIPromptPayload: LessonAIPromptPayload
   lessonAIMessages: LessonAIMessage[]
   lesson: ExtendedLessonSession
+  /** Corpus-based conversation selection (Phase 1: read-only, optional) */
+  corpusSelection?: CorpusSelectionMetadata | null
+  /** Language-aware learning mode (typing vs audio_choice) */
+  languageLearningMode?: LanguageLearningMode
 }
 
 function createLessonFromDraft(
@@ -725,9 +732,12 @@ export function buildLessonPageData(profile: UserProfileRow): LessonPageData {
     overviewCharacterEmotion
   )
   const overviewBackgroundKey = resolveOverviewBackgroundKey(overviewSceneType)
-  const overviewBackgroundImageUrl = resolveOverviewBackgroundImageUrl(
-    overviewBackgroundKey
-  )
+  // Prefer scene-image-map for overview background (decorative, 14% opacity)
+  // For missing scenes, fall through to generic background (acceptable at low opacity)
+  const firstBlockGoal = lessonBlueprint.blocks[0]?.goal ?? ''
+  const sceneSpecificBackground = getSceneImagePath(firstBlockGoal)
+  const overviewBackgroundImageUrl = sceneSpecificBackground
+    ?? resolveOverviewBackgroundImageUrl(overviewBackgroundKey)
 
   const lesson = attachOverviewMetaToLesson(lessonWithIdentifiers, {
     overviewEstimatedMinutes,
@@ -755,47 +765,195 @@ export function buildLessonPageData(profile: UserProfileRow): LessonPageData {
     lessonAIPromptPayload,
     lessonAIMessages,
     lesson,
+    languageLearningMode: getLanguageLearningMode(profile.target_language_code),
   }
 }
 
-async function hydrateAudioForText(text: string): Promise<string | null> {
-  if (!text || text.trim() === '') return null
+/**
+ * Rebuilds lesson page data using user-selected scenes (Daily Flow mode).
+ * Reuses the profile/config from the original page data; only the blueprint
+ * and everything downstream is regenerated.
+ */
+export function rebuildLessonPageDataWithScenes(
+  existing: LessonPageData,
+  selectedScenes: string[]
+): LessonPageData {
+  const profile = existing.profile
+  const lessonInput = existing.lessonInput
+  const lessonSessionConfig = existing.lessonSessionConfig
+
+  // Rebuild from blueprint with the user-chosen scenes
+  const lessonBlueprint = createLessonBlueprintFromScenes(
+    selectedScenes,
+    profile.current_level,
+    lessonInput.theme,
+    profile.target_region_slug ?? null
+  )
+  const lessonBlueprintDraft = createLessonBlueprintDraft(
+    lessonBlueprint,
+    profile.ui_language_code ?? 'ja'
+  )
+  const lessonDraftSession = createLessonDraftSession(
+    lessonBlueprintDraft,
+    profile.current_level
+  )
+  const lessonAIPromptPayload = createLessonAIPromptPayload({
+    lessonInput,
+    sessionConfig: lessonSessionConfig,
+    blueprint: lessonBlueprint,
+    draft: lessonBlueprintDraft,
+    mappedSession: lessonDraftSession,
+  })
+  const lessonAIMessages = createLessonAIMessages(lessonAIPromptPayload)
+
+  const rawLesson = createLessonFromDraft(lessonDraftSession)
+  const stableLessonId = createStableLessonId({
+    profile,
+    lesson: rawLesson,
+    draft: lessonDraftSession,
+  })
+  const lessonWithIdentifiers = attachStableLessonIdentifiers(rawLesson, stableLessonId)
+
+  const overviewStepCount = resolveOverviewStepCount(lessonDraftSession)
+  const overviewEstimatedMinutes = resolveOverviewEstimatedMinutes(
+    profile,
+    lessonDraftSession
+  )
+  const overviewFlowPoint = resolveOverviewFlowPoint({
+    profile,
+    draft: lessonDraftSession,
+    estimatedMinutes: overviewEstimatedMinutes,
+    stepCount: overviewStepCount,
+  })
+  const overviewSceneLabel = resolveOverviewSceneLabel(rawLesson)
+  const overviewSceneDescription = resolveOverviewSceneDescription({
+    sceneLabel: overviewSceneLabel,
+    estimatedMinutes: overviewEstimatedMinutes,
+    stepCount: overviewStepCount,
+  })
+
+  const overviewSceneType = resolveOverviewSceneType(overviewSceneLabel)
+  const overviewCharacterKey = resolveOverviewCharacterKey(overviewSceneType)
+  const overviewCharacterName = getOverviewCharacterName(overviewCharacterKey)
+  const overviewCharacterEmotion = resolveOverviewCharacterEmotion(
+    overviewCharacterKey,
+    overviewSceneType
+  )
+  const overviewImageUrl = resolveOverviewImageUrl(
+    overviewCharacterKey,
+    overviewCharacterEmotion
+  )
+  const overviewBackgroundKey = resolveOverviewBackgroundKey(overviewSceneType)
+  // Prefer scene-image-map for overview background (decorative, 14% opacity)
+  const firstBlockGoalRebuilt = lessonBlueprint.blocks[0]?.goal ?? ''
+  const sceneSpecificBackgroundRebuilt = getSceneImagePath(firstBlockGoalRebuilt)
+  const overviewBackgroundImageUrl = sceneSpecificBackgroundRebuilt
+    ?? resolveOverviewBackgroundImageUrl(overviewBackgroundKey)
+
+  const lesson = attachOverviewMetaToLesson(lessonWithIdentifiers, {
+    overviewEstimatedMinutes,
+    overviewStepCount,
+    overviewFlowPoint,
+    overviewSceneLabel,
+    overviewSceneDescription,
+    overviewBlockCount: getDraftBlockCount(lessonDraftSession),
+    overviewCharacterKey,
+    overviewCharacterName,
+    overviewCharacterEmotion,
+    overviewImageUrl,
+    overviewBackgroundKey,
+    overviewBackgroundImageUrl,
+  })
+
+  return {
+    ...existing,
+    lessonBlueprint,
+    lessonBlueprintDraft,
+    lessonDraftSession,
+    lessonAIPromptPayload,
+    lessonAIMessages,
+    lesson,
+  }
+}
+
+type AudioHydrateResult = {
+  audioUrl: string | null
+  audioStatus: 'ok' | 'fallback' | 'failed'
+}
+
+async function fetchAudioOnce(text: string): Promise<string | null> {
+  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/audio/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+    cache: 'no-store',
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.audio_url ?? null
+}
+
+/** Last successfully generated audio URL — used as emergency fallback. */
+let lastSuccessfulAudioUrl: string | null = null
+
+async function hydrateAudioForText(text: string): Promise<AudioHydrateResult> {
+  if (!text || text.trim() === '') return { audioUrl: null, audioStatus: 'failed' }
 
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/audio/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-      cache: 'no-store',
-    })
+    // Attempt 1
+    let url = await fetchAudioOnce(text)
+    if (url) {
+      lastSuccessfulAudioUrl = url
+      return { audioUrl: url, audioStatus: 'ok' }
+    }
 
-    if (!res.ok) return null
+    // Attempt 2 — retry once
+    url = await fetchAudioOnce(text)
+    if (url) {
+      lastSuccessfulAudioUrl = url
+      return { audioUrl: url, audioStatus: 'ok' }
+    }
 
-    const data = await res.json()
-    return data.audio_url ?? null
+    // Fallback — reuse last successful audio if available
+    if (lastSuccessfulAudioUrl) {
+      return { audioUrl: lastSuccessfulAudioUrl, audioStatus: 'fallback' }
+    }
+
+    return { audioUrl: null, audioStatus: 'failed' }
   } catch (e) {
     console.error('audio hydrate error', e)
-    return null
+    if (lastSuccessfulAudioUrl) {
+      return { audioUrl: lastSuccessfulAudioUrl, audioStatus: 'fallback' }
+    }
+    return { audioUrl: null, audioStatus: 'failed' }
   }
 }
 
 async function hydrateLessonAudio(session: LessonSession): Promise<LessonSession> {
+  // Reset fallback for each lesson
+  lastSuccessfulAudioUrl = null
+
   const newBlocks = await Promise.all(
     session.blocks.map(async (block) => {
       const newItems = await Promise.all(
         block.items.map(async (item) => {
+          // Scaffold steps carry text in a `text` field (not answer/prompt)
+          const itemWithText = item as typeof item & { text?: string }
           const sourceText =
-          item.answer && item.answer.trim() !== ''
+          itemWithText.text && itemWithText.text.trim() !== ''
+            ? itemWithText.text.trim()
+            : item.answer && item.answer.trim() !== ''
             ? item.answer.trim()
             : item.prompt && item.prompt.trim() !== ''
             ? item.prompt.trim()
             : ''
 
-          const audioUrl = await hydrateAudioForText(sourceText)
+          const result = await hydrateAudioForText(sourceText)
 
           return {
             ...item,
-            audio_url: audioUrl, // ← UI互換
+            audio_url: result.audioUrl, // ← UI互換
+            audio_status: result.audioStatus,
           }
         })
       )
@@ -810,5 +968,29 @@ async function hydrateLessonAudio(session: LessonSession): Promise<LessonSession
   return {
     ...session,
     blocks: newBlocks,
+  }
+}
+
+// ── Corpus selection enrichment (Phase 1: read-only, additive) ──
+
+/**
+ * Enrich existing LessonPageData with corpus-based conversation selection.
+ * Purely additive — if corpus selection fails, returns data unchanged.
+ * Does NOT modify any existing lesson fields.
+ */
+export async function enrichWithCorpusSelection(
+  data: LessonPageData,
+  recentCorpusIds: string[] = [],
+): Promise<LessonPageData> {
+  try {
+    const { selectCorpusForLesson } = await import('./corpus/lesson-selection-adapter')
+    const corpusSelection = await selectCorpusForLesson(
+      data.profile.current_level,
+      recentCorpusIds,
+    )
+    return { ...data, corpusSelection }
+  } catch {
+    // Corpus enrichment must never break lesson flow
+    return data
   }
 }

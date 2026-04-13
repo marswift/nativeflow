@@ -17,6 +17,8 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    // TODO: Enable after fixing ~30 pre-existing indexed-access errors in lesson-active-card.tsx
+    // "noUncheckedIndexedAccess": true,
     "plugins": [
       {
         "name": "next"

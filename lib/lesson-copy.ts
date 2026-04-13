@@ -129,6 +129,8 @@ export type LessonCopy = {
     /** タイピング以外のブロックで表示するガイドテキスト */
     nonTypingGuide: string
     stageListenRepeatLabel: string
+    stageListenLabel: string
+    stageRepeatLabel: string
     stageAiQuestionLabel: string
     stageTypingLabel: string
     stageAiConversationLabel: string
@@ -136,6 +138,7 @@ export type LessonCopy = {
     guideAlexTitle: string
     guideEmmaTitle: string
     guideDefaultTitle: string
+    hintLabel: string
     listenAction: string
     repeatAction: string
     aiQuestionAction: string
@@ -152,11 +155,15 @@ export type LessonCopy = {
     typingNeutralPrimary: string
     typingSecondary: string
     aiConversationPrimary: string
+    challengeListeningPrimary: string
+    challengeSpeakingPrimary: string
     aiConversationSecondary: string
     guideDefaultPrimary: string
     guideDefaultSecondary: string
     lessonHeadingTemplate: string
     timelineListenRepeat: string
+    timelineListen: string
+    timelineRepeat: string
     timelineAiQuestion: string
     timelineTyping: string
     timelineAiConversation: string
@@ -178,8 +185,13 @@ export type LessonCopy = {
     repeatSpeakInstruction: string
     repeatRetryAudioButton: string
     repeatRecordingButton: string
+    repeatRecordAgainButton: string
+    repeatScorePrompt: string
+    repeatAfterRecordingInstruction: string
     repeatStopRecordingButton: string
     repeatPlayRecordedButton: string
+    compareAudioButton: string
+    comparingAudioLabel: string
     repeatScoreButton: string
     repeatScoringLabel: string
     repeatBrowserUnsupported: string
@@ -192,20 +204,85 @@ export type LessonCopy = {
     repeatNextQuestionButton: string
     repeatAttemptCountLabel: string
     repeatAttemptLimitReachedLabel: string
+    repeatScoreExcellent: string
+    repeatScoreGood: string
+    repeatScoreExcellentSub: string
+    repeatScoreGoodSub: string
+    repeatAttemptSuffix: string
+    repeatScoreSuffix: string
+    repeatAttemptLimitEncouragement: string
+    repeatAttemptLimitAdvance: string
+    repeatTipPerfect: string
+    repeatTipCompleteness: string
+    repeatTipCompletenessMissing: string
+    repeatTipWordMatch: string
+    repeatTipWordMatchMissing: string
+    repeatTipClarity: string
+    repeatTipRhythm: string
+    repeatTipGenericLow: string
+    repeatTipGenericGood: string
+    aiConvYouLabel: string
+    aiConvThinking: string
+    aiConvRetryButton: string
+    aiConvAdvanceButton: string
+    aiConvExamplePrefix: string
+    aiQuestionPlaying: string
+    aiQuestionRetryPlay: string
+    aiQuestionShowExample: string
+    aiQuestionExampleLabel: string
+    aiQuestionAudioError: string
+    scaffoldAudioPreparing: string
+    scaffoldPlayButton: string
+    audioPreparing: string
     scaffoldStepLabel: string
     scaffoldPlayingLabel: string
     scaffoldAutoPlayDoneLabel: string
     scaffoldRestartButton: string
     scaffoldNextButton: string
+    scaffoldBackToListenButton: string
+    backToOverview: string
+    backToScaffold: string
+    backToAiQuestion: string
+    backToTyping: string
+    /** CTA template: "{stage}へ進む". Use {stage} placeholder. */
+    ctaAdvanceTemplate: string
+    /** CTA label for viewing lesson results at final stage. */
+    ctaViewResults: string
     scaffoldInstruction: string
     aiQuestionInputGuide: string
     aiQuestionPlayButton: string
+    aiQuestionLabel: string
+    conversationFlowLabel: string
+    aiQuestionFirstTurnRewrite: string
+    aiQuestionFirstTurnRewriteBeginner: string
+    aiQuestionFirstTurnRewriteIntermediate: string
+    aiQuestionFirstTurnRepeat: string
+    aiQuestionPartial: string
+    aiQuestionGoalLabel: string
+    aiQuestionGoalUse: string
+    hintEncouragementCollapsed: string
+    hintEncouragementHidden: string
+    hintEncouragementOptional: string
+    hintShowButton: string
+    unclearToken: string
+    aiQuestionR2PersonWho: string
+    aiQuestionR2PersonConfirm: string
+    aiQuestionR2TimeWhen: string
+    aiQuestionR2TimeConfirm: string
+    aiQuestionR2Generic: string
+    aiQuestionR3FullSentence: string
+    aiQuestionR3FullSentencePerson: string
+    aiQuestionR3FullSentenceTime: string
+    aiQuestionR3FullSentenceBoth: string
+    aiQuestionR3WhatElse: string
+    aiQuestionR3Generic: string
     aiQuestionInstruction: string
     aiQuestionRecordButton: string
     aiQuestionStopButton: string
     aiQuestionRecognizing: string
     aiQuestionYourAnswer: string
     aiQuestionNextQuestion: string
+    aiQuestionNextStage: string
     aiQuestionRoundLabel: string
     aiQuestionGood: string
     aiQuestionClose: string
@@ -214,8 +291,10 @@ export type LessonCopy = {
     aiQuestionBetterWay: string
     aiQuestionFollowUp: string
     aiQuestionFinalRound: string
+    aiQuestionRetryTurn: string
     aiQuestionRetryAll: string
     typingCheckButton: string
+    typingEmptyGuidance: string
     typingPlayButton: string
     typingNextButton: string
     aiConversationStartButton: string
@@ -226,12 +305,72 @@ export type LessonCopy = {
     aiConvFeedbackTitle: string
     aiConvAdviceTitle: string
     aiConvRecordButton: string
+    aiConvShowHint: string
     aiConvStopButton: string
     aiConvRecognizing: string
     aiConvYourReply: string
     aiConvNextTurn: string
     aiConvRetryAll: string
+    paywallTitle: string
+    paywallSubtitle: string
+    paywallValue: string
+    paywallCtaPrimary: string
+    paywallCtaSecondary: string
+    paywallFreeLimit: string
+    aiConvNextProblem: string
     aiConvFinishLesson: string
+    // Micro-feedback
+    repeatSuccessGood: string
+    repeatSuccessOk: string
+    repeatImproved: string
+    repeatStable: string
+    repeatSlightDrop: string
+    repeatWeaknessMissing: string
+    repeatWeaknessSound: string
+    aiQuestionSuccess: string
+    typingSuccess: string
+    aiConversationSuccess: string
+    lessonSentenceCompleted: string
+    soundGameTitle: string
+    soundGameCorrect: string
+    soundGameIncorrect: string
+    soundGameComplete: string
+    quickResponseTitle: string
+    quickResponseListen: string
+    quickResponseCorrect: string
+    quickResponseTryAgain: string
+    quickResponseComplete: string
+    recallTitle: string
+    recallPrompt: string
+    recallCorrect: string
+    recallTryAgain: string
+    recallComplete: string
+    miniReviewNice: string
+    miniReviewAlmost: string
+    miniReviewWho: string
+    miniReviewWhen: string
+    miniReviewWhichChanges: string
+    miniReviewSayWith: string
+    miniReviewSayFor: string
+    miniReviewRecallPrompt: string
+    miniReviewWhichSentence: string
+    miniReviewValidationCta: string
+    miniReviewRetryChallenge: string
+    challengeTitle: string
+    challengeDescription: string
+    challengeStart: string
+    challengeAudioPlaying: string
+    challengeCorrect: string
+    challengeIncorrect: string
+    miniReviewTransferPick: string
+    miniReviewTenseTransfer: string
+    miniReviewSubjectTransfer: string
+    miniReviewListenFirst: string
+    miniReviewSpeakNow: string
+    miniReviewSpeechDetected: string
+    miniReviewNoSpeech: string
+    lessonChecking: string
+    lessonPreparingNext: string
 
     repeatClarityLabel: string
     repeatWordMatchLabel: string
@@ -240,9 +379,13 @@ export type LessonCopy = {
 
     repeatStopError: string
     repeatEmptyRecordingError: string
+    repeatNoRecordingForScore: string
     repeatMicError: string
     repeatPlaybackError: string
     repeatScoreError: string
+    audioLoading: string
+    audioRetry: string
+    audioUnavailable: string
   }
   /** lesson-overview-card で使用する文字列 */
   overviewCard: {
@@ -269,12 +412,54 @@ export type LessonCopy = {
     guideEncouragement: string
     lessonTimeLabel: string
     practiceSummary: string
+    /** Short focus hint shown inside the timeline area. */
+    focusTip: string
     featureSpeakTitle: string
     featureSpeakDescription: string
     featureAnswerTitle: string
     featureAnswerDescription: string
     featureConversationTitle: string
     featureConversationDescription: string
+    /** Title template for region-aware title. Use {region} and {lang} placeholders. */
+    titleTemplate: string
+    pillLanguage: string
+    pillLevel: string
+    pillRegion: string
+    pillGoal: string
+    pillAge: string
+    questionCountLabel: string
+    /** Unit suffix for question count. Use {n} placeholder. */
+    questionCountValue: string
+    skillEstimateTitle: string
+    skillEstimateNote: string
+    skillConversation: string
+    skillListening: string
+    skillSpeaking: string
+    skillWriting: string
+    lessonFlowTitle: string
+    lessonFlowSubtitle: string
+    flowStep1Label: string
+    flowStep1Sub: string
+    flowStep2Label: string
+    flowStep2Sub: string
+    flowStep3Label: string
+    flowStep3Sub: string
+    flowStep4Label: string
+    flowStep4Sub: string
+    flowStep5Label: string
+    flowStep5Sub: string
+    flowStep6Label: string
+    flowStep6Sub: string
+  }
+  /** daily-flow-selector で使用する文字列 */
+  dailyFlow: {
+    badge: string
+    title: string
+    instruction: string
+    startButton: string
+    pickProgress: string
+    skipButton: string
+    selectedActionsTitle: string
   }
 }
 
@@ -406,16 +591,19 @@ export const LESSON_COPY_JA = {
     referenceLabel: '参考表現',
     nonTypingGuide: '内容を確認したら、下のボタンで次に進みます。',
     stageListenRepeatLabel: '聞き取りとリピート',
+    stageListenLabel: '聞く',
+    stageRepeatLabel: 'リピート',
     stageAiQuestionLabel: 'AIからの質問',
-    stageTypingLabel: '書き取り',
+    stageTypingLabel: 'タイピング',
     stageAiConversationLabel: 'AIと会話',
     stageDefaultLabel: 'レッスン',
     guideAlexTitle: 'Alexのヒント',
     guideEmmaTitle: 'Emmaのヒント',
     guideDefaultTitle: 'ガイド',
-    listenPrimary: 'まずは文字を見ずに、聞こえた音だけに集中してみよう',
+    hintLabel: 'ヒント',
+    listenPrimary: '音をよく聞いて意味をイメージしましょう',
     listenSecondary: '音をそのまま耳から口へ流すイメージで進めるのがコツだよ',
-    repeatPrimary: '完璧じゃなくて大丈夫。聞こえた音をそのままマネしてみよう',
+    repeatPrimary: '文法・文字は一切気にせずに音だけを意識しましょう',
     repeatSecondary: '文字ではなく、音のリズムと区切りを意識すると話しやすいよ',
     aiQuestionPrimary: '短くても大丈夫。まずは英語で返してみよう',
     aiQuestionSecondary: '正確さより、まず口から出すことを優先しようね',
@@ -423,40 +611,49 @@ export const LESSON_COPY_JA = {
     typingIncorrectPrimary: 'おしい。音とつづりのつながりを意識してもう一度見てみよう',
     typingNeutralPrimary: '聞こえた英語を思い出しながら、落ち着いて入力してみよう',
     typingSecondary: '耳で覚えた音を文字に変えることで、記憶がかなり強くなるよ',
-    aiConversationPrimary: 'ここは自由に話してOK。今日の表現を1つでも使えたら十分だよ',
+    aiConversationPrimary: '会話は慣れるのが1番の上達の道。\n間違えてもいいので話してみよう！',
+    challengeListeningPrimary: '何度も聞いていれば自然と音と文字が結びつきますよ！',
+    challengeSpeakingPrimary: '音を聞いたら文字に変えず、音のまま覚えてそのまま返す意識をしましょう！',
     aiConversationSecondary: 'うまく話すより、実際に使うことが一番大切だよ',
     guideDefaultPrimary: '落ち着いて、ひとつずつ進めていこう',
     guideDefaultSecondary: '音を聞いて、マネして、使う。この流れを大切にしよう',
-    lessonHeadingTemplate: '{scene}の{language}',
+    lessonHeadingTemplate: '{scene}と{language}で会話',
     timelineListenRepeat: '聞く・リピート',
+    timelineListen: '聞く',
+    timelineRepeat: 'リピート',
     timelineAiQuestion: 'AIからの質問',
     timelineTyping: 'タイピング',
     timelineAiConversation: 'AIとの会話',
     aiConversationPrompt: 'AIと会話してください',
-    listenAction: '音声を聞く',
+    listenAction: 'イメージと音をつなげる',
     repeatAction: 'マイクで話す',
     aiQuestionAction: '質問に答える',
     typingAction: '英文を入力する',
     aiConversationAction: 'AIと会話する',
     stageScaffoldLabel: 'イメージ理解',
     scaffoldAction: '意味をイメージする',
-    scaffoldPrimary: '日本語から英語への流れを意識しましょう',
+    scaffoldPrimary: 'まとまった「かたまり」を音で覚えよう',
     scaffoldSecondary: '少しずつ英語に慣れていきます',
     questionLabel: '問題',
     blockProgressLabel: '今日の問題数',
     questionProgressLabel: '今はステップ {current} に取り組んでいます',
-    listenInstruction: '「再生」を押して会話を聞いてみましょう',
-    listenStartRepeatInstruction: '聞き取れたら、そのままマネして話してみましょう。\n「録音開始」を押してください。',
+    listenInstruction: '音を何度か聞いて、意味を思い浮かべてみましょう',
+    listenStartRepeatInstruction: '準備ができたらリピートへ進みましょう。',
     listenPlayButton: '▶ 再生',
     listenStopButton: '■ 停止',
-    listenRecordingButton: '🎤 録音開始',
+    listenRecordingButton: 'リピートへ進む',
     listenPlayingLabel: '音声再生中です',
     listenAudioNotReady: 'まだ音声ファイルがありません',
-    repeatSpeakInstruction: '真似して発音してください',
-    repeatRetryAudioButton: '🔄 もう一度音声を確認する',
+    repeatSpeakInstruction: 'STEP1で聞いた文章をマネして録音してください',
+    repeatRetryAudioButton: '聞くに戻る',
     repeatRecordingButton: '🎤 録音開始',
+    repeatRecordAgainButton: '🎤 もう一度録音する',
+    repeatScorePrompt: '音が終わったら採点ボタンを押してください',
+    repeatAfterRecordingInstruction: '録音が終わったら採点ボタンを押してください',
     repeatStopRecordingButton: '■ 録音停止',
     repeatPlayRecordedButton: '🔊 自分の音声を再生',
+    compareAudioButton: '聞き比べる',
+    comparingAudioLabel: '聞き比べ中…',
     repeatScoreButton: '採点する',
     repeatScoringLabel: '採点中...',
     repeatBrowserUnsupported: 'このブラウザは録音に対応していません。Chrome系ブラウザで確認してください。',
@@ -469,30 +666,95 @@ export const LESSON_COPY_JA = {
     repeatNextQuestionButton: '次の問題へ',
     repeatAttemptCountLabel: 'チャレンジ回数: {current} / {max}',
     repeatAttemptLimitReachedLabel: '3回やったので次に進みましょう',
+    repeatScoreExcellent: 'すごい！上手に言えました',
+    repeatScoreGood: 'いい調子です！',
+    repeatScoreExcellentSub: 'チャレンジ問題に進みましょう',
+    repeatScoreGoodSub: 'もう少しで完璧です — もう一度聞いて真似してみましょう',
+    repeatAttemptSuffix: '回目',
+    repeatScoreSuffix: '点',
+    repeatAttemptLimitEncouragement: '大丈夫！何度も聞くうちに自然と言えるようになります',
+    repeatAttemptLimitAdvance: '次に進む',
+    repeatTipPerfect: 'リズムは良いです。この調子です',
+    repeatTipCompleteness: '最後まで言い切ると伝わりやすくなります',
+    repeatTipCompletenessMissing: '「{word}」を意識して最後まで言い切ると良くなります',
+    repeatTipWordMatch: 'もう一度聞いて音の違いを確認してみましょう',
+    repeatTipWordMatchMissing: '「{word}」の音をもう少し意識してみましょう',
+    repeatTipClarity: 'もう少しゆっくり話すと伝わりやすいです',
+    repeatTipRhythm: '語尾を少しはっきり言うともっと良くなります',
+    repeatTipGenericLow: 'もう一度聞いてから真似するとさらに良くなります',
+    repeatTipGenericGood: 'いい感じです。繰り返すほど自然になります',
+    aiConvYouLabel: 'あなた',
+    aiConvThinking: 'AIが考え中...',
+    aiConvRetryButton: 'もう一度話す',
+    aiConvAdvanceButton: '次へ進む',
+    aiConvExamplePrefix: '💬 例',
+    aiQuestionPlaying: '再生中…',
+    aiQuestionRetryPlay: 'もう一度聞く',
+    aiQuestionShowExample: '回答例を見る',
+    aiQuestionExampleLabel: '例',
+    aiQuestionAudioError: '音声を再生できませんでした。もう一度お試しください。',
+    scaffoldAudioPreparing: '音声を準備中...',
+    scaffoldPlayButton: '▶ 再生',
+    audioPreparing: '音声を準備中です…',
     scaffoldStepLabel: 'Step {current} / {total}',
     scaffoldPlayingLabel: '音声 {current} / {total} を再生中...',
     scaffoldAutoPlayDoneLabel: '3つの音声を聞き終えました',
     scaffoldRestartButton: 'もう一度はじめから聞く',
     scaffoldNextButton: '次のステップへ',
-    scaffoldInstruction: '画像と音声だけで意味をつかんでみましょう',
+    scaffoldBackToListenButton: '聞くに戻る',
+    backToOverview: '← レッスン案内へ戻る',
+    backToScaffold: 'イメージ理解に戻る',
+    backToAiQuestion: 'AIからの質問に戻る',
+    backToTyping: 'AIとの会話に戻る',
+    ctaAdvanceTemplate: '{stage}へ進む',
+    ctaViewResults: 'レッスン結果を見る',
+    scaffoldInstruction: '音声が3回流れます。1回目は英語、2回目に重要なかたまりをテキスト表示、3回目でもう一度英語が流れます。',
     aiQuestionInputGuide: '英語で答えてみましょう',
-    aiQuestionPlayButton: 'AIからの質問を聞く',
+    aiQuestionPlayButton: '🔊 質問を再生',
+    aiQuestionLabel: 'AIからの質問',
+    conversationFlowLabel: '会話の流れ',
+    aiQuestionFirstTurnRewrite: 'さっき練習した文章を思い出してください。「{from}」を「{to}」に変えて言ってみましょう。',
+    aiQuestionFirstTurnRewriteBeginner: '「{to}」を使って言ってみましょう。',
+    aiQuestionFirstTurnRewriteIntermediate: '「{to}」を使って文章を言ってみましょう。',
+    aiQuestionFirstTurnRepeat: 'さっき練習した文章をもう一度言ってみましょう。',
+    aiQuestionPartial: 'おしい！もう少しです。',
+    aiQuestionGoalLabel: '🎯 こう言ってみよう：',
+    aiQuestionGoalUse: '使う表現：',
+    hintEncouragementCollapsed: '必要ならヒントを見ながら進められます',
+    hintEncouragementHidden: '中級に近づいています。まずはヒントなしで試してみましょう',
+    hintEncouragementOptional: 'いい感じです！まずは自分の力で言ってみましょう',
+    hintShowButton: 'ヒントを見る',
+    unclearToken: '[不明]',
+    aiQuestionR2PersonWho: 'いいですね。誰と話しましたか？',
+    aiQuestionR2PersonConfirm: 'なるほど。{person}のことですか？',
+    aiQuestionR2TimeWhen: 'いいですね。それはいつのことですか？',
+    aiQuestionR2TimeConfirm: 'なるほど。{time}にしましたか？',
+    aiQuestionR2Generic: 'いいですね。もう一度、文章で言ってみましょう。',
+    aiQuestionR3FullSentence: 'いいですね！では、文章全体でもう一度言ってみましょう。',
+    aiQuestionR3FullSentencePerson: 'いいですね！「{person}」を使って、文章全体でもう一度言ってみましょう。',
+    aiQuestionR3FullSentenceTime: 'いいですね！「{time}」を使って、文章全体でもう一度言ってみましょう。',
+    aiQuestionR3FullSentenceBoth: 'いいですね！「{person}」と「{time}」を使って、文章全体でもう一度言ってみましょう。',
+    aiQuestionR3WhatElse: '他に何かありましたか？',
+    aiQuestionR3Generic: 'もう少し詳しく言ってみましょう。',
     aiQuestionInstruction: '質問を聞いて、学んだ文章で答えてみましょう',
     aiQuestionRecordButton: '🎤 録音して答える',
     aiQuestionStopButton: '■ 録音停止',
     aiQuestionRecognizing: '認識中...',
     aiQuestionYourAnswer: 'あなたの回答',
     aiQuestionNextQuestion: '次の質問へ',
+    aiQuestionNextStage: 'タイピングへ進む',
     aiQuestionRoundLabel: '質問 {current} / {total}',
     aiQuestionGood: 'いいですね！ちゃんと伝わっています。',
     aiQuestionClose: 'OK！伝わっています。ネイティブはこう言うことが多いですよ。',
-    aiQuestionRetry: '',
-    aiQuestionSilent: '音声が聞き取れませんでした。もう一度話してみましょう。',
+    aiQuestionRetry: '質問に合った答えを言ってみましょう。',
+    aiQuestionSilent: 'うまく聞こえなかったみたいです。もう一度話してみてください！',
     aiQuestionBetterWay: 'よく使われる言い方: ',
     aiQuestionFollowUp: 'もう少し詳しく教えてください。',
     aiQuestionFinalRound: '最後に、文章全体を言ってみましょう。',
+    aiQuestionRetryTurn: 'もう一度やってみる',
     aiQuestionRetryAll: 'もう一度やってみる',
     typingCheckButton: 'チェック',
+    typingEmptyGuidance: 'まずは入力してみましょう',
     typingPlayButton: '音声を再生',
     typingNextButton: '次へ進む',
     aiConversationStartButton: '💬 会話開始',
@@ -503,12 +765,71 @@ export const LESSON_COPY_JA = {
     aiConvFeedbackTitle: 'AIからのフィードバック',
     aiConvAdviceTitle: 'もっと良くなるためのアドバイス',
     aiConvRecordButton: '🎤 話してみる',
+    aiConvShowHint: 'ヒントを見る',
     aiConvStopButton: '■ 録音停止',
     aiConvRecognizing: '認識中...',
     aiConvYourReply: 'あなたの返答',
     aiConvNextTurn: '次の会話へ',
     aiConvRetryAll: 'もう一度会話する',
+    paywallTitle: 'よくできました！',
+    paywallSubtitle: '',
+    paywallValue: '毎日続けると自然と話せるようになるよ',
+    paywallCtaPrimary: '',
+    paywallCtaSecondary: '無料で続ける（制限あり）',
+    paywallFreeLimit: '無料期間中は1日3問までです。',
+    aiConvNextProblem: 'チャレンジ問題へ進む',
     aiConvFinishLesson: 'レッスンを終了する',
+    repeatSuccessGood: 'いいですね！かなり自然です',
+    repeatSuccessOk: 'いい感じです。伝わる発音です',
+    repeatImproved: 'さっきより自然です',
+    repeatStable: '安定しています',
+    repeatSlightDrop: 'あと少しです。もう一度いきましょう',
+    repeatWeaknessMissing: '「{word}」を忘れないようにしましょう',
+    repeatWeaknessSound: '「{word}」の音をもう一度聞いてみましょう',
+    aiQuestionSuccess: 'いいですね！実際の会話でも使えます',
+    typingSuccess: 'いいですね！思い出せています',
+    aiConversationSuccess: '実際の会話でも自然に聞こえます',
+    lessonSentenceCompleted: '',
+    soundGameTitle: '聞き取りチャレンジ',
+    soundGameCorrect: 'Nice!',
+    soundGameIncorrect: 'もう一度聞いてみましょう',
+    soundGameComplete: 'クリア！',
+    quickResponseTitle: 'リピートチャレンジ',
+    quickResponseListen: '音声と同じように言ってみましょう',
+    quickResponseCorrect: 'Nice!',
+    quickResponseTryAgain: 'もう一度！',
+    quickResponseComplete: 'クリア！',
+    recallTitle: 'スピーキングチャレンジ',
+    recallPrompt: '日本語を見て、英語で言ってみましょう',
+    recallCorrect: 'Nice!',
+    recallTryAgain: 'もう一度！',
+    recallComplete: 'クリア！',
+    miniReviewNice: '実際の会話で使えます',
+    miniReviewAlmost: 'もう一度聞いてみよう',
+    miniReviewWho: '誰と？',
+    miniReviewWhen: 'いつ？',
+    miniReviewWhichChanges: '変わるのはどっち？',
+    miniReviewSayWith: '{value}で言ってみよう',
+    miniReviewSayFor: '{value}に変えて言ってみよう',
+    miniReviewRecallPrompt: '音声の文はどっち？',
+    miniReviewWhichSentence: '正しいのはどっち？',
+    miniReviewValidationCta: 'チャレンジ問題へ',
+    miniReviewRetryChallenge: 'もう一度チャレンジする',
+    challengeTitle: 'チャレンジ問題',
+    challengeDescription: '音声を聞いて、正しい文章はどちらか選んでください。',
+    challengeStart: '開始',
+    challengeAudioPlaying: '🎧 音声再生中',
+    challengeCorrect: '○ 正解です！',
+    challengeIncorrect: '× もう一度聞いてみましょう',
+    miniReviewTransferPick: '{value}の場合は？',
+    miniReviewTenseTransfer: '{value}だったら？',
+    miniReviewSubjectTransfer: '{value}が主語だったら？',
+    miniReviewListenFirst: '聞いてから選ぼう',
+    miniReviewSpeakNow: '声に出してみよう',
+    miniReviewSpeechDetected: '声が聞こえました！',
+    miniReviewNoSpeech: 'もう一度話してみましょう',
+    lessonChecking: 'いま確認しています…',
+    lessonPreparingNext: '次のステップを準備しています…',
     repeatClarityLabel: '発音明瞭性',
     repeatWordMatchLabel: '語の一致率',
     repeatRhythmLabel: 'リズム/区切り',
@@ -516,9 +837,13 @@ export const LESSON_COPY_JA = {
 
     repeatStopError: '録音停止に失敗しました。もう一度お試しください。',
     repeatEmptyRecordingError: '録音データがありません。',
+    repeatNoRecordingForScore: '音声が確認できません。録音してから採点してください。',
     repeatMicError: 'マイクへのアクセスに失敗しました。',
     repeatPlaybackError: '音声の再生に失敗しました。',
     repeatScoreError: '採点に失敗しました。',
+    audioLoading: '音声を読み込み中…',
+    audioRetry: 'タップして再試行',
+    audioUnavailable: '音声が利用できません',
   },
   overviewCard: {
     headerBadge: '今日のレッスン',
@@ -533,7 +858,7 @@ export const LESSON_COPY_JA = {
     lessonStartTitle: '今日習う表現を、実際に使える形まで進めます',
     lessonStartDescription:
       '聞く・リピート・AIへの返答・タイピング・会話まで、順番に進めながら定着させます。',
-    startButton: 'レッスンを開始する',
+    startButton: '今日のレッスンを始める',
     stageListenRepeatDesc: '音を聞いて、そのまま声に出して練習します。',
     stageScaffoldTitle: 'イメージ理解',
     stageScaffoldDesc: '画像と音声で、意味をつかむ練習をします。',
@@ -545,13 +870,51 @@ export const LESSON_COPY_JA = {
     lessonTimeLabel: 'このレッスンの目安時間',
     practiceSummary:
       '聞くだけで終わらず、声に出して実際に使い、入力し、最後はAIとの会話まで進みます。',
+    focusTip: 'このレッスンでは短いフレーズを自然に言えるようになることが目標です',
     featureSpeakTitle: '声に出して練習',
     featureSpeakDescription: 'まずは聞いて、真似して、自然な言い方をつかみます。',
     featureAnswerTitle: '質問に答える練習',
     featureAnswerDescription: '習った表現をその場で使い、短い返答に慣れていきます。',
     featureConversationTitle: '会話で使って定着',
     featureConversationDescription: '最後はAIとのやり取りで、今日の英語を実践します。',
-    guideEncouragement: '今日も一緒にやってみよう！'
+    guideEncouragement: '今日も一緒にやってみよう！',
+    titleTemplate: '{region}で話す{lang}レッスン',
+    pillLanguage: '学習言語',
+    pillLevel: 'レベル',
+    pillRegion: '地域',
+    pillGoal: '目標',
+    pillAge: '年代',
+    questionCountLabel: '今日の問題数',
+    questionCountValue: '{n}問',
+    skillEstimateTitle: 'スキル推定',
+    skillEstimateNote: '現在のレッスン結果から見た推定値',
+    skillConversation: '会話到達度',
+    skillListening: 'リスニング',
+    skillSpeaking: 'スピーキング',
+    skillWriting: 'ライティング',
+    lessonFlowTitle: 'レッスンの流れ',
+    lessonFlowSubtitle: '聞く → 話す → 会話する → チャレンジ の順で進みます',
+    flowStep1Label: '聞く',
+    flowStep1Sub: '画像と音を結びつける',
+    flowStep2Label: 'まねする',
+    flowStep2Sub: '音とリズムを再現する',
+    flowStep3Label: 'かたまりで理解',
+    flowStep3Sub: 'フレーズ単位で理解',
+    flowStep4Label: 'AIに回答する',
+    flowStep4Sub: '言語の出し入れ練習',
+    flowStep5Label: 'ライティング',
+    flowStep5Sub: '記憶の定着強化',
+    flowStep6Label: 'AIと会話',
+    flowStep6Sub: 'アウトプット練習',
+  },
+  dailyFlow: {
+    badge: 'Daily Flow',
+    title: '今日の英語デーを計画しよう',
+    instruction: '各時間帯で1つずつ行動を選ぶか、「おまかせで始める」を選択してレッスンを開始してください',
+    startButton: 'レッスンを開始',
+    pickProgress: '朝から就寝までの生活に沿って進みます',
+    skipButton: 'おまかせで始める',
+    selectedActionsTitle: '今日のレッスン内容',
   },
 } as const satisfies LessonCopy
 
@@ -674,6 +1037,8 @@ export const LESSON_COPY_EN = {
     referenceLabel: 'Reference',
     nonTypingGuide: 'After checking the content, use the button below to continue.',
     stageListenRepeatLabel: 'Listen and repeat',
+    stageListenLabel: 'Listen',
+    stageRepeatLabel: 'Repeat',
     stageAiQuestionLabel: 'AI question',
     stageTypingLabel: 'Typing',
     stageAiConversationLabel: 'Talk with AI',
@@ -681,9 +1046,10 @@ export const LESSON_COPY_EN = {
     guideAlexTitle: "Alex's tip",
     guideEmmaTitle: "Emma's tip",
     guideDefaultTitle: 'Guide',
+    hintLabel: 'Hint',
     listenPrimary: 'First, focus only on the sounds without looking at the text.',
     listenSecondary: 'It helps to let the sound flow directly from your ears to your mouth.',
-    repeatPrimary: "It doesn't have to be perfect. Try copying the sound as you hear it.",
+    repeatPrimary: "Focus only on the sound — don't worry about grammar or spelling.",
     repeatSecondary: 'Focus on rhythm and chunking rather than spelling.',
     aiQuestionPrimary: 'A short answer is fine. Just try answering in English first.',
     aiQuestionSecondary: 'Getting the words out matters more than being perfect.',
@@ -692,39 +1058,48 @@ export const LESSON_COPY_EN = {
     typingNeutralPrimary: 'Recall the English you heard and type it calmly.',
     typingSecondary: 'Turning sound into text makes the memory much stronger.',
     aiConversationPrimary: "You can speak freely here. Using even one phrase from today is enough.",
+    challengeListeningPrimary: 'Listen carefully and the sounds will naturally connect to the words!',
+    challengeSpeakingPrimary: 'When you hear a sound, try to repeat it directly without converting to text first!',
     aiConversationSecondary: 'What matters most is actually using it.',
     guideDefaultPrimary: "Take it one step at a time.",
     guideDefaultSecondary: 'Listen, repeat, and use it. Keep that flow going.',
-    lessonHeadingTemplate: '{language} for {scene}',
+    lessonHeadingTemplate: 'Talk with {scene} in {language}',
     timelineListenRepeat: 'Listen / Repeat',
+    timelineListen: 'Listen',
+    timelineRepeat: 'Repeat',
     timelineAiQuestion: 'AI Question',
     timelineTyping: 'Typing',
     timelineAiConversation: 'Talk with AI',
     aiConversationPrompt: 'Please talk with the AI.',
-    listenAction: 'Listen to the audio',
+    listenAction: 'Connect image and sound',
     repeatAction: 'Speak into the mic',
     aiQuestionAction: 'Answer the question',
     typingAction: 'Type the sentence',
     aiConversationAction: 'Talk with AI',
     stageScaffoldLabel: 'Scaffold transition',
     scaffoldAction: 'Bridge meaning into English',
-    scaffoldPrimary: 'Imagine the flow from your native language into English.',
+    scaffoldPrimary: 'Learn phrases as chunks through sound.',
     scaffoldSecondary: 'You will get used to English little by little.',
     questionLabel: 'Question',
     blockProgressLabel: "Today's questions",
     questionProgressLabel: 'You are now working on question {current}.',
-    listenInstruction: 'Press play and listen to the conversation.',
-    listenStartRepeatInstruction: 'Once you catch it, try saying it aloud.\nPress start recording.',
+    listenInstruction: 'Listen a few times and connect the image with the sound.',
+    listenStartRepeatInstruction: 'As you listen, try to imagine how it would sound when you say it.\nWhen ready, go to repeat.',
     listenPlayButton: '▶ Play',
     listenStopButton: '■ Stop',
-    listenRecordingButton: '🎤 Start recording',
+    listenRecordingButton: 'Go to repeat',
     listenPlayingLabel: 'Audio is playing',
     listenAudioNotReady: 'Audio file is not ready yet',
-    repeatSpeakInstruction: 'Try pronouncing it by copying the sound.',
-    repeatRetryAudioButton: '🔄 Listen again',
+    repeatSpeakInstruction: 'Repeat and record the sentence you heard in STEP 1.',
+    repeatRetryAudioButton: 'Back to listen',
     repeatRecordingButton: '🎤 Start recording',
+    repeatRecordAgainButton: '🎤 Record again',
+    repeatScorePrompt: 'Press the score button after the audio finishes.',
+    repeatAfterRecordingInstruction: 'Recording complete. Press the score button.',
     repeatStopRecordingButton: '■ Stop recording',
     repeatPlayRecordedButton: '🔊 Play your recording',
+    compareAudioButton: 'Compare audio',
+    comparingAudioLabel: 'Comparing…',
     repeatScoreButton: 'Score it',
     repeatScoringLabel: 'Scoring...',
     repeatBrowserUnsupported: 'This browser does not support recording. Please use a Chromium-based browser.',
@@ -736,31 +1111,96 @@ export const LESSON_COPY_EN = {
     repeatRetryLabel: 'Please check the audio once more',
     repeatNextQuestionButton: 'Next question',
     repeatAttemptCountLabel: 'Attempts: {current} / {max}',
-    repeatAttemptLimitReachedLabel: 'You have tried 3 times, so let’s move on',
+    repeatAttemptLimitReachedLabel: "You have tried 3 times, so let's move on",
+    repeatScoreExcellent: 'Great job!',
+    repeatScoreGood: 'Getting there!',
+    repeatScoreExcellentSub: "Let's go to the listening challenge.",
+    repeatScoreGoodSub: 'Almost perfect — try listening and repeating once more.',
+    repeatAttemptSuffix: '',
+    repeatScoreSuffix: '',
+    repeatAttemptLimitEncouragement: "It's okay! You'll get it naturally with more listening.",
+    repeatAttemptLimitAdvance: 'Move on',
+    repeatTipPerfect: 'Great rhythm. Keep it up!',
+    repeatTipCompleteness: 'Try to say the whole sentence to the end.',
+    repeatTipCompletenessMissing: 'Focus on saying "{word}" and finish the full sentence.',
+    repeatTipWordMatch: 'Listen again and check the sound differences.',
+    repeatTipWordMatchMissing: 'Pay attention to the sound of "{word}".',
+    repeatTipClarity: 'Try speaking a little more slowly.',
+    repeatTipRhythm: 'Try to pronounce the endings more clearly.',
+    repeatTipGenericLow: 'Listen once more and try imitating again.',
+    repeatTipGenericGood: 'Looking good! It gets more natural with practice.',
+    aiConvYouLabel: 'You',
+    aiConvThinking: 'AI is thinking...',
+    aiConvRetryButton: 'Try again',
+    aiConvAdvanceButton: 'Next',
+    aiConvExamplePrefix: '💬 e.g.',
+    aiQuestionPlaying: 'Playing…',
+    aiQuestionRetryPlay: 'Listen again',
+    aiQuestionShowExample: 'Show example answer',
+    aiQuestionExampleLabel: 'Example',
+    aiQuestionAudioError: 'Could not play audio. Please try again.',
+    scaffoldAudioPreparing: 'Preparing audio...',
+    scaffoldPlayButton: '▶ Play',
+    audioPreparing: 'Preparing audio…',
     scaffoldStepLabel: 'Step {current} / {total}',
     scaffoldPlayingLabel: 'Playing audio {current} / {total}...',
     scaffoldAutoPlayDoneLabel: 'All 3 audio clips finished',
     scaffoldRestartButton: 'Listen from the beginning',
     scaffoldNextButton: 'Next step',
-    scaffoldInstruction: 'Try to grasp the meaning from image and audio alone.',
+    scaffoldBackToListenButton: 'Back to repeat',
+    backToOverview: '← Back to lesson overview',
+    backToScaffold: 'Back to image understanding',
+    backToAiQuestion: 'Back to AI question',
+    backToTyping: 'Back to AI conversation',
+    ctaAdvanceTemplate: 'Go to {stage}',
+    ctaViewResults: 'View lesson results',
+    scaffoldInstruction: 'The audio plays 3 times: first in English, second with key chunks shown as text, and third in English again.',
     aiQuestionInputGuide: 'Try answering in English.',
-    aiQuestionPlayButton: 'Listen to AI question',
+    aiQuestionPlayButton: '🔊 Play question',
+    aiQuestionLabel: 'AI Question',
+    conversationFlowLabel: 'Conversation flow',
+    aiQuestionFirstTurnRewrite: 'Think about the sentence you practiced. Can you say the sentence with \'{to}\' instead of \'{from}\'?',
+    aiQuestionFirstTurnRewriteBeginner: 'Say it with \'{to}\'.',
+    aiQuestionFirstTurnRewriteIntermediate: 'Can you say it with \'{to}\'?',
+    aiQuestionFirstTurnRepeat: 'Try saying the sentence you practiced one more time.',
+    aiQuestionPartial: 'Almost! You\'re close.',
+    aiQuestionGoalLabel: '🎯 Say this:',
+    aiQuestionGoalUse: 'Use:',
+    hintEncouragementCollapsed: 'You can check the hint if you need it.',
+    hintEncouragementHidden: "You're getting close to intermediate. Try without the hint first.",
+    hintEncouragementOptional: "Looking good! Try it on your own first.",
+    hintShowButton: 'Show hint',
+    unclearToken: '[unclear]',
+    aiQuestionR2PersonWho: 'Nice. Who did you talk with?',
+    aiQuestionR2PersonConfirm: 'I see. Was it {person}?',
+    aiQuestionR2TimeWhen: 'Nice. When was that?',
+    aiQuestionR2TimeConfirm: 'I see. Did you do it {time}?',
+    aiQuestionR2Generic: 'Great. Can you say that again as a full sentence?',
+    aiQuestionR3FullSentence: 'Nice! Can you say the whole sentence one more time?',
+    aiQuestionR3FullSentencePerson: 'Nice! Can you say the whole sentence with \'{person}\' one more time?',
+    aiQuestionR3FullSentenceTime: 'Nice! Can you say the whole sentence for \'{time}\' one more time?',
+    aiQuestionR3FullSentenceBoth: 'Nice! Can you say the whole sentence with \'{person}\' for \'{time}\' one more time?',
+    aiQuestionR3WhatElse: 'What else happened?',
+    aiQuestionR3Generic: 'Can you say a little more?',
     aiQuestionInstruction: 'Listen and answer using what you learned.',
     aiQuestionRecordButton: '🎤 Record your answer',
     aiQuestionStopButton: '■ Stop recording',
     aiQuestionRecognizing: 'Recognizing...',
     aiQuestionYourAnswer: 'Your answer',
     aiQuestionNextQuestion: 'Next question',
+    aiQuestionNextStage: 'Go to typing',
     aiQuestionRoundLabel: 'Question {current} / {total}',
     aiQuestionGood: 'Nice! That totally makes sense.',
     aiQuestionClose: 'That works! Natives often say it like this:',
-    aiQuestionRetry: '',
-    aiQuestionSilent: 'Could not catch that. Try speaking again.',
+    aiQuestionRetry: 'Try answering the question. Listen again and give it another go.',
+    aiQuestionSilent: "I didn't quite hear you. Give it another try!",
     aiQuestionBetterWay: 'Common way to say it: ',
     aiQuestionFollowUp: 'Can you tell me more about that?',
     aiQuestionFinalRound: 'Last one — say the full sentence.',
+    aiQuestionRetryTurn: 'Try again',
     aiQuestionRetryAll: 'Try again from the start',
     typingCheckButton: 'Check',
+    typingEmptyGuidance: 'Try typing it first',
     typingPlayButton: 'Play audio',
     typingNextButton: 'Next step',
     aiConversationStartButton: '💬 Start conversation',
@@ -771,12 +1211,71 @@ export const LESSON_COPY_EN = {
     aiConvFeedbackTitle: 'AI Feedback',
     aiConvAdviceTitle: 'Tips for improvement',
     aiConvRecordButton: '🎤 Speak',
+    aiConvShowHint: 'Show hint',
     aiConvStopButton: '■ Stop',
     aiConvRecognizing: 'Recognizing...',
     aiConvYourReply: 'Your reply',
     aiConvNextTurn: 'Next',
     aiConvRetryAll: 'Try again',
+    paywallTitle: 'Nice work!',
+    paywallSubtitle: '',
+    paywallValue: 'Keep practicing daily and you\'ll speak naturally.',
+    paywallCtaPrimary: 'Start free trial',
+    paywallCtaSecondary: 'Continue free (limited)',
+    paywallFreeLimit: 'Free plan: up to 3 problems per day.',
+    aiConvNextProblem: 'Go to challenge',
     aiConvFinishLesson: 'Finish lesson',
+    repeatSuccessGood: 'Nice! That sounded natural.',
+    repeatSuccessOk: 'Good job. That was easy to understand.',
+    repeatImproved: 'Nice! That was better than before.',
+    repeatStable: 'That was consistent. Nice.',
+    repeatSlightDrop: 'Almost there. Try once more.',
+    repeatWeaknessMissing: "Don't forget \"{word}\".",
+    repeatWeaknessSound: 'Listen to \"{word}\" again.',
+    aiQuestionSuccess: 'Nice! That works in real conversation.',
+    typingSuccess: 'Nice! You remembered it.',
+    aiConversationSuccess: 'That sounds natural in real conversation.',
+    lessonSentenceCompleted: '',
+    soundGameTitle: 'Challenge',
+    soundGameCorrect: 'Nice!',
+    soundGameIncorrect: 'Almost. Listen again.',
+    soundGameComplete: 'All clear!',
+    quickResponseTitle: 'Repeat Challenge',
+    quickResponseListen: 'Listen and repeat instantly',
+    quickResponseCorrect: 'Nice!',
+    quickResponseTryAgain: 'Try again!',
+    quickResponseComplete: 'All clear!',
+    recallTitle: 'Say It in English Challenge',
+    recallPrompt: 'Look at the Japanese and say it in English',
+    recallCorrect: 'Nice!',
+    recallTryAgain: 'Try again!',
+    recallComplete: 'All clear!',
+    miniReviewNice: 'You can use this in real conversation.',
+    miniReviewAlmost: 'Listen once more.',
+    miniReviewWho: 'Who?',
+    miniReviewWhen: 'When?',
+    miniReviewWhichChanges: 'Which part changes?',
+    miniReviewSayWith: 'Say it with {value}.',
+    miniReviewSayFor: 'Say it for {value}.',
+    miniReviewRecallPrompt: 'Which sentence did you just practice?',
+    miniReviewWhichSentence: 'Which one is correct?',
+    miniReviewValidationCta: 'Listening challenge',
+    miniReviewRetryChallenge: 'Try again',
+    challengeTitle: 'Challenge',
+    challengeDescription: 'Listen to the audio and choose the correct sentence.',
+    challengeStart: 'Start',
+    challengeAudioPlaying: '🎧 Playing audio',
+    challengeCorrect: '○ Correct!',
+    challengeIncorrect: '× Listen once more.',
+    miniReviewTransferPick: 'What about {value}?',
+    miniReviewTenseTransfer: 'What if it were {value}?',
+    miniReviewSubjectTransfer: 'What if {value} said it?',
+    miniReviewListenFirst: 'Listen, then choose.',
+    miniReviewSpeakNow: 'Say it now.',
+    miniReviewSpeechDetected: 'I heard you!',
+    miniReviewNoSpeech: 'Try speaking again.',
+    lessonChecking: 'Checking that now...',
+    lessonPreparingNext: 'Preparing the next step...',
     repeatClarityLabel: 'Clarity',
     repeatWordMatchLabel: 'Word match',
     repeatRhythmLabel: 'Rhythm / chunking',
@@ -784,9 +1283,13 @@ export const LESSON_COPY_EN = {
     
     repeatStopError: 'Failed to stop recording. Please try again.',
     repeatEmptyRecordingError: 'No recording data found.',
+    repeatNoRecordingForScore: 'No audio detected. Please record before scoring.',
     repeatMicError: 'Failed to access microphone.',
     repeatPlaybackError: 'Failed to play audio.',
     repeatScoreError: 'Failed to score your speech.',
+    audioLoading: 'Loading audio...',
+    audioRetry: 'Tap to retry',
+    audioUnavailable: 'Audio unavailable',
   },
   overviewCard: {
     headerBadge: "Today's Lesson",
@@ -798,7 +1301,7 @@ export const LESSON_COPY_EN = {
     levelLabel: 'Level',
     newPhraseLabel: 'New word / phrase',
     lessonStartLabel: 'Lesson start',
-    lessonStartTitle: 'We will take today’s expression to a level where you can actually use it.',
+    lessonStartTitle: "We will take today's expression to a level where you can actually use it.",
     lessonStartDescription:
       'You will build it step by step through listening, repeating, answering the AI, typing, and conversation.',
     startButton: 'Start lesson',
@@ -809,17 +1312,55 @@ export const LESSON_COPY_EN = {
     stageTypingDesc: 'Type it out to lock in spelling and word order.',
     stageAiConversationDesc: 'Practice real conversation using today\'s expressions.',
     stageSectionTitle: 'Lesson structure',
-    guideText: 'We will guide you through today’s lesson',
+    guideText: "We will guide you through today's lesson",
     guideEncouragement: "Let's do it together today!",
     lessonTimeLabel: 'Estimated time',
     practiceSummary:
-      'You will not stop at listening. You will speak, type, and finish by using today’s English in conversation with the AI.',
+      "You will not stop at listening. You will speak, type, and finish by using today's English in conversation with the AI.",
+    focusTip: 'Focus on speaking short phrases naturally in this lesson',
     featureSpeakTitle: 'Practice out loud',
     featureSpeakDescription: 'First listen, repeat, and get used to natural phrasing.',
     featureAnswerTitle: 'Answer questions',
     featureAnswerDescription: 'Use the expression immediately and get comfortable with short responses.',
     featureConversationTitle: 'Use it in conversation',
-    featureConversationDescription: 'Finish by practicing today’s English in an AI conversation.',
+    featureConversationDescription: "Finish by practicing today's English in an AI conversation.",
+    titleTemplate: '{lang} Lesson — Speaking in {region}',
+    pillLanguage: 'Language',
+    pillLevel: 'Level',
+    pillRegion: 'Region',
+    pillGoal: 'Goal',
+    pillAge: 'Age group',
+    questionCountLabel: 'Questions today',
+    questionCountValue: '{n}',
+    skillEstimateTitle: 'Skill estimate',
+    skillEstimateNote: 'Based on your recent lesson results',
+    skillConversation: 'Conversation',
+    skillListening: 'Listening',
+    skillSpeaking: 'Speaking',
+    skillWriting: 'Writing',
+    lessonFlowTitle: "Today's flow",
+    lessonFlowSubtitle: 'Listen → Speak → Converse → Challenge',
+    flowStep1Label: 'Listen',
+    flowStep1Sub: 'Visualize the situation',
+    flowStep2Label: 'Repeat',
+    flowStep2Sub: 'Mimic sounds and rhythm',
+    flowStep3Label: 'Chunk',
+    flowStep3Sub: 'Understand phrases in chunks',
+    flowStep4Label: 'Respond',
+    flowStep4Sub: 'Respond to AI prompts',
+    flowStep5Label: 'Reinforce',
+    flowStep5Sub: 'Write to reinforce memory',
+    flowStep6Label: 'Use',
+    flowStep6Sub: 'Use it in conversation',
+  },
+  dailyFlow: {
+    badge: 'Daily Flow',
+    title: 'Plan Your English Day',
+    instruction: 'Pick one action for each time block, or tap "Auto-select & start" to begin right away',
+    startButton: 'Start Lesson',
+    pickProgress: 'Pick your actions',
+    skipButton: 'Auto-select & start',
+    selectedActionsTitle: "Today's actions",
   },
 } as const satisfies LessonCopy
 
@@ -838,4 +1379,80 @@ export function getLessonCopy(uiLanguageCode?: string | null): LessonCopy {
   ) as SupportedLang | undefined
 
   return COPY_MAP[lang ?? 'ja']
+}
+
+// ── Emma Hints ──────────────────────────────────────────────
+// Level-aware, stage-specific guidance from Emma.
+// Short, warm, supportive. Reflects NativeFlow learning philosophy:
+// scene/image first → sound-to-meaning → chunk understanding → speaking readiness.
+
+export type EmmaHintStage = 'listen' | 'repeat' | 'scaffold' | 'aiQuestion' | 'typing'
+export type EmmaHintLevel = 'beginner' | 'intermediate' | 'advanced'
+
+export type EmmaHintSet = Record<EmmaHintStage, string>
+export type EmmaHintsByLevel = Record<EmmaHintLevel, EmmaHintSet>
+export type EmmaHintsByLang = Record<string, EmmaHintsByLevel>
+
+export const EMMA_HINTS: EmmaHintsByLang = {
+  ja: {
+    beginner: {
+      listen: 'まずは場面と音をつなげよう。文字は気にしなくてOK',
+      repeat: '完璧じゃなくて大丈夫。意味を浮かべながら声に出そう',
+      scaffold: 'かたまりで音と意味をつなげてみよう',
+      aiQuestion: '短くていいよ。思いついた言葉で答えてみよう',
+      typing: '聞こえた通りに書いてみよう。スペルは気にしすぎないで',
+    },
+    intermediate: {
+      listen: '場面を思い浮かべながら、フレーズのまとまりを聞き取ろう',
+      repeat: 'かたまりで真似してみよう。一語ずつじゃなくて大丈夫',
+      scaffold: 'かたまりでつかむと、会話でそのまま使いやすいよ',
+      aiQuestion: '習った表現を使って、自然に返してみよう',
+      typing: 'フレーズのまとまりを意識して書いてみよう',
+    },
+    advanced: {
+      listen: '会話全体の流れと、話し手の気持ちをつかもう',
+      repeat: 'リズムとイントネーションも意識して再現してみよう',
+      scaffold: '場面の中で、表現がどう使われているか感じてみよう',
+      aiQuestion: '自然な流れで返せるかを意識してみよう',
+      typing: '自分の言葉で書き直せるくらい、表現を自分のものにしよう',
+    },
+  },
+  en: {
+    beginner: {
+      listen: 'Start with the scene and the sound, not the text.',
+      repeat: "You don't need to be perfect. Picture the meaning and say it.",
+      scaffold: 'Connect the chunks to the sounds you heard.',
+      aiQuestion: 'A short answer is fine. Just try.',
+      typing: "Write what you heard. Don't worry about spelling.",
+    },
+    intermediate: {
+      listen: 'Picture the scene and catch the phrases as chunks.',
+      repeat: 'Try to repeat in chunks, not word by word.',
+      scaffold: 'Chunks are easier to reuse in real conversation.',
+      aiQuestion: 'Use what you learned. Aim for a natural response.',
+      typing: 'Write in phrase chunks, not individual words.',
+    },
+    advanced: {
+      listen: 'Catch the flow and the speaker\'s intent.',
+      repeat: 'Match the rhythm and intonation, not just the words.',
+      scaffold: 'Feel how the expression works inside the scene.',
+      aiQuestion: 'Aim for a natural response, not just a correct one.',
+      typing: 'Make the expression yours. Rephrase if you can.',
+    },
+  },
+}
+
+/**
+ * Returns Emma hint text for a given stage, level, and UI language.
+ * Falls back to Japanese if the language is not supported.
+ */
+export function getEmmaHint(
+  stage: EmmaHintStage,
+  level: EmmaHintLevel,
+  uiLanguageCode?: string | null
+): string {
+  const lang = (uiLanguageCode ?? 'ja').toLowerCase()
+  const langHints = EMMA_HINTS[lang] ?? EMMA_HINTS['ja']
+  const levelHints = langHints[level] ?? langHints['beginner']
+  return levelHints[stage] ?? ''
 }

@@ -13,6 +13,9 @@ export const LESSON_STAGE_ORDER = [
 ] as const
   
   export type LessonStageId = (typeof LESSON_STAGE_ORDER)[number]
+
+  /** Extended stage ID that includes non-English response stages */
+  export type ExtendedLessonStageId = LessonStageId | 'audio_choice'
   
   export type LessonStageStatus = 'locked' | 'active' | 'completed'
   

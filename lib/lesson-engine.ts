@@ -24,6 +24,10 @@ export type LessonBlockItem = {
   aiQuestionText?: string | null
   /** Resolved image URL for this item's scene. Populated by image generation layer. */
   image_url?: string | null
+  /** Audio generation result. 'ok' = generated, 'fallback' = reused/degraded, 'failed' = unavailable. */
+  audio_status?: 'ok' | 'fallback' | 'failed'
+  /** Additional typing answers from scene variations for diverse typing prompts. */
+  typing_variations?: string[] | null
 }
 
 export type LessonBlock = {
@@ -33,6 +37,17 @@ export type LessonBlock = {
   description: string
   estimatedMinutes: number
   items: LessonBlockItem[]
+  /** Scene key (e.g. 'wake_up'). Used by the image resolver. */
+  sceneId?: string | null
+  /** Scene category (e.g. 'daily-flow'). Used by the image resolver. */
+  sceneCategory?: string | null
+
+  /** Region for conversation variation (e.g. 'en_us_general'). */
+  region?: string | null
+
+  /** Age group for conversation flavor (e.g. '20s'). */
+  ageGroup?: string | null
+
   /** Prompt for image generation (not yet used for actual generation). */
   image_prompt?: string | null
 }

@@ -4,6 +4,7 @@ import OpenAI from 'openai'
 const DEFAULT_MODEL = process.env.OPENAI_MODEL ?? 'gpt-4.1-mini'
 const DEFAULT_TEMPERATURE = 0.7
 const DEFAULT_MAX_TOKENS = 500
+const DEFAULT_TIMEOUT_MS = 10_000
 
 let openaiClient: OpenAI | null = null
 
@@ -15,7 +16,7 @@ export function getOpenAIClient(): OpenAI {
     throw new Error('OPENAI_API_KEY is not set')
   }
 
-  openaiClient = new OpenAI({ apiKey })
+  openaiClient = new OpenAI({ apiKey, timeout: DEFAULT_TIMEOUT_MS })
   return openaiClient
 }
 

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
+import AppHeader from '@/components/header/app-header'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 
 const supabase = getSupabaseBrowserClient()
@@ -107,13 +108,7 @@ export function ResetPasswordClient() {
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
-        <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-          <div className="mx-auto flex h-16 max-w-[960px] items-center justify-between px-6 sm:px-10">
-            <Link href="/" className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg" aria-label="NativeFlow トップへ">
-              <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
-            </Link>
-          </div>
-        </header>
+        <AppHeader />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">読み込み中...</p>
@@ -158,13 +153,7 @@ export function ResetPasswordClient() {
   if (!hasSession) {
     return (
       <div className="min-h-screen flex flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
-        <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-          <div className="mx-auto flex h-16 max-w-[960px] items-center justify-between px-6 sm:px-10">
-            <Link href="/" className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg" aria-label="NativeFlow トップへ">
-              <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
-            </Link>
-          </div>
-        </header>
+        <AppHeader />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">リンクが無効または期限切れです</h2>
@@ -216,13 +205,7 @@ export function ResetPasswordClient() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
-      <header className="sticky top-0 z-50 border-b border-[#ede9e2] bg-white">
-        <div className="mx-auto flex h-16 max-w-[960px] items-center justify-between px-6 sm:px-10">
-          <Link href="/" className="flex items-center focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 rounded-lg" aria-label="NativeFlow トップへ">
-            <Image src="/images/branding/header_logo.svg" alt="NativeFlow" width={200} height={48} className="h-9 w-auto object-contain sm:h-10" priority />
-          </Link>
-        </div>
-      </header>
+      <AppHeader />
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
           <div className="text-center mt-6 sm:mt-8">
