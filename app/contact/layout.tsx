@@ -12,9 +12,13 @@ export default function ContactLayout({ children }: { children: React.ReactNode 
       <style>{`
         .lp-footer-bottom { flex-wrap: wrap; }
         ${LP_FOOTER_CSS}
+        @media (max-width: 1024px) {
+          .lp-header-offset{height:56px !important}
+        }
       `}</style>
 
       <AppHeader />
+      <div className="lp-header-offset" style={{height:72}} />
 
       {children}
 

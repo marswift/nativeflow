@@ -28,7 +28,7 @@ function CTA({ label='無料ではじめる', loc='inline', large=false }:{label
         letterSpacing:'-0.01em',
       }}>{label} →</Link>
       <div style={{display:'flex',gap:14,fontSize:12,color:'#9CA3AF',flexWrap:'wrap',justifyContent:'center'}}>
-        <span>✓ クレカ不要</span><span>✓ 7日間無料</span><span>✓ いつでも解約</span>
+        <span>✓ すぐ始められる</span><span>✓ 7日間無料</span><span>✓ いつでも解約</span>
       </div>
     </div>
   )

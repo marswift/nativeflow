@@ -22,7 +22,6 @@ export default function AppFooter() {
               />
             </Link>
           </div>
-          <p style={{ fontSize: 13, color: '#aaa', lineHeight: 1.7, maxWidth: 240 }}>Speak with AI. Learn like a native.</p>
         </div>
         <div>
           <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 14, color: C.dark }}>プロダクト</div>
@@ -43,9 +42,9 @@ export default function AppFooter() {
           <Link href="/contact" style={{ display: 'block', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>お問い合わせ</Link>
         </div>
       </div>
-      <div className="lp-footer-bottom" style={{ maxWidth: 1140, margin: '28px auto 0', paddingTop: 24, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <p style={{ fontSize: 13, color: '#bbb' }}>© 2026 NativeFlow. All rights reserved.</p>
-        <p style={{ fontSize: 12, color: '#bbb' }}>Speak with AI. Learn like a native.</p>
+      <div className="lp-footer-bottom" style={{ maxWidth: 1140, margin: '16px auto 0', paddingTop: 16, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <p style={{ fontSize: 12, color: '#bbb' }}>© 2026 NativeFlow. All rights reserved.</p>
+        <p style={{ fontSize: 11, color: '#ccc' }}>Speak with AI. Learn like a native.</p>
       </div>
     </footer>
   )
@@ -54,10 +53,8 @@ export default function AppFooter() {
 /** CSS classes required for footer responsive behavior — include in page <style> tag */
 export const LP_FOOTER_CSS = `
   .lp-logo-footer{height:42px;width:auto;display:block;object-fit:contain}
-  @media (max-width:768px){
-    .lp-footer-grid{grid-template-columns:1fr 1fr !important;gap:24px !important}
-    .lp-footer-bottom{flex-direction:column;gap:12px;text-align:center !important}
-    .lp-logo-footer{height:36px !important}
+  @media (max-width:1024px){
+    .lp-footer{display:none !important}
   }
   @media (max-width:480px){
     .lp-footer-grid{grid-template-columns:1fr !important}

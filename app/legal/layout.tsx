@@ -13,7 +13,8 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
         .legal-title { font-size: 36px; font-weight: 900; color: #1a1a2e; margin-bottom: 0; letter-spacing: -0.5px; line-height: 1.2; }
         .lp-footer-bottom { flex-wrap: wrap; }
         ${LP_FOOTER_CSS}
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
+          .lp-header-offset{height:56px !important}
           .legal-hero-wrap { padding: 40px 24px 36px !important; }
           .legal-title { font-size: 28px !important; }
           .legal-main { padding: 32px 24px 64px !important; }
@@ -22,6 +23,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
       `}</style>
 
       <AppHeader />
+      <div className="lp-header-offset" style={{height:72}} />
 
       {children}
 
