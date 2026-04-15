@@ -139,6 +139,8 @@ export function SignupClient() {
     return (
       <div className="min-h-screen flex flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
         <AppHeader />
+        <div className="h-[72px] lg:block hidden" />
+        <div className="h-[56px] lg:hidden" />
         <main className="flex-1">
           <div className={CONTAINER_CLASS}>
             <div className="text-center mt-10 sm:mt-12">
@@ -163,6 +165,8 @@ export function SignupClient() {
   return (
     <div className="min-h-screen flex flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
       <AppHeader />
+      <div className="h-[72px] lg:block hidden" />
+      <div className="h-[56px] lg:hidden" />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>

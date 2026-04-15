@@ -13,6 +13,8 @@ type AppHeaderProps = {
   onChangeLanguage?: (lang: string) => void
   /** Current scroll position — controls blur/border on public mode. */
   scrollY?: number
+  /** "simple" renders a minimal logo-only header (for login/signup pages). */
+  variant?: 'default' | 'simple'
 }
 
 const C = {
@@ -53,9 +55,23 @@ const NAV_CSS = `
   }
 `
 
-export default function AppHeader({ onLogout, scrollY = 0 }: AppHeaderProps) {
+export default function AppHeader({ onLogout, scrollY = 0, variant = 'default' }: AppHeaderProps) {
   const [mobileOpen,setMobileOpen]=useState(false)
   useEffect(()=>{if(mobileOpen){document.body.style.overflow='hidden'}else{document.body.style.overflow=''}return()=>{document.body.style.overflow=''}},[mobileOpen])
+
+  // ── Simple mode (login/signup) — logo only, no fixed positioning ──
+  if (variant === 'simple') {
+    return (
+      <header className="w-full border-b border-[#ede9e2] bg-white px-6 py-3">
+        <div className="mx-auto flex max-w-6xl items-center justify-center">
+          <Link href="/">
+            <img src="/images/branding/header_logo.svg" alt="NativeFlow" className="h-[44px] w-auto" />
+          </Link>
+        </div>
+      </header>
+    )
+  }
+
   // ── Auth mode ──
   if (typeof onLogout === 'function') {
     return (
@@ -108,12 +124,12 @@ export default function AppHeader({ onLogout, scrollY = 0 }: AppHeaderProps) {
           </div>
           <div className="lp-nav-right" style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
             <div className="lp-nav-links" style={{ display: 'flex', gap: 32, alignItems: 'center' }}>
-              <Link href="/#features" className="lp-nav-menu-link" style={{ fontSize: 14, fontWeight: 700, color: C.mid, transition: 'color .15s', cursor: 'pointer' }}><span>特長</span></Link>
+              <Link href="/#features" className="lp-nav-menu-link" style={{ fontSize: 14, fontWeight: 700, color: C.mid, transition: 'color .15s', cursor: 'pointer' }}><span>特徴</span></Link>
               <Link href="/#flow" className="lp-nav-menu-link" style={{ fontSize: 14, fontWeight: 700, color: C.mid, transition: 'color .15s', cursor: 'pointer' }}><span>学習の流れ</span></Link>
               <Link href="/#pricing" className="lp-nav-menu-link" style={{ fontSize: 14, fontWeight: 700, color: C.mid, transition: 'color .15s', cursor: 'pointer' }}><span>料金</span></Link>
               <Link href="/#faq" className="lp-nav-menu-link" style={{ fontSize: 14, fontWeight: 700, color: C.mid, transition: 'color .15s', cursor: 'pointer' }}><span>よくある質問</span></Link>
             </div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 44, alignItems: 'center' }}>
               <Link href="/login" style={{ fontSize: 14, fontWeight: 700, color: C.mid, transition: 'color .15s', cursor: 'pointer', padding: '8px 6px', display: 'inline-block' }}>ログイン</Link>
               <Link href="/signup" className="btn-fill" style={{ padding: '10px 28px', fontSize: 14, animation: 'none', boxShadow: '0 4px 16px rgba(255,107,53,.3)' }}>無料ではじめる</Link>
             </div>
@@ -132,7 +148,7 @@ export default function AppHeader({ onLogout, scrollY = 0 }: AppHeaderProps) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke={C.dark} strokeWidth="2" strokeLinecap="round"/></svg>
           </button>
         </div>
-        <Link href="/#features" onClick={()=>setMobileOpen(false)}>特長</Link>
+        <Link href="/#features" onClick={()=>setMobileOpen(false)}>特徴</Link>
         <Link href="/#flow" onClick={()=>setMobileOpen(false)}>学習の流れ</Link>
         <Link href="/#pricing" onClick={()=>setMobileOpen(false)}>料金</Link>
         <Link href="/#faq" onClick={()=>setMobileOpen(false)}>よくある質問</Link>

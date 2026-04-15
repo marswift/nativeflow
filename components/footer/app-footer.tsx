@@ -6,7 +6,21 @@ const C = {
   border: '#ede9e2',
 }
 
-export default function AppFooter() {
+export default function AppFooter({ variant = 'default' }: { variant?: 'default' | 'simple' }) {
+  if (variant === 'simple') {
+    return (
+      <footer className="border-t border-[#ede9e2] bg-white px-6 py-6">
+        <div className="mx-auto flex max-w-6xl items-center justify-between text-xs text-[#bbb]">
+          <p>&copy; 2026 NativeFlow</p>
+          <div className="flex gap-4">
+            <Link href="/legal/privacy" className="hover:text-[#888]">プライバシーポリシー</Link>
+            <Link href="/legal/terms" className="hover:text-[#888]">利用規約</Link>
+          </div>
+        </div>
+      </footer>
+    )
+  }
+
   return (
     <footer className="lp-footer" style={{ borderTop: `1px solid ${C.border}`, padding: '40px', background: '#fff' }}>
       <div className="lp-footer-grid" style={{ maxWidth: 1140, margin: '0 auto', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 40 }}>
@@ -26,7 +40,7 @@ export default function AppFooter() {
         <div>
           <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 14, color: C.dark }}>プロダクト</div>
           <Link href="#features" style={{ display: 'block', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>特徴</Link>
-          <Link href="#scenes" style={{ display: 'block', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>学習方法</Link>
+          <Link href="#flow" style={{ display: 'block', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>学習の流れ</Link>
           <Link href="#pricing" style={{ display: 'block', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>料金プラン</Link>
           <Link href="#faq" style={{ display: 'block', fontSize: 13, color: '#888', fontWeight: 600, marginBottom: 8 }}>よくある質問</Link>
         </div>

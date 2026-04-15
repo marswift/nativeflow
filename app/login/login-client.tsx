@@ -198,6 +198,8 @@ export function LoginClient() {
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
         <AppHeader />
+        <div className="h-[72px] lg:block hidden" />
+        <div className="h-[56px] lg:hidden" />
 
         <main className="flex-1">
           <div className={CONTAINER_CLASS}>
@@ -242,6 +244,8 @@ export function LoginClient() {
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
       <AppHeader />
+      <div className="h-[72px] lg:block hidden" />
+      <div className="h-[56px] lg:hidden" />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>

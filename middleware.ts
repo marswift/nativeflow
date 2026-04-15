@@ -205,51 +205,11 @@ export async function middleware(request: NextRequest) {
   // ── i18n locale routing: DISABLED (rollback for stability) ──
   // app/[locale]/ files remain for future re-activation.
 
-  // ── A/B LP split: root path only ──────────────────────────────────────
-  if (path === '/') {
-    const COOKIE_NAME = 'lp_variant'
-    const MAX_AGE = 60 * 60 * 24 * 7 // 7 days
-
-    // QA override: /?lp_variant=a or /?lp_variant=b
-    const overrideParam = request.nextUrl.searchParams.get('lp_variant')?.toLowerCase()
-    const override = overrideParam === 'a' ? 'A' : overrideParam === 'b' ? 'B' : null
-
-    // Determine variant: override > cookie > random
-    let variant: 'A' | 'B'
-    if (override) {
-      variant = override
-    } else {
-      const cookieVal = request.cookies.get(COOKIE_NAME)?.value
-      if (cookieVal === 'A' || cookieVal === 'B') {
-        variant = cookieVal
-      } else {
-        variant = Math.random() < 0.5 ? 'A' : 'B'
-      }
-    }
-
-    // Rewrite to /lp/a or /lp/b (URL stays "/")
-    const rewriteUrl = request.nextUrl.clone()
-    rewriteUrl.pathname = variant === 'A' ? '/lp/a' : '/lp/b'
-    rewriteUrl.searchParams.delete('lp_variant')
-    const response = NextResponse.rewrite(rewriteUrl)
-
-    // Set/refresh cookie
-    response.cookies.set(COOKIE_NAME, variant, {
-      path: '/',
-      maxAge: MAX_AGE,
-      sameSite: 'lax',
-      httpOnly: false, // readable by client analytics if needed
-    })
-
-    return response
-  }
-
   return NextResponse.next()
 }
 
 export const config = {
   matcher: [
-    '/',
     '/api/admin/:path*',
     '/api/stripe/:path*',
     '/api/pronunciation/:path*',
