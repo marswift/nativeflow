@@ -178,7 +178,7 @@ export default function DashboardPage() {
   const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()
 
   async function handleLogout() {
-    await supabase.auth.signOut()
+    try { await supabase.auth.signOut() } catch { /* ignore signOut failure */ }
     router.replace('/login')
     router.refresh()
   }
@@ -213,8 +213,8 @@ export default function DashboardPage() {
       let userId = ''
 
       try {
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.user) { if (isActive) router.replace('/login'); return }
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        if (sessionError || !session?.user) { if (isActive) { router.replace('/login'); setLoading(false) }; return }
 
         userId = session.user.id
 
@@ -351,7 +351,7 @@ export default function DashboardPage() {
       <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
       <main className="flex-1">
         <div className="mx-auto w-full max-w-6xl px-6 pt-8 pb-10 sm:px-8 sm:pt-10 lg:px-10">
-          <section className="relative overflow-hidden rounded-[24px] border border-[#E8E4DF] bg-[linear-gradient(135deg,#FFF9EC_0%,#FFFFFF_55%,#FFFDF8_100%)] px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:px-7 sm:py-7">
+          <section className="relative overflow-hidden rounded-[24px] border border-[#E8E4DF] bg-[linear-gradient(135deg,#FFF9EC_0%,#FFFFFF_55%,#FFFDF8_100%)] px-6 py-8 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:px-7 sm:py-10">
             <span className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[rgba(245,166,35,0.10)]" />
             <span className="pointer-events-none absolute bottom-[-18px] right-[72px] h-24 w-24 rounded-full bg-[rgba(245,166,35,0.07)]" />
             <div className="relative z-10">
@@ -360,11 +360,30 @@ export default function DashboardPage() {
                   <span className="h-1.5 w-1.5 rounded-full bg-[#F5A623]" />
                   My Page
                 </div>
-                <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E8E4DF] bg-white/80 px-3 py-1 text-sm text-[#5a5a7a]">
-                  <span aria-hidden="true">💎</span>
-                  <span className="font-bold text-[#1a1a2e]">{profile.total_diamonds ?? 0}</span>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-[#E8E4DF] bg-white/80 px-3 py-1 text-sm text-[#5a5a7a]">
+                    <span aria-hidden="true">💎</span>
+                    <span className="font-bold text-[#1a1a2e]">{profile.total_diamonds ?? 0}</span>
+                  </div>
+                  <p className="text-[10px] text-[#9ca3af]">学習で集まるごほうびポイント</p>
                 </div>
               </div>
+
+              <h1 className="mt-4 text-lg font-black tracking-tight text-[#1a1a2e] sm:text-xl">
+                アカウントと学習設定を整えましょう
+              </h1>
+              <p className="mt-1.5 text-sm leading-relaxed text-[#5a5a7a]">
+                学習言語、地域、プラン、アカウント情報を確認・変更できます。<br />
+                あなたに合った学習環境をここで整えましょう。
+              </p>
+
+              {learningProfile?.target_region_slug && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#E8E4DF] bg-white/60 px-3 py-1.5">
+                  <span className="text-xs font-semibold text-[#5a5a7a]">🌏 {learningProfile.target_region_slug.replace(/_/g, ' ')}</span>
+                  <span className="text-[10px] text-[#9ca3af]">地域表現・生活会話を反映中</span>
+                </div>
+              )}
+
               {/* ── Urgent announcement ── */}
               {urgentAnnouncement && (
                 <div className="mt-4">
@@ -413,7 +432,8 @@ export default function DashboardPage() {
             </div>
             <div className={`${CARD_CLASS} px-5 py-5`}>
               <p className="text-sm font-bold tracking-[0.04em] text-[#1a1a2e]">Flowポイント</p>
-              <p className="mt-3 text-center text-3xl font-extrabold tracking-tight text-[#1a1a2e]">{displayedTotalFlowPoints}</p>
+              <p className="mt-0.5 text-[10px] text-[#9ca3af]">学習の成長ポイント（ランクに反映）</p>
+              <p className="mt-2 text-center text-3xl font-extrabold tracking-tight text-[#1a1a2e]">{displayedTotalFlowPoints}</p>
               <p className="mt-2 text-center text-sm text-[#6b7280]">次のランクまであと {pointsToNextRank} pt</p>
             </div>
             <div className={`${CARD_CLASS} px-5 py-5`}>

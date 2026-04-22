@@ -35,11 +35,13 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     }
 
     const messages = buildChatMessages(body)
+    const rank = typeof body.rank === 'number' ? body.rank : 100
+    const maxTokens = rank < 40 ? 150 : rank < 60 ? 200 : 300
 
     const { text } = await generateChatCompletion({
       messages,
       temperature: 0.7,
-      maxTokens: 300,
+      maxTokens,
     })
 
     if (!text) {

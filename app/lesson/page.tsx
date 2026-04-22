@@ -38,6 +38,7 @@ import { fetchReviewItemsWithContent, injectReviewBlocks } from '../../lib/revie
 import { canStartLesson } from '../../lib/lesson-access'
 import { type LessonPageData } from '../../lib/lesson-page-data'
 import { DAILY_FLOW_BLOCKS } from '../../lib/daily-flow-config'
+import { buildScenarioLabel } from '../../lib/lesson-blueprint-service'
 import {
   CURRENT_LEVEL_OPTIONS,
   TARGET_LANGUAGE_FIXED,
@@ -55,6 +56,7 @@ import { getUserRankProgress } from '../../lib/rank-service'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
 import { useCurrentLanguage } from '@/lib/use-current-language'
 import DailyLanguagePicker from '@/components/daily-language-picker'
+import LpIcon from '@/components/lp-icon'
 import { isDailyLanguageLocked, setDailyLanguageLock, getDailyLockedLanguage } from '../../lib/daily-language-lock'
 import { getSelectedLanguages, type SelectedLanguage } from '../../lib/language-selection'
 
@@ -66,7 +68,7 @@ const SHOW_DEBUG_PANELS = process.env.NEXT_PUBLIC_LESSON_DEBUG === 'true'
 const LESSON_RUNTIME_STORAGE_KEY = 'nativeflow:lesson-runtime-state'
 const NF_DAILY_FLOW_SELECTION_KEY = 'nf_daily_flow_selection'
 
-const PAGE_SHELL_CLASS = 'min-h-screen flex flex-col bg-[#f7f4ef]'
+const PAGE_SHELL_CLASS = 'min-h-screen bg-[#f7f4ef]'
 const CONTAINER_CLASS = 'mx-auto w-full max-w-[1040px] px-6 py-10 sm:px-8 sm:py-12'
 const CARD_CLASS = 'rounded-2xl border border-[#ede9e2] bg-white px-6 py-6 shadow-sm sm:px-8 sm:py-7'
 
@@ -122,12 +124,37 @@ function getLevelLabel(level: CurrentLevel): string {
   return CURRENT_LEVEL_OPTIONS.find((o) => o.value === level)?.label ?? level
 }
 
+const STALE_TYPING_PROMPT = 'Type the English sentence you heard or the key sentence for this scene.'
+
+/** Strip known stale/invalid text from block.description; return empty string if invalid. */
+function sanitizeScenarioLabel(raw: string | null | undefined): string {
+  const s = raw?.trim() || ''
+  if (!s) return ''
+  if (s === STALE_TYPING_PROMPT) return ''
+  // Reject purely-ASCII strings — valid scene labels contain Japanese characters
+  if (!/[\u3000-\u9FFF]/.test(s)) return ''
+  return s
+}
+
 /** Resolve a localized scene label from DAILY_FLOW_BLOCKS by sceneId. */
 function getDailyFlowSceneLabel(sceneId: string | null | undefined, isJa: boolean): string | null {
   if (!sceneId) return null
   for (const block of DAILY_FLOW_BLOCKS) {
     const choice = block.choices.find((c) => c.sceneId === sceneId)
     if (choice) return isJa ? choice.label : choice.labelEn
+  }
+  return null
+}
+
+/** Walk backwards from the current block index to find the nearest block with a sceneId. */
+function findNearestSceneLabel(
+  blocks: { sceneId?: string | null }[],
+  currentIndex: number,
+  isJaUi: boolean,
+): string | null {
+  for (let i = currentIndex; i >= 0; i--) {
+    const sid = blocks[i]?.sceneId
+    if (sid) return getDailyFlowSceneLabel(sid, isJaUi) || buildScenarioLabel(sid)
   }
   return null
 }
@@ -171,7 +198,6 @@ const STAGE_FLOW_POINT_MAP: Record<Exclude<LessonStageId, 'listen'>, number> = {
   repeat: 5,
   scaffold_transition: 5,
   ai_question: 10,
-  typing: 15,
   ai_conversation: 20,
 }
 
@@ -210,13 +236,27 @@ function createUiProgressFromRuntime(
   }
 }
 
+/** Normalize persisted runtime state — migrates removed stages to valid ones. */
+const VALID_STAGES = new Set(['listen', 'repeat', 'scaffold_transition', 'ai_question', 'ai_conversation'])
+
+function normalizePersistedRuntimeState(
+  state: LessonRuntimeEngineState | null
+): LessonRuntimeEngineState | null {
+  if (!state) return null
+  const stage = (state as { currentStageId: string }).currentStageId
+  if (VALID_STAGES.has(stage)) return state
+  // typing → ai_conversation (was the next stage after typing)
+  if (stage === 'typing') return { ...state, currentStageId: 'ai_conversation' as LessonRuntimeEngineState['currentStageId'] }
+  // Unknown stage → restart from listen
+  return { ...state, currentStageId: 'listen' as LessonRuntimeEngineState['currentStageId'] }
+}
+
 const stageMap: Record<string, number> = {
   listen: 0,
   repeat: 1,
   scaffold_transition: 2,
   ai_question: 3,
-  typing: 4,
-  ai_conversation: 5,
+  ai_conversation: 4,
 }
 
 function buildRuntimeStageSubmissionValue(input: {
@@ -240,10 +280,6 @@ function buildRuntimeStageSubmissionValue(input: {
     return input.fallbackAnswer?.trim() || '[ai-question-completed]'
   }
 
-  if (input.stageId === 'typing') {
-    return input.fallbackAnswer?.trim() || ''
-  }
-
   return '[ai-conversation-completed]'
 }
 
@@ -261,10 +297,6 @@ function shouldShowStandaloneNextButton(input: {
   }
 
   if (input.runtimeState != null) {
-    if (input.runtimeState.currentStageId === 'typing') {
-      return false
-    }
-
     return true
   }
 
@@ -905,7 +937,7 @@ export default function LessonPage() {
             setProgress(persisted.progress)
             setInputValue(persisted.inputValue)
             setCorrectTypingCount(persisted.correctTypingCount)
-            setRuntimeState(persisted.runtimeState)
+            setRuntimeState(normalizePersistedRuntimeState(persisted.runtimeState))
             setLessonRunId(persisted.lessonRunId)
             setEarnedFlowPoints(persisted.earnedFlowPoints)
             setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
@@ -1196,44 +1228,7 @@ export default function LessonPage() {
     }
   }, [started])
 
-  useEffect(() => {
-    if (!userId) return
-  
-    let timeoutId: ReturnType<typeof setTimeout>
-  
-    const LOGOUT_TIME = 30 * 60 * 1000 // 30分
-  
-    const resetTimer = () => {
-      clearTimeout(timeoutId)
-  
-      let hasLoggedOut = false
-
-      timeoutId = setTimeout(async () => {
-        if (hasLoggedOut) return
-        hasLoggedOut = true
-      
-        console.log('Auto logout (30min inactivity)')
-        await handleLogoutRef.current()
-      }, LOGOUT_TIME)
-    }
-  
-    const events: (keyof WindowEventMap)[] = [
-      'mousemove',
-      'keydown',
-      'click',
-      'scroll',
-      'touchstart',
-    ]
-  
-    events.forEach((event) => window.addEventListener(event, resetTimer))
-  
-    resetTimer()
-  
-    return () => {
-      clearTimeout(timeoutId)
-      events.forEach((event) => window.removeEventListener(event, resetTimer))
-    }
-  }, [userId])
+  // Inactivity logout is handled globally by components/session-timeout.tsx
 
   // ── Study time recording on page leave / lesson abandon ──
   // Records elapsed study minutes when the user navigates away without formally completing.
@@ -1248,9 +1243,24 @@ export default function LessonPage() {
   useEffect(() => { lessonRunIdRef.current = lessonRunId }, [lessonRunId])
   useEffect(() => { userIdRef.current = userId }, [userId])
   useEffect(() => { hasFinalizedRef.current = hasFinalizedLessonRun }, [hasFinalizedLessonRun])
+  const prevBlockIdxRef = useRef<number>(0)
+  const prevStageIdRef = useRef<string | null>(null)
   useEffect(() => {
-    runtimeStageRef.current = runtimeState?.currentStageId ?? null
-    runtimeBlockIdxRef.current = runtimeState?.currentBlockIndex ?? 0
+    const newBlockIdx = runtimeState?.currentBlockIndex ?? 0
+    const newStageId = runtimeState?.currentStageId ?? null
+
+    runtimeStageRef.current = newStageId
+    runtimeBlockIdxRef.current = newBlockIdx
+
+    // Auto-scroll to top when block or stage changes
+    if (
+      (newBlockIdx !== prevBlockIdxRef.current || newStageId !== prevStageIdRef.current) &&
+      (prevBlockIdxRef.current !== 0 || prevStageIdRef.current !== null)
+    ) {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+    prevBlockIdxRef.current = newBlockIdx
+    prevStageIdRef.current = newStageId
   }, [runtimeState])
 
   useEffect(() => {
@@ -1593,7 +1603,7 @@ export default function LessonPage() {
       setProgress(persisted.progress)
       setInputValue(persisted.inputValue)
       setCorrectTypingCount(persisted.correctTypingCount)
-      setRuntimeState(persisted.runtimeState)
+      setRuntimeState(normalizePersistedRuntimeState(persisted.runtimeState))
       setLessonRunId(persisted.lessonRunId)
       setEarnedFlowPoints(persisted.earnedFlowPoints)
       setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
@@ -1746,7 +1756,7 @@ export default function LessonPage() {
     setListenResetNonce((prev) => prev + 1)
   }
 
-  function handleGoBackToStage(targetStageId: 'scaffold_transition' | 'ai_question' | 'typing' | 'ai_conversation') {
+  function handleGoBackToStage(targetStageId: 'repeat' | 'scaffold_transition' | 'ai_question' | 'ai_conversation') {
     if (runtimeState == null) return
     setRuntimeState({
       ...runtimeState,
@@ -1906,37 +1916,6 @@ export default function LessonPage() {
       return
     }
   
-    // 5) typing はチェック完了後に次へ進める
-    if (currentStageId === 'typing') {
-      if (!canAdvanceLessonStage(nextState)) {
-        const currentRuntimeBlock = getCurrentLessonRuntimeBlock(nextState)
-
-        nextState = submitLessonStageAnswer(nextState, {
-          stageId: 'typing',
-          blockId: currentRuntimeBlock.id,
-          kind: 'typing',
-          value: buildRuntimeStageSubmissionValue({
-            stageId: 'typing',
-            inputValue,
-            fallbackAnswer: item.answer ?? null,
-          }),
-          isCorrect: null,
-          feedback: null,
-        })
-
-        void awardRuntimeStageFlowPointsIfNeeded(nextState, 'typing')
-      }
-
-      if (!canAdvanceLessonStage(nextState)) {
-        return
-      }
-
-      const result = advanceLessonStage(nextState)
-      setRuntimeState(result.state)
-      setInputValue('')
-      return
-    }
-
     // 6) AI会話は完了登録してから完了へ
     if (currentStageId === 'ai_conversation') {
       if (!canAdvanceLessonStage(nextState)) {
@@ -1995,40 +1974,7 @@ export default function LessonPage() {
   }, [handleNext])
 
   function handleCheck() {
-    if (item == null) return
-
-    if (runtimeState != null) {
-      if (runtimeState.currentStageId !== 'typing') return
-      if (canAdvanceLessonStage(runtimeState)) return
-
-      const result = checkTypingAnswer(inputValue, item.answer ?? '')
-      const currentRuntimeBlock = getCurrentLessonRuntimeBlock(runtimeState)
-
-      const nextState = submitLessonStageAnswer(runtimeState, {
-        stageId: 'typing',
-        blockId: currentRuntimeBlock.id,
-        kind: 'typing',
-        value: inputValue,
-        isCorrect: result.isCorrect,
-        feedback: result.isCorrect ? 'correct' : 'incorrect',
-      })
-
-      applyTypingCheckResult(result.isCorrect, result.correctTypingDelta)
-      void awardRuntimeStageFlowPointsIfNeeded(nextState, 'typing')
-
-      try {
-        const advanced = advanceLessonStage(nextState)
-        setRuntimeState(advanced.state)
-        setInputValue('')
-      } catch (e) {
-        console.error('[handleCheck] advance failed', e)
-        setRuntimeState(nextState)
-      }
-      return
-    }
-
-    const result = checkTypingAnswer(inputValue, item.answer ?? '')
-    applyTypingCheckResult(result.isCorrect, result.correctTypingDelta)
+    // Typing removed from core flow — no-op placeholder for prop contract
   }
 
   // Daily language picker — shown when multiple languages selected and no lock yet
@@ -2119,7 +2065,6 @@ export default function LessonPage() {
     runtimeState?.currentStageId !== 'repeat' &&
     runtimeState?.currentStageId !== 'scaffold_transition' &&
     runtimeState?.currentStageId !== 'ai_question' &&
-    runtimeState?.currentStageId !== 'typing' &&
     runtimeState?.currentStageId !== 'ai_conversation' &&
     !showListenRepeatComplete &&
     shouldShowStandaloneNextButton({
@@ -2139,18 +2084,9 @@ export default function LessonPage() {
       >
         <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
         <main className="flex-1">
-          <div className={`${CONTAINER_CLASS} pt-8 sm:pt-10`}>
+          <div className={`${CONTAINER_CLASS} !pt-0 !pb-4 sm:!pt-0 sm:!pb-5`}>
             {!showCompleted && !showListenRepeatComplete && block != null && item != null && (
               <>
-                <div className="mb-4 flex justify-start">
-                  <button
-                    type="button"
-                    onClick={handleBackToOverview}
-                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
-                  >
-                    {copy.activeCard.backToOverview}
-                  </button>
-                </div>
                 <LessonActiveCard
                   block={block}
                   item={item}
@@ -2170,7 +2106,7 @@ export default function LessonPage() {
                   copy={copy}
                   isLessonComplete={isLessonComplete}
                   targetLanguageLabel={targetLanguageLabel}
-                  scenarioLabel={block.description?.trim() || getDailyFlowSceneLabel(block.sceneId, isJaUi) || lesson.overviewSceneLabel || copy.overviewCard.defaultSceneLabel}
+                  scenarioLabel={sanitizeScenarioLabel(block.description) || getDailyFlowSceneLabel(block.sceneId, isJaUi) || (block.sceneId ? buildScenarioLabel(block.sceneId) : null) || findNearestSceneLabel(lesson.blocks, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0, isJaUi) || copy.overviewCard.defaultSceneLabel}
                   previousPhrases={lesson.blocks
                     .slice(0, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0)
                     .map((b) => b.items[0]?.answer?.trim())
@@ -2222,7 +2158,7 @@ export default function LessonPage() {
 
             {showCompleted && wasWeeklyChallenge && (
               <div className="mb-4 rounded-2xl border border-purple-200 bg-gradient-to-b from-purple-50 to-white px-5 py-5 text-center">
-                <p className="text-lg font-black text-purple-700">🎯 復習チャレンジ達成！</p>
+                <p className="text-lg font-black text-purple-700 inline-flex items-center justify-center gap-1.5"><LpIcon emoji="🎯" size={22} /> 復習チャレンジ達成！</p>
                 {weeklyHighlight ? (
                   <>
                     <p className="mt-2 text-sm font-bold text-purple-600">✨ {weeklyHighlight.highlight}</p>
@@ -2253,15 +2189,30 @@ export default function LessonPage() {
               </div>
             )}
 
-            {showCompleted && summary != null && (
+            {showCompleted && summary != null && (() => {
+              const answers = runtimeState?.answers ?? []
+              const speakingAttempts = answers.filter(a => a.kind === 'repeat' || a.kind === 'ai_conversation').length
+              const aiResponses = answers.filter(a => a.kind === 'ai_question').length
+              const scenesCompleted = runtimeState?.currentBlockIndex != null ? runtimeState.currentBlockIndex + 1 : summary.completedItems
+              const streakDays = pageData?.profile?.current_streak_days ?? 0
+              const sceneIds = lesson?.blocks?.map((b: { sceneId?: string | null }) => b.sceneId).filter(Boolean) as string[] ?? []
+              return (
               <LessonCompletionCard
                 summary={summary}
                 copy={copy}
                 totalFlowPoints={totalFlowPoints}
                 earnedFlowPoints={earnedFlowPoints}
                 onStartExtraSession={handleStartExtraSession}
+                speakingProgress={{
+                  speakingAttempts,
+                  aiResponses,
+                  scenesCompleted,
+                  streakDays,
+                }}
+                sceneIds={sceneIds}
               />
-            )}
+              )
+            })()}
           </div>
         </main>
         <AppFooter />

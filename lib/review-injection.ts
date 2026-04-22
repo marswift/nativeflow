@@ -10,6 +10,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { LessonBlock, LessonSession } from './lesson-engine'
 import { getDueReviewItems, type ReviewItemRow } from './review-items-repository'
+import { lookupSceneByAnswer } from './lesson-blueprint-adapter'
+import { buildScenarioLabel } from './lesson-blueprint-service'
 
 const MAX_REVIEW_BLOCKS = 3
 const INJECT_AFTER_INDEX = 1 // inject after the first 2 normal blocks (index 0 and 1)
@@ -158,17 +160,25 @@ function reviewItemToBlock(source: ReviewItemWithContent): LessonBlock {
     } catch { /* ignore */ }
   }
 
+  // Reverse-lookup source scene from catalog so heading shows scene label and pass 2 gets JP audio
+  const sourceScene = lookupSceneByAnswer(displayAnswer ?? '')
+  const sceneId = sourceScene?.sceneKey ?? null
+  const nativeHint = sourceScene?.nativeHint ?? null
+
   return {
     id: `review-${source.reviewItem.id}`,
     type: 'review',
-    title: 'Review',
-    description: displayPrompt,
+    title: sceneId ? buildScenarioLabel(sceneId) : '復習',
+    description: sceneId ? buildScenarioLabel(sceneId) : displayPrompt,
     estimatedMinutes: 1,
+    sceneId,
+    sceneCategory: sceneId ? 'daily-flow' : null,
     items: [
       {
         id: `review-${source.reviewItem.id}`,
         prompt: displayPrompt,
         answer: displayAnswer,
+        nativeHint,
       },
     ],
   }

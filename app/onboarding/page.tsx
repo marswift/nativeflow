@@ -212,6 +212,10 @@ export default function OnboardingPage() {
     let isActive = true
 
     function applyProfile(profile: OnboardingProfileRow, metaPlan?: string | null) {
+      if (profile.ui_language_code != null) {
+        setUiLanguage(profile.ui_language_code)
+        writeUiLanguageToStorage(profile.ui_language_code)
+      }
       if (profile.username != null) setUsername(profile.username)
       if (profile.age_group != null) setAgeGroup(profile.age_group)
       if (profile.origin_country != null) setOriginCountryCode(profile.origin_country)
@@ -428,6 +432,12 @@ export default function OnboardingPage() {
         setFormError(copy.errors.loginRequired)
         return
       }
+      // Sync UI language to cookie before navigation
+      try {
+        document.cookie = `NEXT_LOCALE=${uiLanguage};path=/;max-age=31536000;SameSite=Lax`
+        writeUiLanguageToStorage(uiLanguage)
+      } catch { /* non-blocking */ }
+
       // Skip Stripe checkout — let user experience lessons first.
       // Payment is requested later via paywall or billing page.
       window.location.assign('/lesson')
@@ -538,7 +548,9 @@ export default function OnboardingPage() {
                 </label>
                 <input
                   id="username"
+                  name="username"
                   type="text"
+                  autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="表示名"

@@ -324,6 +324,13 @@ export default function SettingsPage() {
         return
       }
 
+      // Sync UI language to localStorage and cookie
+      try {
+        const { writeUiLanguageToStorage } = await import('@/lib/auth-copy')
+        writeUiLanguageToStorage(uiLanguageCode)
+        document.cookie = `NEXT_LOCALE=${uiLanguageCode};path=/;max-age=31536000;SameSite=Lax`
+      } catch { /* non-blocking */ }
+
       // Save all per-language profiles
       for (const langCode of selectedLangCodes) {
         const lp = langProfiles[langCode]
@@ -493,7 +500,9 @@ export default function SettingsPage() {
                         <label htmlFor="newEmail" className={LABEL_CLASS}>新しいメールアドレス</label>
                         <input
                           id="newEmail"
+                          name="new_email"
                           type="email"
+                          autoComplete="email"
                           value={newEmail}
                           onChange={(e) => {
                             setNewEmail(e.target.value)
@@ -549,7 +558,9 @@ export default function SettingsPage() {
                     <label htmlFor="username" className={LABEL_CLASS}>ユーザー名</label>
                     <input
                       id="username"
+                      name="username"
                       type="text"
+                      autoComplete="username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
                       className={INPUT_CLASS}
@@ -585,8 +596,10 @@ export default function SettingsPage() {
                     </select>
                   </div>
                   <div>
-                    <label className={LABEL_CLASS}>表示言語（母国語）</label>
+                    <label htmlFor="settings-ui-language" className={LABEL_CLASS}>表示言語（母国語）</label>
                     <select
+                      id="settings-ui-language"
+                      name="ui_language_code"
                       value={uiLanguageCode}
                       onChange={(e) => setUiLanguageCode(e.target.value)}
                       className={SELECT_CLASS}
@@ -646,8 +659,10 @@ export default function SettingsPage() {
                         {/* Region — dynamic from REGION_MASTER */}
                         {enabledRegions.length > 1 && (
                           <div>
-                            <label className={LABEL_CLASS}>地域・ローカル表現</label>
+                            <label htmlFor={`settings-region-${langCode}`} className={LABEL_CLASS}>地域・ローカル表現</label>
                             <select
+                              id={`settings-region-${langCode}`}
+                              name={`region_${langCode}`}
                               value={lp.region}
                               onChange={(e) => updateLangProfile(langCode, 'region', e.target.value)}
                               className={SELECT_CLASS}
@@ -678,8 +693,10 @@ export default function SettingsPage() {
 
                         {/* Level */}
                         <div>
-                          <label className={LABEL_CLASS}>現在のレベル</label>
+                          <label htmlFor={`settings-level-${langCode}`} className={LABEL_CLASS}>現在のレベル</label>
                           <select
+                            id={`settings-level-${langCode}`}
+                            name={`level_${langCode}`}
                             value={lp.level}
                             onChange={(e) => updateLangProfile(langCode, 'level', e.target.value)}
                             className={SELECT_CLASS}
@@ -693,8 +710,10 @@ export default function SettingsPage() {
 
                         {/* Goal */}
                         <div>
-                          <label className={LABEL_CLASS}>学習目標</label>
+                          <label htmlFor={`settings-goal-${langCode}`} className={LABEL_CLASS}>学習目標</label>
                           <input
+                            id={`settings-goal-${langCode}`}
+                            name={`goal_${langCode}`}
                             type="text"
                             value={lp.goal}
                             onChange={(e) => updateLangProfile(langCode, 'goal', e.target.value)}
@@ -705,8 +724,10 @@ export default function SettingsPage() {
 
                         {/* Deadline */}
                         <div>
-                          <label className={LABEL_CLASS}>話せるようになりたい期間</label>
+                          <label htmlFor={`settings-deadline-${langCode}`} className={LABEL_CLASS}>話せるようになりたい期間</label>
                           <select
+                            id={`settings-deadline-${langCode}`}
+                            name={`deadline_${langCode}`}
                             value={lp.deadline}
                             onChange={(e) => updateLangProfile(langCode, 'deadline', e.target.value)}
                             className={SELECT_CLASS}

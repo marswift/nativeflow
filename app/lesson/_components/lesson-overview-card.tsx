@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { LessonCopy } from '../../../lib/lesson-copy'
 import type { LessonSession } from '../../../lib/lesson-engine'
 import { LessonRankCard } from './lesson-rank-card'
+import LpIcon from '@/components/lp-icon'
 
 export type SelectedDailyAction = {
   emoji: string
@@ -191,7 +192,7 @@ function DiamondPanel({ totalDiamonds, canRestore, boostActive, restoreHint, dia
       {/* Freeze active message */}
       {isFrozen && !message && (
         <div className="mt-1.5 text-center">
-          <p className="text-[10px] font-bold text-blue-700">🛡 ストリーク保護中</p>
+          <p className="text-[10px] font-bold text-blue-700 inline-flex items-center gap-0.5"><LpIcon emoji="🛡️" size={12} /> ストリーク保護中</p>
           <p className="text-[9px] text-blue-500">明日はお休みしても大丈夫です</p>
         </div>
       )}
@@ -291,7 +292,7 @@ function DiamondPanel({ totalDiamonds, canRestore, boostActive, restoreHint, dia
                 <button type="button" disabled={busy} onClick={() => onStartChallengeSession?.()}
                   className="flex w-full items-center justify-between rounded-lg border border-purple-300 bg-purple-100 px-2.5 py-1.5 text-left transition hover:bg-purple-50 disabled:opacity-50">
                   <div>
-                    <p className="text-[11px] font-bold text-purple-800">🎯 今週の復習チャレンジ（あと1回）</p>
+                    <p className="text-[11px] font-bold text-purple-800 inline-flex items-center gap-0.5"><LpIcon emoji="🎯" size={13} /> 今週の復習チャレンジ（あと1回）</p>
                     <p className="text-[10px] text-purple-600">弱い部分を復習して+5ダイヤ獲得</p>
                   </div>
                   <span className="text-[11px] font-bold text-purple-800">START</span>
@@ -478,6 +479,12 @@ export function LessonOverviewCard({
         </div>
       </div>
 
+      {targetRegionSlug && (
+        <p className="mt-2 text-[11px] text-[#9ca3af]">
+          🌏 このレッスンは地域の自然な表現・生活会話を反映しています
+        </p>
+      )}
+
       {/* ── MAIN BODY: Two-column layout ───────────────────── */}
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
 
@@ -497,19 +504,29 @@ export function LessonOverviewCard({
               <div className="space-y-1">
                 {lesson.blocks
                   .filter((b: { type: string }) => b.type !== 'review')
-                  .map((block: { id: string; description: string; title: string }, i: number) => (
+                  .map((block: { id: string; description: string; title: string; type: string }, i: number) => {
+                    const stepEmoji = block.type === 'listen' ? '🎧'
+                      : block.type === 'repeat' || block.type === 'speak' ? '🎤'
+                      : block.type === 'conversation' ? '💬'
+                      : block.type === 'typing' ? '🧠'
+                      : block.type === 'scaffold_transition' ? '🎯'
+                      : null
+                    return (
                     <div
                       key={block.id}
                       className="flex items-center gap-2.5 rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5"
                     >
-                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F0ECE6] text-[11px] font-bold text-[#7b7b94]">
-                        {i + 1}
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center">
+                        {stepEmoji ? <LpIcon emoji={stepEmoji} size={18} /> : (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#F0ECE6] text-[11px] font-bold text-[#7b7b94]">{i + 1}</div>
+                        )}
                       </div>
                       <p className="text-sm font-medium text-[#4a4a6a]">
                         {block.description?.trim() || block.title}
                       </p>
                     </div>
-                  ))}
+                    )
+                  })}
               </div>
             </div>
 

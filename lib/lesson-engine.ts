@@ -28,6 +28,12 @@ export type LessonBlockItem = {
   audio_status?: 'ok' | 'fallback' | 'failed'
   /** Additional typing answers from scene variations for diverse typing prompts. */
   typing_variations?: string[] | null
+  /** Related expressions network for scene expansion. */
+  related_expressions?: { en: string; ja: string; category: string }[] | null
+  /** TTS-specific text override for correct pronunciation. Falls back to answer/prompt if absent. */
+  ttsText?: string | null
+  /** TTS-specific text for native language hint. Falls back to nativeHint if absent. */
+  nativeHintTts?: string | null
 }
 
 export type LessonBlock = {

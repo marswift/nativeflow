@@ -39,6 +39,8 @@ export type SemanticChunk = {
   meaning: string
   type: SemanticChunkType
   importance?: number | null
+  /** TTS override for meaning text (e.g. hiragana for correct Japanese reading). */
+  meaningTts?: string | null
 }
 
 export type LessonBlueprintDraftItem = {
@@ -53,6 +55,8 @@ export type LessonBlueprintDraftItem = {
   image_url: string | null
   /** Additional typing answers from scene variations. Used by TypingMultiRound for diverse prompts. */
   typing_variations?: string[] | null
+  /** Related expressions network for scene expansion. */
+  related_expressions?: { en: string; ja: string; category: string }[] | null
 }
 
 export type LessonBlueprintDraftBlock = {
@@ -278,7 +282,8 @@ function createDraftItem(
   aiQuestionText: string | null = null,
   imageUrl: string | null = null,
   semanticChunks: SemanticChunk[] | null = null,
-  typingVariations: string[] | null = null
+  typingVariations: string[] | null = null,
+  relatedExpressions: { en: string; ja: string; category: string }[] | null = null
 ): LessonBlueprintDraftItem {
   const structuredSteps = buildStructuredScaffoldSteps(nativeHint, mixHint, answer)
   const flatSteps = structuredSteps.map((s) => s.text)
@@ -294,6 +299,7 @@ function createDraftItem(
     semantic_chunks: semanticChunks,
     image_url: imageUrl,
     typing_variations: typingVariations,
+    related_expressions: relatedExpressions,
   }
 }
 
@@ -3152,6 +3158,34 @@ function getSceneContent(
   return scene[bucket]
 }
 
+/**
+ * Reverse-lookup: find the nativeHint for a given English answer across all scenes/levels.
+ * Used by review injection to populate nativeHint for review items.
+ */
+/** Reverse-lookup: find the sceneKey and nativeHint for a given English answer. */
+export function lookupSceneByAnswer(englishAnswer: string): { sceneKey: string; nativeHint: string } | null {
+  if (!englishAnswer) return null
+  const needle = englishAnswer.trim().toLowerCase()
+  for (const sceneKey of Object.keys(SCENE_CONTENT)) {
+    const scene = SCENE_CONTENT[sceneKey]
+    for (const bucket of ['beginner', 'intermediate', 'advanced'] as const) {
+      const level = scene[bucket]
+      if (level.conversationAnswer.trim().toLowerCase() === needle) return { sceneKey, nativeHint: level.nativeHint }
+      if ('variations' in level && Array.isArray((level as SceneLevelWithVariations).variations)) {
+        for (const v of (level as SceneLevelWithVariations).variations ?? []) {
+          if (v.conversationAnswer.trim().toLowerCase() === needle) return { sceneKey, nativeHint: v.nativeHint }
+        }
+      }
+    }
+  }
+  return null
+}
+
+/** Convenience wrapper — returns only the nativeHint. */
+export function lookupNativeHintByAnswer(englishAnswer: string): string | null {
+  return lookupSceneByAnswer(englishAnswer)?.nativeHint ?? null
+}
+
 function buildEnglishPrompt(input: {
   blockType: LessonBlueprintBlockType
   sceneKey: string
@@ -3184,7 +3218,7 @@ function buildEnglishPrompt(input: {
             .filter((t): t is string => Boolean(t?.trim())) ?? null
         : null
       return {
-        prompt: 'Type the English sentence you heard or the key sentence for this scene.',
+        prompt: scene.typingAnswer || scene.conversationAnswer || '',
         answer: scene.typingAnswer,
         nativeHint: hint,
         mixHint: mix,
@@ -3256,6 +3290,7 @@ function mapBlockToDraft(
   const catalogVariant = resolveSceneConversation(sceneKey, region, ageGroup, level)
   const aiQuestionText = catalogVariant?.aiQuestionText ?? englishContent.aiQuestionText
   const typingVariations = catalogVariant?.typingVariations ?? englishContent.typingVariations
+  const relatedExpressions = catalogVariant?.relatedExpressions ?? null
   // Merge semantic chunks: catalog coreChunks + scene chunks + shared verb dictionary
   const catalogChunks: SemanticChunk[] = catalogVariant?.coreChunks
     ? catalogVariant.coreChunks.map((c): SemanticChunk => ({ chunk: c.chunk, meaning: c.meaning, type: 'phrase' }))
@@ -3269,7 +3304,7 @@ function mapBlockToDraft(
   ]
   const semanticChunks: SemanticChunk[] | null = merged.length > 0 ? merged : null
 
-  const items = [createDraftItem(englishContent.prompt, englishContent.answer, englishContent.nativeHint, englishContent.mixHint, aiQuestionText, imageUrl, semanticChunks, typingVariations)]
+  const items = [createDraftItem(englishContent.prompt, englishContent.answer, englishContent.nativeHint, englishContent.mixHint, aiQuestionText, imageUrl, semanticChunks, typingVariations, relatedExpressions)]
 
   const blockBase = { title: block.title, description: sceneLabel, items, image_prompt: imagePrompt, sceneId: sceneKey, sceneCategory, region, ageGroup }
 

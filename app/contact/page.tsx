@@ -116,26 +116,34 @@ export default function ContactPage() {
         </p>
 
         <form onSubmit={handleSubmit}>
-          <label style={styles.label}>お名前</label>
+          <label htmlFor="contact-name" style={styles.label}>お名前</label>
           <input
+            id="contact-name"
+            name="name"
             type="text"
+            autoComplete="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             style={styles.input}
             placeholder="山田 太郎"
           />
 
-          <label style={styles.label}>メールアドレス</label>
+          <label htmlFor="contact-email" style={styles.label}>メールアドレス</label>
           <input
+            id="contact-email"
+            name="email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={styles.input}
             placeholder="example@email.com"
           />
 
-          <label style={styles.label}>お問い合わせ種別</label>
+          <label htmlFor="contact-kind" style={styles.label}>お問い合わせ種別</label>
           <select
+            id="contact-kind"
+            name="kind"
             value={kind}
             onChange={(e) => setKind(e.target.value)}
             style={styles.select}
@@ -147,8 +155,10 @@ export default function ContactPage() {
             <option value="other">その他</option>
           </select>
 
-          <label style={styles.label}>内容</label>
+          <label htmlFor="contact-body" style={styles.label}>内容</label>
           <textarea
+            id="contact-body"
+            name="body"
             value={body}
             onChange={(e) => setBody(e.target.value)}
             style={styles.textarea}

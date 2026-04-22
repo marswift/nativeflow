@@ -85,7 +85,14 @@ export default function ProfileSettingsPage() {
         setError('保存に失敗しました')
         return
       }
-    
+
+      // Sync UI language to localStorage and cookie
+      try {
+        const { writeUiLanguageToStorage } = await import('@/lib/auth-copy')
+        writeUiLanguageToStorage(uiLanguageCode)
+        document.cookie = `NEXT_LOCALE=${uiLanguageCode};path=/;max-age=31536000;SameSite=Lax`
+      } catch { /* non-blocking */ }
+
       setInfoMessage('保存しました')
     } catch (err) {
       console.error(err)
@@ -125,40 +132,48 @@ export default function ProfileSettingsPage() {
           <p className="mb-4 text-xs text-[#5c5c5c]">
             名前とプロフィール写真は現在UI準備中です。メールアドレスは確認用です。
           </p>
-          <label className="block text-sm font-medium text-[#2c2c2c]">
+          <label htmlFor="profile-username" className="block text-sm font-medium text-[#2c2c2c]">
             表示名
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="表示名を入力"
-              className={INPUT_CLASS}
-              disabled={submitting}
-            />
           </label>
-          <label className="mt-4 block text-sm font-medium text-[#2c2c2c]">
+          <input
+            id="profile-username"
+            name="username"
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="表示名を入力"
+            className={INPUT_CLASS}
+            disabled={submitting}
+          />
+          <label htmlFor="profile-photo-url" className="mt-4 block text-sm font-medium text-[#2c2c2c]">
             プロフィール写真 URL
-            <input
-              type="url"
-              value={profilePhotoUrl}
-              onChange={(e) => setProfilePhotoUrl(e.target.value)}
-              placeholder="https://..."
-              className={INPUT_CLASS}
-              disabled={submitting}
-            />
           </label>
-          <label className="mt-4 block text-sm font-medium text-[#2c2c2c]">
+          <input
+            id="profile-photo-url"
+            name="profile_photo_url"
+            type="url"
+            autoComplete="photo"
+            value={profilePhotoUrl}
+            onChange={(e) => setProfilePhotoUrl(e.target.value)}
+            placeholder="https://..."
+            className={INPUT_CLASS}
+            disabled={submitting}
+          />
+          <label htmlFor="profile-ui-language" className="mt-4 block text-sm font-medium text-[#2c2c2c]">
             表示言語（母国語）
-            <select
-              value={uiLanguageCode}
-              onChange={(e) => setUiLanguageCode(e.target.value)}
-              className={INPUT_CLASS}
-              disabled={submitting}
-            >
+          </label>
+          <select
+            id="profile-ui-language"
+            name="ui_language_code"
+            value={uiLanguageCode}
+            onChange={(e) => setUiLanguageCode(e.target.value)}
+            className={INPUT_CLASS}
+            disabled={submitting}
+          >
               <option value="ja">日本語</option>
               <option value="en">English</option>
-            </select>
-          </label>
+          </select>
           <div className="mt-4">
             <span className="block text-sm font-medium text-[#2c2c2c]">メールアドレス</span>
             <p className="mt-2 text-sm text-[#5c5c5c]">{email || '—'}</p>

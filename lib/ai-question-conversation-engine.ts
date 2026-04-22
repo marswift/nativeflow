@@ -57,6 +57,140 @@ function buildVariation(currentAnswer: string, slots: SlotContext, slot: 'person
   return currentAnswer
 }
 
+/**
+ * Parse a sentence into semantic components for slot-less question generation.
+ * Returns subject, verb phrase, and object/complement if extractable.
+ */
+function parseSentenceParts(sentence: string): {
+  subject: string
+  verbPhrase: string
+  afterVerb: string
+  hasAfter: boolean
+} {
+  // Match: "I/We/They/He/She + verb phrase + rest"
+  const match = sentence.match(
+    /^(I|We|They|He|She|You)\s+([\w\s]+?)\s+(after|before|at|in|on|with|to|for|from|the|a|an|my|our|their)\b(.*)$/i
+  )
+  if (match) {
+    return {
+      subject: match[1],
+      verbPhrase: match[2].trim(),
+      afterVerb: (match[3] + match[4]).replace(/[.!?]+$/, '').trim(),
+      hasAfter: true,
+    }
+  }
+  // Fallback: just split at the verb
+  const simpleMatch = sentence.match(/^(I|We|They|He|She|You)\s+(.+)$/i)
+  if (simpleMatch) {
+    return {
+      subject: simpleMatch[1],
+      verbPhrase: simpleMatch[2].replace(/[.!?]+$/, '').trim(),
+      afterVerb: '',
+      hasAfter: false,
+    }
+  }
+  return { subject: '', verbPhrase: sentence, afterVerb: '', hasAfter: false }
+}
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+/**
+ * Build beginner-friendly 3-turn questions for sentences without extractable slots.
+ * Designed to feel like a natural short conversation, not a grammar drill.
+ */
+function buildBeginnerSlotlessConversation(
+  currentAnswer: string,
+  parts: ReturnType<typeof parseSentenceParts>,
+): ConversationEngineResult {
+  const verb = parts.verbPhrase
+  const after = parts.afterVerb
+  const hasAfter = parts.hasAfter
+
+  // ── Turn 1: Yes/No confirmation — easy warm-up ──
+  const t1Prompt = hasAfter
+    ? `Do you ${verb} ${after}?`
+    : `Do you ${verb}?`
+  const t1Expected = hasAfter ? `Yes, I ${verb} ${after}.` : `Yes, I ${verb}.`
+  const t1Alts = ['Yes, I do.', 'Yes.', 'Yeah.', currentAnswer]
+
+  // ── Turn 2: Varied follow-up — pick a different question type each time ──
+  type QGen = { prompt: string; expected: string; alts: string[] }
+  const t2Candidates: QGen[] = []
+
+  if (hasAfter) {
+    // "When do you clean up?" / "What do you do after breakfast?"
+    t2Candidates.push({
+      prompt: `When do you ${verb}?`,
+      expected: after.charAt(0).toUpperCase() + after.slice(1) + '.',
+      alts: [`I ${verb} ${after}.`, currentAnswer],
+    })
+    t2Candidates.push({
+      prompt: `What do you do ${after}?`,
+      expected: `I ${verb}.`,
+      alts: [currentAnswer, `I ${verb} ${after}.`],
+    })
+  }
+
+  // "Do you do it every day?" — frequency question
+  t2Candidates.push({
+    prompt: 'Do you do this every day?',
+    expected: 'Yes, every day.',
+    alts: ['Yes, I do.', 'Almost every day.', 'Most days.', 'Sometimes.'],
+  })
+
+  // "Do you like doing it?"
+  t2Candidates.push({
+    prompt: `Do you like to ${verb}?`,
+    expected: 'Yes, I do.',
+    alts: ['Yes.', 'Not really.', 'Sometimes.', "It's okay."],
+  })
+
+  if (hasAfter && verb.split(/\s+/).length <= 3) {
+    // "What do you clean?" — object question
+    const verbWords = verb.split(/\s+/)
+    if (verbWords.length >= 1) {
+      t2Candidates.push({
+        prompt: `What do you ${verbWords[0]}?`,
+        expected: `I ${verb} ${after}.`,
+        alts: [currentAnswer, after.charAt(0).toUpperCase() + after.slice(1) + '.'],
+      })
+    }
+  }
+
+  const t2 = pickRandom(t2Candidates)
+
+  // ── Turn 3: Full sentence reconstruction — natural prompt ──
+  const t3Prompts = [
+    'Can you say the whole sentence?',
+    'Say it all together now.',
+    'One more time — the full sentence.',
+  ]
+  const t3Prompt = pickRandom(t3Prompts)
+
+  return {
+    round1: {
+      turn: 1, kind: 'rewrite', prompt: t1Prompt,
+      expectedAnswer: t1Expected, exampleAnswer: t1Expected,
+      alternativeAnswers: t1Alts,
+      requiredSlots: { requiresFullSentence: false },
+    },
+    round2: {
+      turn: 2, kind: 'follow_up', prompt: t2.prompt,
+      expectedAnswer: t2.expected, exampleAnswer: t2.expected,
+      alternativeAnswers: t2.alts,
+      requiredSlots: { requiresFullSentence: false },
+    },
+    round3: {
+      turn: 3, kind: 'reconstruct', prompt: t3Prompt,
+      expectedAnswer: currentAnswer, exampleAnswer: currentAnswer,
+      alternativeAnswers: [],
+      requiredSlots: { requiresFullSentence: true },
+    },
+  }
+}
+
 // ── Turn 1: Restart / Guided Transformation ──
 
 function buildTurn1(
@@ -86,13 +220,26 @@ function buildTurn1(
     expected = buildVariation(currentAnswer, slots, 'time')
     reqSlots.time = timeAlt
   } else {
-    prompt = copy.aiQuestionFirstTurnRepeat
-    expected = currentAnswer
+    // No slots found — ask a Yes/No confirmation question instead of repeating
+    const parts = parseSentenceParts(currentAnswer)
+    if (parts.subject && parts.hasAfter) {
+      // "I clean up after breakfast" → "Do you clean up after breakfast?"
+      const verb = parts.verbPhrase
+      prompt = `Do you ${verb} ${parts.afterVerb}?`
+      expected = `Yes, I ${verb} ${parts.afterVerb}.`
+      reqSlots.requiresFullSentence = false
+    } else {
+      prompt = copy.aiQuestionFirstTurnRepeat
+      expected = currentAnswer
+    }
   }
 
   // Build ~3 natural answer variants
   const alts: string[] = []
   if (expected !== currentAnswer) {
+    alts.push(currentAnswer)
+    // Short affirmative
+    alts.push('Yes, I do.')
     // Shorter variant only if time is NOT required
     if (!reqSlots.time) {
       const shorter = expected.replace(/\s+(today|yesterday|tomorrow|tonight)\s*\.?\s*$/i, '.').trim()
@@ -172,11 +319,41 @@ function buildTurn2(
       ]
     }
   } else {
-    prompt = copy.aiQuestionR2Generic
-    expected = currentAnswer
-    example = currentAnswer
-    alts = []
-    reqSlots.requiresFullSentence = true
+    // No slots — ask "What" or "When" question to vary the answer
+    const parts = parseSentenceParts(currentAnswer)
+    if (parts.hasAfter) {
+      // "I clean up after breakfast" → "When do you clean up?"
+      prompt = `When do you ${parts.verbPhrase}?`
+      expected = parts.afterVerb.charAt(0).toUpperCase() + parts.afterVerb.slice(1) + '.'
+      example = expected
+      alts = [
+        `I ${parts.verbPhrase} ${parts.afterVerb}.`,
+        currentAnswer,
+      ]
+    } else if (parts.verbPhrase) {
+      // "I study English" → "What do you study?"
+      const verbWords = parts.verbPhrase.split(/\s+/)
+      if (verbWords.length >= 2) {
+        const verb = verbWords[0]
+        const obj = verbWords.slice(1).join(' ')
+        prompt = `What do you ${verb}?`
+        expected = obj.charAt(0).toUpperCase() + obj.slice(1) + '.'
+        example = expected
+        alts = [`I ${parts.verbPhrase}.`, currentAnswer]
+      } else {
+        prompt = copy.aiQuestionR2Generic
+        expected = currentAnswer
+        example = currentAnswer
+        alts = []
+        reqSlots.requiresFullSentence = true
+      }
+    } else {
+      prompt = copy.aiQuestionR2Generic
+      expected = currentAnswer
+      example = currentAnswer
+      alts = []
+      reqSlots.requiresFullSentence = true
+    }
   }
 
   return {
@@ -223,8 +400,15 @@ function buildTurn3(
     expected = buildVariation(currentAnswer, slots, 'time')
     reqSlots.time = timeAlt
   } else {
-    prompt = copy.aiQuestionR3Generic
-    expected = currentAnswer
+    // No slots — ask user to describe the full action
+    const parts = parseSentenceParts(currentAnswer)
+    if (parts.hasAfter) {
+      prompt = `What do you do ${parts.afterVerb}?`
+      expected = currentAnswer
+    } else {
+      prompt = copy.aiQuestionR3Generic
+      expected = currentAnswer
+    }
   }
 
   // Build natural full-sentence variants (only valid ones)
@@ -255,6 +439,15 @@ export function generateConversation(
   targetCopy: LessonCopy['activeCard'],
   regionContext?: RegionContext | null,
 ): ConversationEngineResult {
+  // Beginner + no extractable slots → use conversational question flow
+  const hasSlots = Boolean(slots.personSlot || slots.timeSlot)
+  if (level === 'beginner' && !hasSlots) {
+    const parts = parseSentenceParts(currentAnswer)
+    if (parts.subject) {
+      return buildBeginnerSlotlessConversation(currentAnswer, parts)
+    }
+  }
+
   const turn2 = buildTurn2(currentAnswer, slots, targetCopy)
 
   // Inject region flavor naturally into turn 2 prompt
@@ -304,6 +497,30 @@ export function evaluateConversationAnswer(
   const meaningfulWords = [...userWords].filter((w) => !noiseWords.has(w))
   if (meaningfulWords.length === 0) return 'incorrect'
 
+  const skipWords = new Set(['i', 'a', 'the', 'is', 'am', 'are', 'do', 'does', 'did', 'to', 'in', 'at', 'on', 'my', 'it', 'and', 'but', 'so', 'because', 'that', 'this', 'for', 'of', 'yes', 'yeah', 'no'])
+
+  // ── 0. Check against alternative answers first ──
+  if (spec.alternativeAnswers.length > 0) {
+    for (const alt of spec.alternativeAnswers) {
+      const altWords = normalize(alt)
+      const altContent = altWords.filter((w) => !skipWords.has(w))
+      if (altContent.length === 0) {
+        // Short answer like "Yes, I do." — check if user said any affirmative
+        if (/\b(yes|yeah|yep|sure|i do|i did)\b/i.test(lower)) return 'correct'
+      } else {
+        const matched = altContent.filter((w) => userWords.has(w)).length
+        if (altContent.length > 0 && matched / altContent.length >= 0.6) return 'correct'
+      }
+    }
+  }
+
+  // ── 0b. Yes/No question shortcut ──
+  // If the prompt is a yes/no question and user gives an affirmative, accept it
+  if (!spec.requiredSlots.requiresFullSentence && /^(do|does|did|is|are|was|were|have|has|had|can|could|will|would)\s/i.test(spec.prompt)) {
+    if (/\b(yes|yeah|yep|sure|i do|i did|i am|i can|i will)\b/i.test(lower)) return 'correct'
+    if (/\b(no|nope|i don'?t|i didn'?t|i can'?t)\b/i.test(lower)) return 'correct'
+  }
+
   // ── 1. Slot checks (highest priority) ──
   const { person, time, requiresFullSentence } = spec.requiredSlots
   let slotsMet = true
@@ -326,8 +543,6 @@ export function evaluateConversationAnswer(
 
   // If required slots are not met → immediately partial or incorrect
   if (!slotsMet) {
-    // Check if there's any relevant content at all
-    const skipWords = new Set(['i', 'a', 'the', 'is', 'am', 'are', 'do', 'does', 'did', 'to', 'in', 'at', 'on', 'my', 'it', 'and', 'but', 'so', 'because', 'that', 'this', 'for', 'of', 'yes', 'yeah', 'no'])
     const contentWords = normalize(spec.expectedAnswer).filter((w) => !skipWords.has(w))
     const matched = contentWords.length > 0
       ? contentWords.filter((w) => userWords.has(w)).length / contentWords.length
@@ -340,8 +555,7 @@ export function evaluateConversationAnswer(
     return 'partial'
   }
 
-  // ── 3. Similarity fallback (only when slots are satisfied) ──
-  const skipWords = new Set(['i', 'a', 'the', 'is', 'am', 'are', 'do', 'does', 'did', 'to', 'in', 'at', 'on', 'my', 'it', 'and', 'but', 'so', 'because', 'that', 'this', 'for', 'of', 'yes', 'yeah', 'no'])
+  // ── 3. Similarity against expected answer ──
   const contentWords = normalize(spec.expectedAnswer).filter((w) => !skipWords.has(w))
 
   // For short expected answers (slot words only), slots already passed → correct

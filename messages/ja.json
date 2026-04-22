@@ -38,7 +38,7 @@
       "errorEmailNotConfirmed": "メール認証が完了していません。\n確認メールをご確認ください。",
       "errorGeneric": "ログインに失敗しました。時間をおいて再度お試しください",
       "errorGoogleFailed": "Googleログインに失敗しました。時間をおいて再度お試しください。",
-      "errorMagicLinkFailed": "マジックリンクの送信に失敗しました。時間をおいて再度お試しください。",
+      "errorMagicLinkFailed": "ログインリンクの送信に失敗しました。時間をおいて再度お試しください。",
       "errorRateLimit": "送信回数の上限に達しました。しばらく時間をおいて再度お試しください。",
       "bannerConfirmError": "メールアドレスの確認に失敗しました。もう一度お試しください。",
       "bannerConfirmed": "メールアドレスの確認が完了しました。ログインしてください。",

@@ -72,28 +72,43 @@ export default function AppHeader({ onLogout, scrollY = 0, variant = 'default' }
     )
   }
 
-  // ── Auth mode ──
+  // ── Auth mode (dashboard / settings / lesson) ──
   if (typeof onLogout === 'function') {
     return (
-      <header className="w-full border-b border-[#ede9e2] bg-white px-6 py-3">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <Link href="/dashboard" className="cursor-pointer">
-            <img
-              src="/images/branding/header_logo.svg"
-              alt="NativeFlow"
-              className="h-[44px] w-auto"
-            />
-          </Link>
-          <div className="flex items-center gap-5">
-            <Link href="/dashboard" className="cursor-pointer text-sm font-medium text-[#1a1a2e] transition hover:text-amber-600">
-              マイページ
+      <>
+        <header className="fixed top-0 left-0 right-0 z-40 w-full border-b border-[#ede9e2] bg-white">
+          <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
+            <Link href="/dashboard" className="flex items-center">
+              <Image
+                src="/images/branding/header_logo.svg"
+                alt="NativeFlow"
+                width={140}
+                height={36}
+                priority
+                className="h-8 w-auto sm:h-9"
+                style={{ objectFit: 'contain' }}
+              />
             </Link>
-            <button type="button" onClick={onLogout} className="cursor-pointer text-sm font-medium text-amber-600 transition hover:text-amber-700">
-              ログアウト
-            </button>
+            <div className="flex items-center gap-4 sm:gap-5">
+              <Link
+                href="/dashboard"
+                className="text-[13px] font-semibold text-[#4a4a6a] transition hover:text-[#1a1a2e] sm:text-sm"
+              >
+                マイページ
+              </Link>
+              <button
+                type="button"
+                onClick={onLogout}
+                className="text-[13px] font-semibold text-[#ff6b35] transition hover:text-[#e55a2b] sm:text-sm"
+              >
+                ログアウト
+              </button>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+        {/* Spacer to offset fixed header height */}
+        <div className="h-14" />
+      </>
     )
   }
 

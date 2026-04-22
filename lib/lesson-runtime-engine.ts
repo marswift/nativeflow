@@ -8,14 +8,16 @@ export const LESSON_STAGE_ORDER = [
   'repeat',
   'scaffold_transition',
   'ai_question',
-  'typing',
   'ai_conversation',
 ] as const
+
+/** Full stage list including optional stages. Typing is available but not in the core path. */
+export type OptionalLessonStageId = 'typing'
   
   export type LessonStageId = (typeof LESSON_STAGE_ORDER)[number]
 
-  /** Extended stage ID that includes non-English response stages */
-  export type ExtendedLessonStageId = LessonStageId | 'audio_choice'
+  /** Extended stage ID that includes non-English response stages and optional stages */
+  export type ExtendedLessonStageId = LessonStageId | 'audio_choice' | OptionalLessonStageId
   
   export type LessonStageStatus = 'locked' | 'active' | 'completed'
   
@@ -36,7 +38,7 @@ export const LESSON_STAGE_ORDER = [
   
   export type LessonAnswerRecord = {
     blockId: string
-    stageId: LessonStageId
+    stageId: LessonStageId | OptionalLessonStageId
     kind: LessonAnswerKind
     value: string
     isCorrect: boolean | null
@@ -128,8 +130,7 @@ export const LESSON_STAGE_ORDER = [
     }
     
     if (stageId === 'ai_question') return 'ai_question'
-    if (stageId === 'typing') return 'typing'
-    
+
     return 'ai_conversation'
   }
   
@@ -455,10 +456,6 @@ export function createLessonRuntimeEngineState(
     
     if (state.currentStageId === 'ai_question') {
       return hasAnsweredCurrentStage(state, 'ai_question')
-    }
-
-    if (state.currentStageId === 'typing') {
-        return hasAnsweredCurrentStage(state, 'typing')
     }
 
     if (state.currentStageId === 'ai_conversation') {

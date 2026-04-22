@@ -6,9 +6,9 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 
 const supabase = getSupabaseBrowserClient()
 
-const INACTIVITY_MS = 30 * 60 * 1000
-const WARNING_MS = 25 * 60 * 1000
-const CHECK_INTERVAL_MS = 15 * 1000
+const INACTIVITY_MS = 24 * 60 * 60 * 1000
+const WARNING_MS = 23 * 60 * 60 * 1000
+const CHECK_INTERVAL_MS = 60 * 1000
 
 const EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'] as const
 

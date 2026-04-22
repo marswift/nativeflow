@@ -19,9 +19,147 @@ import { buildFallbackEvaluation, incrementAiCallCount, isAiLimitReached } from 
 import { getRegionContext } from '../../../lib/daily-timeline'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
 import { resolveSceneConversation } from '../../../lib/conversation-resolver'
+import LpIcon from '@/components/lp-icon'
+import { buildScenarioLabel } from '../../../lib/lesson-blueprint-service'
+
+// ── Auth helper for API calls ──
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const { getSupabaseBrowserClient } = await import('../../../lib/supabase/browser-client')
+    const supabase = getSupabaseBrowserClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) {
+      return { Authorization: `Bearer ${session.access_token}` }
+    }
+  } catch { /* fallback to no auth header */ }
+  return {}
+}
+
+// ── Display/TTS text model ──
+// Display text and TTS text may differ for correct pronunciation.
+// Use resolveTtsText() whenever generating audio.
+
+type TextWithTts = {
+  displayText: string
+  ttsText?: string | null
+}
+
+/**
+ * Resolve the text to send to TTS.
+ * Prefers ttsText if provided, otherwise falls back to displayText.
+ */
+function resolveTtsText(input: string | TextWithTts): string {
+  if (typeof input === 'string') return input
+  return input.ttsText?.trim() || input.displayText
+}
+
+/**
+ * Normalize Japanese text for TTS by replacing common kanji with correct readings.
+ * Applied as a fallback when no explicit ttsText is provided.
+ */
+function normalizeJapaneseTts(text: string): string {
+  const readings: [string, string][] = [
+    ['朝食', 'ちょうしょく'],
+    ['昼食', 'ちゅうしょく'],
+    ['夕食', 'ゆうしょく'],
+    ['出勤', 'しゅっきん'],
+    ['帰宅', 'きたく'],
+    ['通勤', 'つうきん'],
+    ['洗濯', 'せんたく'],
+    ['掃除', 'そうじ'],
+    ['準備', 'じゅんび'],
+    ['支度', 'したく'],
+  ]
+  let result = text
+  for (const [kanji, reading] of readings) {
+    result = result.replace(kanji, reading)
+  }
+  return result
+}
+
+/**
+ * Resolve TTS input for any text, applying Japanese normalization if detected.
+ */
+function prepareTtsInput(input: string | TextWithTts): string {
+  const raw = resolveTtsText(input)
+  // Auto-detect Japanese and normalize
+  if (/[\u3000-\u9FFF]/.test(raw)) return normalizeJapaneseTts(raw)
+  return raw
+}
+
+// ── Meaning-emerges learning flow components ──
+
+function RationaleHelpButton({ uiText }: { uiText: LessonCopy['activeCard'] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100"
+      >
+        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-500 text-[10px] font-bold leading-none text-white">?</span>
+        {uiText.rationaleToggle}
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center" onClick={() => setOpen(false)}>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px]" />
+          <div
+            className="relative z-10 mx-4 mb-4 w-full max-w-[400px] overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-b from-[#F0F7FF] to-white shadow-[0_20px_60px_rgba(37,99,235,0.15)] sm:mb-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Title area */}
+            <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 to-white px-6 py-4">
+              <div className="flex items-center gap-2">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500 text-sm text-white">&#x2713;</span>
+                <p className="text-sm font-bold text-[#1a1a2e]">{uiText.rationaleTitle}</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-5">
+              <div className="rounded-xl border border-[#E8E4DF] bg-white px-4 py-4 shadow-sm">
+                <p className="text-sm leading-6 text-[#5a5a7a]">{uiText.rationaleBody2}</p>
+                <p className="mt-3 text-sm leading-6 text-[#5a5a7a]">{uiText.rationaleBody3}</p>
+              </div>
+
+              {/* Progression */}
+              <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                <p className="whitespace-pre-line text-xs leading-5 text-blue-700">{uiText.rationaleProgression}</p>
+              </div>
+
+              {/* Close button */}
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="mt-5 w-full rounded-xl bg-blue-500 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-600"
+              >
+                {uiText.rationaleClose}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+
+
+function ConfirmMeaningBlock({ uiText, hint }: { uiText: LessonCopy['activeCard']; hint: string }) {
+  if (!hint) return null
+  return (
+    <div className="rounded-xl border border-[#E8E4DF] bg-[#FAF7F2] px-4 py-3">
+      <p className="text-xs font-bold text-[#7b7b94]">{uiText.confirmMeaningLabel}</p>
+      <p className="mt-1 text-sm leading-6 text-[#5a5a7a]">{hint}</p>
+    </div>
+  )
+}
 
 // ── Button class constants (design system) ──
-const BTN_PRIMARY = 'rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600'
+const BTN_PRIMARY = 'inline-flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600'
+const ICON_LISTEN = <img src="/images/lp/icons/listen.webp" alt="" className="h-5 w-5" aria-hidden="true" />
+const ICON_SPEAK = <img src="/images/lp/icons/speak.webp" alt="" className="h-5 w-5" aria-hidden="true" />
 const BTN_ACTION = 'rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]'
 const BTN_SECONDARY = 'rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]'
 const BTN_STOP = 'rounded-xl bg-gray-400 px-6 py-3 text-sm font-bold text-white transition hover:bg-gray-500'
@@ -91,9 +229,9 @@ type ConvEvalDetail = {
 
 const LESSON_STAGE_ORDER: LessonStageId[] = [
   'listen',
+  'repeat',
   'scaffold_transition',
   'ai_question',
-  'typing',
   'ai_conversation',
 ]
 
@@ -341,26 +479,13 @@ function extractSemanticChunks(
 }
 
 function getScaffoldSteps(item: LessonBlockItem): string[] {
-  const customSteps = Array.isArray(item.scaffold_steps)
-    ? item.scaffold_steps.map((step) => step.trim()).filter(Boolean)
-    : []
-
-  if (customSteps.length >= 3) {
-    return customSteps
-  }
-
-  const maybe = item as LessonBlockItem & { nativeHint?: string | null; mixHint?: string | null }
-  const nativeText = maybe.nativeHint?.trim() || getFallbackTranslation(item)
   const targetText = item.answer?.trim() || item.prompt?.trim() || ''
 
-  // If no native-language text is available, show only the target text
-  if (!nativeText) {
-    return [targetText, targetText, targetText]
-  }
+  // Extract chunk: remove subject pronoun for a cleaner chunk
+  const chunk = targetText.replace(/^(I|We|They|He|She|You)\s+/i, '').replace(/[.!?]+$/, '').trim() || targetText
 
-  const mixText = maybe.mixHint?.trim() || buildMixedText(nativeText, targetText)
-
-  return [nativeText, mixText, targetText]
+  // All 3 passes use English audio: Pass 1 = full, Pass 2 = chunk, Pass 3 = full
+  return [targetText, chunk, targetText]
 }
 
 type RepeatScoreBreakdown = {
@@ -430,14 +555,6 @@ function getStageTone(input: {
   currentStageId: LessonStageId | null
 }) {
   switch (input.currentStageId) {
-    case 'typing':
-      return {
-        badgeClassName:
-          'border border-[#D9E8FF] bg-[#EEF6FF] text-[#2563EB]',
-        panelClassName:
-          'border-[#D9E8FF] bg-[linear-gradient(180deg,#F8FBFF_0%,#FFFFFF_100%)]',
-      }
-
     case 'ai_conversation':
       return {
         badgeClassName:
@@ -484,8 +601,6 @@ function getStageLabel(stage: LessonStageId | null, uiText: LessonCopy['activeCa
       return uiText.stageScaffoldLabel
     case 'ai_question':
       return uiText.stageAiQuestionLabel
-    case 'typing':
-      return uiText.stageTypingLabel
     case 'ai_conversation':
       return uiText.stageAiConversationLabel
     default:
@@ -498,8 +613,7 @@ const NEXT_STAGE: Record<string, LessonStageId> = {
   listen: 'repeat',
   repeat: 'scaffold_transition',
   scaffold_transition: 'ai_question',
-  ai_question: 'typing',
-  typing: 'ai_conversation',
+  ai_question: 'ai_conversation',
 }
 
 /**
@@ -579,7 +693,6 @@ function toEmmaStage(stageId: LessonStageId | null): EmmaHintStage | null {
     case 'repeat': return 'repeat'
     case 'scaffold_transition': return 'scaffold'
     case 'ai_question': return 'aiQuestion'
-    case 'typing': return 'typing'
     default: return null
   }
 }
@@ -635,30 +748,10 @@ function getGuideCharacter(input: {
   if (currentStageId === 'ai_question') {
     return {
       name: 'Alex',
-      imageSrc: '/images/characters/alex/expressions/thinking.png',
+      imageSrc: '/images/characters/alex/expressions/neutral.png',
       title: uiText.guideAlexTitle,
       messagePrimary: uiText.aiQuestionPrimary,
       messageSecondary: uiText.aiQuestionSecondary,
-    }
-  }
-
-  if (currentStageId === 'typing') {
-    return {
-      name: 'Alex',
-      imageSrc:
-        isCorrect === true
-          ? '/images/characters/alex/expressions/happy.png'
-          : isCorrect === false
-            ? '/images/characters/alex/expressions/thinking.png'
-            : '/images/characters/alex/expressions/neutral.png',
-      title: uiText.guideAlexTitle,
-      messagePrimary:
-        isCorrect === true
-          ? uiText.typingCorrectPrimary
-          : isCorrect === false
-            ? uiText.typingIncorrectPrimary
-            : uiText.typingNeutralPrimary,
-      messageSecondary: uiText.typingSecondary,
     }
   }
 
@@ -694,8 +787,6 @@ function getCurrentActionLabel(
       return uiText.scaffoldAction
     case 'ai_question':
       return uiText.aiQuestionAction
-    case 'typing':
-      return uiText.typingAction
     case 'ai_conversation':
       return uiText.aiConversationAction
     default:
@@ -717,15 +808,10 @@ function StageProgressBar({
   const percent = Math.round((completedCount / safeTotal) * 100)
 
   return (
-    <div className="mb-4">
-      <p className="mb-2 text-xs font-bold tracking-widest text-[#9c9c9c]">
-        {label}
-      </p>
-      <div className="flex items-center justify-between mb-1">
-        <p className="text-sm font-bold text-[#1a1a2e]">
-          {currentBlockIndex + 1} / {safeTotal}
-        </p>
-        <p className="text-xs text-[#7b7b94]">{percent}%</p>
+    <div className="mb-2">
+      <div className="flex items-baseline gap-2 mb-1.5">
+        <p className="text-xs font-bold tracking-widest text-[#9c9c9c]">{label}</p>
+        <p className="text-sm font-bold text-[#1a1a2e]">{currentBlockIndex + 1} / {safeTotal}</p>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#ECE7DE]">
         <div
@@ -749,7 +835,7 @@ export type LessonActiveCardProps = {
   onStartRepeatFromListen: () => void
   onRetryListenFromRepeat: () => void
   onRetryListenFromScaffold?: () => void
-  onGoBackToStage?: (stageId: 'scaffold_transition' | 'ai_question' | 'typing' | 'ai_conversation') => void
+  onGoBackToStage?: (stageId: 'repeat' | 'scaffold_transition' | 'ai_question' | 'ai_conversation') => void
   repeatAutoStartNonce: number
   listenResetNonce: number
   currentStageId: LessonStageId | null
@@ -1117,6 +1203,7 @@ function AiConversationPlayer({
 }) {
   const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
   const nativeHintForRecall = (item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null
+  const relatedExprs = (item as LessonBlockItem & { related_expressions?: { en: string }[] | null }).related_expressions
 
   // ── Slot extraction for extended engine ──
   const convSlots = useMemo(() => {
@@ -1176,6 +1263,7 @@ function AiConversationPlayer({
   const [showReviewScreen, setShowReviewScreen] = useState(false)
   const [showChallengeComplete, setShowChallengeComplete] = useState(false)
   const [showConvSilent, setShowConvSilent] = useState(false)
+  const [showConvText, setShowConvText] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -1261,6 +1349,7 @@ function AiConversationPlayer({
 
   /** Play audio for an AI message — non-blocking, plays as soon as URL is ready */
   const playAiMessage = useCallback((text: string) => {
+    const ttsStart = performance.now()
     setAiSpeaking(true)
 
     // Stop previous audio cleanly
@@ -1277,6 +1366,7 @@ function AiConversationPlayer({
 
     const playUrl = (url: string) => {
       const audio = aiAudioRef.current!
+      console.log(`[AI_LATENCY] segment=tts_to_playback duration=${Math.round(performance.now() - ttsStart)}ms cached=${url === aiAudioCacheRef.current.get(normalizeAudioKey(text))}`)
       audio.onended = () => setAiSpeaking(false)
       audio.onerror = () => setAiSpeaking(false)
       audio.src = url
@@ -1354,6 +1444,7 @@ function AiConversationPlayer({
         }, CONV_RECORDING_MAX_MS)
       }
       recorder.onstop = async () => {
+        const t0 = performance.now() // [1] recording stop
         setIsRecording(false)
         if (recordingTimerRef.current) {
           clearTimeout(recordingTimerRef.current)
@@ -1362,55 +1453,67 @@ function AiConversationPlayer({
         stopStream()
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
         chunksRef.current = []
+        const t1 = performance.now() // [2] blob ready
+        console.log(`[AI_LATENCY] turn=${turn} segment=blob_ready duration=${Math.round(t1 - t0)}ms`)
+
         if (blob.size === 0) {
           setShowConvSilent(true)
           return
         }
 
-        // --- Phase 1: STT — show transcript immediately ---
+        // --- Phase 1: STT ---
         setIsRecognizing(true)
         let recognized = ''
+        const t2 = performance.now() // [3] STT request start
         try {
           const formData = new FormData()
           formData.append('file', blob, 'recording.webm')
           formData.append('expectedText', currentAnswer)
-          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData })
+          const authHdrs = await getAuthHeaders()
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
           if (res.ok) {
             const data = await res.json()
             recognized = data.transcript?.trim() || ''
           }
         } catch {
-          // STT failed — recognized stays empty
+          // STT failed
         }
+        const t3 = performance.now() // [4] STT response received
+        console.log(`[AI_LATENCY] turn=${turn} segment=stt duration=${Math.round(t3 - t2)}ms`)
         setTranscript(recognized)
         setIsRecognizing(false)
 
-        // Empty transcript — show guidance, do NOT advance
         if (!recognized) {
           setShowConvSilent(true)
           return
         }
 
-        // --- Predictive TTS prefetch: pre-generate likely reply audio ---
-        const predictedReplies: string[] = []
-        if (turn === 3) {
-          predictedReplies.push('Nice talking with you. See you!', 'That sounds great. Have a good day!', 'I see. Bye!')
-        } else if (turn === 0) {
-          // After greeting, AI will likely ask about the lesson topic
-          predictedReplies.push('Nice! So what did you do today?', "That's great! Tell me about your day.", 'Good to hear!')
-        } else {
-          predictedReplies.push('That sounds nice!', 'Oh, interesting.', 'I see. What happened next?', 'Really? Tell me more.')
+        // --- Final turn guard: skip AI reply, go to completion ---
+        if (turn >= MAX_TURNS - 1) {
+          nextAiReplyRef.current = null
+          setTurnEvalDetail(null)
+          setTurnHint(null)
+          setTurnNextPrompt(null)
+          setTurnAnswered(true)
+          return
         }
-        for (const c of predictedReplies) ensureAiAudioUrl(c)
 
-        // --- Phase 2: Call AI API for dynamic response ---
-        const thinkingTimer = setTimeout(() => setAiThinking(true), 100)
+        // --- Show thinking state ---
+        setAiThinking(true)
+
+        // --- Prefetch likely replies for TTS speed ---
+        const fallback = buildFallbackEvaluation(turn, recognized, currentAnswer)
+        if (fallback.aiReply) ensureAiAudioUrl(fallback.aiReply)
+
+        // --- AI API ---
         const apiHistory = history.map((h) => ({ ai: h.aiMessage, user: h.userReply }))
         apiHistory.push({ ai: currentAiMessage, user: recognized })
 
+        let replied = false
+        const t4 = performance.now() // [5] AI request start
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 12_000)
+          const timeoutId = setTimeout(() => controller.abort(), 3_000)
           const apiRes = await fetch('/api/ai-conversation/reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1421,6 +1524,7 @@ function AiConversationPlayer({
               conversationHistory: apiHistory,
               flavorContext: flavorContext ?? undefined,
               isClosingTurn: turn === 3,
+              rank: level === 'beginner' ? 15 : level === 'intermediate' ? 55 : 85,
             }),
             signal: controller.signal,
           })
@@ -1428,13 +1532,11 @@ function AiConversationPlayer({
 
           if (apiRes.ok) {
             const apiData = await apiRes.json()
-            if (apiData.ok) {
+            if (apiData.ok && apiData.aiReply) {
               incrementAiCallCount()
-              nextAiReplyRef.current = apiData.aiReply ?? null
-              // Prefetch TTS immediately so audio is ready when text renders
-              if (apiData.aiReply) {
-                ensureAiAudioUrl(apiData.aiReply)
-              }
+              replied = true
+              nextAiReplyRef.current = apiData.aiReply
+              ensureAiAudioUrl(apiData.aiReply)
               setTurnEvalDetail(apiData.evaluationDetail ?? null)
               if (apiData.evaluation === 'retry') {
                 setTurnHint(apiData.hint ?? 'Try answering using today\'s expression.')
@@ -1443,23 +1545,26 @@ function AiConversationPlayer({
                 setTurnHint(null)
                 setTurnNextPrompt(null)
               }
-              clearTimeout(thinkingTimer)
-              setAiThinking(false)
-              setTurnAnswered(true)
-              return
             }
           }
         } catch {
-          // API failed — fall through to fallback
+          // API timeout or failure — use fallback
+        }
+        const t5 = performance.now() // [6] AI response received (or timeout)
+        console.log(`[AI_LATENCY] turn=${turn} segment=ai duration=${Math.round(t5 - t4)}ms source=${replied ? 'api' : 'fallback'}`)
+
+        // --- Fallback if API didn't produce a reply ---
+        if (!replied) {
+          nextAiReplyRef.current = fallback.aiReply
+          setTurnEvalDetail(fallback.evaluationDetail)
+          setTurnHint(null)
+          setTurnNextPrompt(null)
         }
 
-        // Fallback: accept answer and generate simple follow-up
-        clearTimeout(thinkingTimer)
-        const fallback = buildFallbackEvaluation(turn, recognized, currentAnswer)
-        nextAiReplyRef.current = fallback.aiReply
-        setTurnEvalDetail(fallback.evaluationDetail)
-        setTurnHint(null)
-        setTurnNextPrompt(null)
+        const t6 = performance.now() // [7] UI message committed
+        console.log(`[AI_LATENCY] turn=${turn} segment=ui_commit duration=${Math.round(t6 - t5)}ms`)
+        console.log(`[AI_LATENCY] turn=${turn} total_visible_reply=${Math.round(t6 - t0)}ms (stt=${Math.round(t3 - t2)}ms ai=${Math.round(t5 - t4)}ms)`)
+
         setAiThinking(false)
         setTurnAnswered(true)
       }
@@ -1498,9 +1603,13 @@ function AiConversationPlayer({
       onInputChange('[conversation done]')
       trackEvent('conversation_complete', { turns: next })
     } else {
-      // Use the AI-generated reply for the next turn
-      const nextMsg = nextAiReplyRef.current ?? 'That sounds great! Tell me more.'
+      // Use the AI-generated reply for the next turn — prevent identical consecutive messages
+      let nextMsg = nextAiReplyRef.current ?? 'That sounds great! Tell me more.'
       nextAiReplyRef.current = null
+      if (nextMsg === currentAiMessage) {
+        const alternatives = ['That\'s interesting!', 'I see. Tell me more.', 'Nice! Go on.', 'Really? What happened next?']
+        nextMsg = alternatives[Math.floor(Math.random() * alternatives.length)]
+      }
 
       setCurrentAiMessage(nextMsg)
       setTurn(next)
@@ -1603,12 +1712,30 @@ function AiConversationPlayer({
     const allReviewDone = soundGameDone && quickResponseDone && (recallDone || !nativeHintForRecall)
     return (
       <div className="mt-4">
+        {/* Back to conversation */}
+        <div className="mb-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => { setShowReviewScreen(false); setSoundGameDone(false); setQuickResponseDone(false); setRecallDone(false) }}
+            className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+          >
+            {uiText.backToConversation}
+          </button>
+        </div>
         {!soundGameDone && (
           <SoundGame uiText={uiText} onComplete={() => setSoundGameDone(true)} />
         )}
         {soundGameDone && !quickResponseDone && (
           <QuickResponseGame
-            sentences={[currentAnswer, ...(previousPhrases.length > 0 ? previousPhrases.slice(-2) : [currentAnswer])]}
+            sentences={(() => {
+              const related = relatedExprs?.map(r => r.en.trim()).filter(e => e && e !== currentAnswer) ?? []
+              const extras = previousPhrases.length > 0
+                ? previousPhrases.slice(-2)
+                : related.length > 0
+                  ? related.sort(() => Math.random() - 0.5).slice(0, 2)
+                  : []
+              return [currentAnswer, ...extras.filter(e => e !== currentAnswer)]
+            })()}
             uiText={uiText}
             onComplete={() => {
               setQuickResponseDone(true)
@@ -1636,56 +1763,65 @@ function AiConversationPlayer({
       {/* During conversation: chat-style UI — no round labels */}
       {!allDone && (
         <>
-          {/* Conversation log — all completed turns + current AI message */}
+          {/* Turn-state center area */}
           <div className="mx-auto mb-4 max-w-[460px]">
-            <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-5 py-5">
-              <p className="mb-3 text-[11px] font-bold tracking-widest text-[#9CA3AF]">{uiText.conversationFlowLabel}</p>
-              <div className="flex flex-col gap-3">
-                {/* Completed turns */}
-                {history.map((h, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="flex justify-start">
-                      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#1a1a2e]">
-                        <p className="mt-0.5">{h.aiMessage}</p>
-                      </div>
-                    </div>
-                    {h.userReply && (
-                      <div className="flex justify-end">
-                        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3.5 py-2 text-sm text-[#1a1a2e]">
-                          <p className="mt-0.5">{h.userReply}</p>
+            <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-5 py-4">
+              {/* Center: turn state only */}
+              <div className="flex flex-col items-center">
+                {aiSpeaking ? (
+                  <p className="text-sm font-semibold text-blue-600">{uiText.aiConvSpeaking}</p>
+                ) : aiThinking ? (
+                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvThinking}</p>
+                ) : (
+                  <p className="text-sm font-semibold text-[#5a5a7a]">{uiText.aiConvYourTurn}</p>
+                )}
+              </div>
+
+              {/* Support: conversation flow — bottom-right, secondary */}
+              <div className="mt-2 flex justify-end">
+                {!showConvText ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowConvText(true)}
+                    className="text-[11px] font-medium text-[#9ca3af] transition hover:text-[#7b7b94]"
+                  >
+                    {uiText.aiConvShowFlow}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowConvText(false)}
+                    className="text-[11px] font-medium text-[#9ca3af] transition hover:text-[#7b7b94]"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Conversation flow — expandable, below status */}
+              {showConvText && (
+                <div className="mt-2 border-t border-[#E5E7EB] pt-2">
+                  <div className="flex flex-col gap-1.5">
+                    {history.map((h, i) => (
+                      <div key={i} className="space-y-1">
+                        <div className="flex justify-start">
+                          <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-xs text-[#1a1a2e]">{h.aiMessage}</div>
                         </div>
+                        {h.userReply && (
+                          <div className="flex justify-end">
+                            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3 py-1.5 text-xs text-[#1a1a2e]">{h.userReply}</div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {!aiThinking && (
+                      <div className="flex justify-start">
+                        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-xs text-[#1a1a2e]">{currentAiMessage}</div>
                       </div>
                     )}
                   </div>
-                ))}
-
-                {/* Current turn AI message — always visible */}
-                {!aiThinking && (
-                  <div className="flex justify-start">
-                    <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#1a1a2e]">
-                      <p className="mt-0.5">{currentAiMessage}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* User's current answer (shown after recording) */}
-                {transcript && (
-                  <div className="flex justify-end">
-                    <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3.5 py-2 text-sm text-[#1a1a2e]">
-                      <p className="mt-0.5">{transcript}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* AI thinking indicator */}
-                {aiThinking && (
-                  <div className="flex justify-start">
-                    <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#7b7b94]">
-                      <p className="mt-0.5 animate-pulse">...</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1705,7 +1841,7 @@ function AiConversationPlayer({
                   onClick={handleStartRecording}
                   className={BTN_PRIMARY}
                 >
-                  {uiText.aiConvRecordButton}
+                  {ICON_SPEAK}{uiText.aiConvRecordButton}
                 </button>
               ) : (
                 <button
@@ -2093,7 +2229,8 @@ function generateMiniReview(
   personAlt: string,
   timeSlot: string,
   timeAlt: string,
-  uiText: LessonCopy['activeCard']
+  uiText: LessonCopy['activeCard'],
+  relatedExpressions?: { en: string }[] | null
 ): MiniReviewItem | null {
   if (!sentence || sentence.split(/\s+/).length < 2) return null
 
@@ -2155,6 +2292,16 @@ function generateMiniReview(
     }
 
     case 'repeat': {
+      // Prefer a near-variation from related expressions for a real challenge
+      const actionExprs = relatedExpressions
+        ?.map(r => r.en.trim())
+        .filter(e => e && e !== sentence && e.split(/\s+/).length >= 3) ?? []
+      if (actionExprs.length > 0) {
+        const variation = actionExprs[Math.floor(Math.random() * actionExprs.length)]
+        // Challenge: listen to the variation, pick the correct text
+        return { type: 'recall', mode: 'audio-first', prompt: uiText.miniReviewRecallPrompt, choices: [variation, sentence], correctIndex: 0, audioText: variation }
+      }
+      // Fallback: slot-based distractor
       const d2 = personSlot ? sentence.replace(personSlot, personAlt)
         : timeSlot ? sentence.replace(timeSlot, timeAlt)
         : buildDistractor(sentence)
@@ -2228,6 +2375,7 @@ function MiniReviewCard({
   hideAudioHelperText = false,
   autoPlay = false,
   hideInlineResult = false,
+  preloadedAudioUrl,
 }: {
   item: MiniReviewItem
   uiText: LessonCopy['activeCard']
@@ -2236,6 +2384,7 @@ function MiniReviewCard({
   hideAudioHelperText?: boolean
   autoPlay?: boolean
   hideInlineResult?: boolean
+  preloadedAudioUrl?: string | null
 }) {
   const [selected, setSelected] = useState<number | null>(null)
   const [audioPlayed, setAudioPlayed] = useState(false)
@@ -2248,24 +2397,34 @@ function MiniReviewCard({
   const isAudioFirst = item.mode === 'audio-first' || isSpeaking
   const showChoices = (!isAudioFirst || audioPlayed) && !isSpeaking
 
+  const cachedAudioUrlRef = useRef<string | null>(preloadedAudioUrl ?? null)
+
   const playAudio = async () => {
     if (isPlaying || !item.audioText) return
     setIsPlaying(true)
     try {
-      const res = await fetch('/api/audio/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: item.audioText, speed: 0.8 }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        if (data.audio_url) {
-          const audio = new Audio(data.audio_url)
-          audio.onended = () => { setIsPlaying(false); setAudioPlayed(true); startTimeRef.current = Date.now() }
-          audio.onerror = () => { setIsPlaying(false); setAudioPlayed(true) }
-          audio.play().catch(() => { setIsPlaying(false); setAudioPlayed(true) })
-          return
+      // Reuse cached audio URL if available
+      let audioUrl = cachedAudioUrlRef.current
+      if (!audioUrl) {
+        const res = await fetch('/api/audio/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: item.audioText, speed: 0.8 }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.audio_url) {
+            audioUrl = data.audio_url
+            cachedAudioUrlRef.current = audioUrl
+          }
         }
+      }
+      if (audioUrl) {
+        const audio = new Audio(audioUrl)
+        audio.onended = () => { setIsPlaying(false); setAudioPlayed(true); startTimeRef.current = Date.now() }
+        audio.onerror = () => { setIsPlaying(false); setAudioPlayed(true) }
+        audio.play().catch(() => { setIsPlaying(false); setAudioPlayed(true) })
+        return
       }
     } catch { /* ignore */ }
     setIsPlaying(false)
@@ -2353,7 +2512,7 @@ function MiniReviewCard({
                 onClick={playAudio}
                 className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#3B82F6] text-white transition hover:bg-[#2563EB]"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5"><path d="M8 5v14l11-7z" /></svg>
+                <LpIcon emoji="🎧" size={22} />
               </button>
             </>
           )}
@@ -2368,7 +2527,7 @@ function MiniReviewCard({
               onClick={handleSpeak}
               className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600 active:scale-[0.95]"
             >
-              🎤
+              <LpIcon emoji="🎤" size={22} />
             </button>
           )}
           {speakingState === 'recording' && (
@@ -2385,27 +2544,40 @@ function MiniReviewCard({
         <>
           <p className="text-sm font-bold text-[#1a1a2e]">{item.prompt}</p>
           {(showChoices || showChoicesFallback) && (
-            <div className="mt-3 flex justify-center gap-2">
-              {item.choices.map((choice, i) => (
+            <>
+              <div className="mt-3 flex justify-center gap-2">
+                {item.choices.map((choice, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleChoice(i as 0 | 1)}
+                    disabled={selected !== null}
+                    className={`min-w-[120px] rounded-xl border px-4 py-2.5 text-sm font-bold transition active:scale-[0.97] ${
+                      selected === null
+                        ? 'border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'
+                        : selected === i
+                          ? i === item.correctIndex
+                            ? 'border-[#22c55e] bg-[#F0FDF4] text-[#22c55e]'
+                            : 'border-[#F5A623] bg-[#FFF9EC] text-[#F5A623]'
+                          : 'border-[#E8E4DF] bg-white text-[#b5b5c3]'
+                    }`}
+                  >
+                    {choice}
+                  </button>
+                ))}
+              </div>
+              {isAudioFirst && selected === null && item.audioText && (
                 <button
-                  key={i}
                   type="button"
-                  onClick={() => handleChoice(i as 0 | 1)}
-                  disabled={selected !== null}
-                  className={`min-w-[120px] rounded-xl border px-4 py-2.5 text-sm font-bold transition active:scale-[0.97] ${
-                    selected === null
-                      ? 'border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'
-                      : selected === i
-                        ? i === item.correctIndex
-                          ? 'border-[#22c55e] bg-[#F0FDF4] text-[#22c55e]'
-                          : 'border-[#F5A623] bg-[#FFF9EC] text-[#F5A623]'
-                        : 'border-[#E8E4DF] bg-white text-[#b5b5c3]'
-                  }`}
+                  onClick={playAudio}
+                  disabled={isPlaying}
+                  className="mx-auto mt-3 flex items-center gap-1.5 rounded-lg border border-[#E8E4DF] bg-white px-3 py-1.5 text-xs font-bold text-[#5a5a7a] transition hover:bg-[#FAF8F5] disabled:opacity-50"
                 >
-                  {choice}
+                  <LpIcon emoji="🎧" size={14} />
+                  {isPlaying ? uiText.challengeAudioPlaying : uiText.miniReviewListenAgain}
                 </button>
-              ))}
-            </div>
+              )}
+            </>
           )}
           {selected !== null && !hideInlineResult && (
             <p className={`mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold ${isCorrect ? 'text-[#22c55e]' : 'text-[#F5A623]'}`}>
@@ -2548,7 +2720,7 @@ function SoundGame({ uiText, onComplete }: { uiText: LessonCopy['activeCard']; o
 
       {/* Status indicator */}
       {isPlaying && (
-        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">🔊 再生中…</p>
+        <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#7b7b94]"><LpIcon emoji="🎧" size={12} /> 再生中…</p>
       )}
 
       <div className="mt-3 flex justify-center">
@@ -2719,7 +2891,8 @@ function QuickResponseGame({
         formData.append('mode', 'repeat')
         debugLog('[challenge-repeat-request]', { expectedText: sentences[round], mode: 'repeat' })
         try {
-          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData })
+          const authHdrs = await getAuthHeaders()
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
           let isGood = false
           if (res.ok) {
             const data = await res.json()
@@ -2880,7 +3053,8 @@ function RecallChallenge({
         formData.append('mode', 'repeat')
         debugLog('[challenge-speaking-request]', { expectedText: currentPair.en, mode: 'repeat' })
         try {
-          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData })
+          const authHdrs = await getAuthHeaders()
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
           let isGood = false
           if (res.ok) {
             const data = await res.json()
@@ -2995,25 +3169,96 @@ const TYPING_ROUNDS = 3
  * Build gap-fill variations from a sentence by blanking out semantic chunks.
  * Returns sentences with ______ replacing key parts.
  */
-function buildGapFillVariations(sentence: string): string[] {
-  const words = sentence.split(/\s+/)
-  if (words.length < 3) return []
+/**
+ * Scene-related expression fallback for typing prompts.
+ * Instead of gap-fills, generates natural related sentences
+ * based on the verb/action in the original sentence.
+ */
+const SCENE_RELATED_EXPRESSIONS: Record<string, string[]> = {
+  'clean up': [
+    'I wash the dishes.',
+    'I wipe the table.',
+    'I put the plates away.',
+    'I tidy up the kitchen.',
+  ],
+  'wake up': [
+    'I get out of bed.',
+    'I open the curtains.',
+    'I check my phone.',
+    'I stretch a little.',
+  ],
+  'get ready': [
+    'I take a shower.',
+    'I brush my teeth.',
+    'I get dressed.',
+    'I check my bag.',
+  ],
+  'make breakfast': [
+    'I boil some water.',
+    'I make some toast.',
+    'I pour some coffee.',
+    'I cut some fruit.',
+  ],
+  'go to work': [
+    'I leave the house.',
+    'I walk to the station.',
+    'I take the train.',
+    'I check my schedule.',
+  ],
+  'have lunch': [
+    'I go to a restaurant.',
+    'I eat a sandwich.',
+    'I take a break.',
+    'I sit down and eat.',
+  ],
+  'cook dinner': [
+    'I chop the vegetables.',
+    'I set the table.',
+    'I heat up the pan.',
+    'I prepare the ingredients.',
+  ],
+  'take a bath': [
+    'I fill the bathtub.',
+    'I wash my hair.',
+    'I relax in the water.',
+    'I dry off with a towel.',
+  ],
+  'go to bed': [
+    'I brush my teeth.',
+    'I turn off the lights.',
+    'I set my alarm.',
+    'I read for a while.',
+  ],
+  'go home': [
+    'I leave the office.',
+    'I walk to the station.',
+    'I take the bus home.',
+    'I arrive home.',
+  ],
+  'study': [
+    'I open my textbook.',
+    'I review my notes.',
+    'I practice writing.',
+    'I listen to English audio.',
+  ],
+  'exercise': [
+    'I go for a run.',
+    'I do some stretches.',
+    'I work out at the gym.',
+    'I go for a walk.',
+  ],
+}
 
-  const gaps: string[] = []
-
-  // Gap 1: blank last 1-2 words (time/object position)
-  const tail = words.length <= 4 ? 1 : 2
-  const gap1 = [...words.slice(0, words.length - tail), '______'].join(' ')
-  gaps.push(gap1)
-
-  // Gap 2: blank middle chunk (object position, skip first 2 words)
-  if (words.length >= 5) {
-    const mid = Math.floor(words.length / 2)
-    const gap2 = [...words.slice(0, mid - 1), '______', ...words.slice(mid + 1)].join(' ')
-    if (gap2 !== gap1) gaps.push(gap2)
+function buildSceneRelatedVariations(sentence: string): string[] {
+  const lower = sentence.toLowerCase()
+  for (const [verb, expressions] of Object.entries(SCENE_RELATED_EXPRESSIONS)) {
+    if (lower.includes(verb)) {
+      // Shuffle and return up to 2 random related expressions
+      const shuffled = [...expressions].sort(() => Math.random() - 0.5)
+      return shuffled.slice(0, 2)
+    }
   }
-
-  return gaps
+  return []
 }
 
 // ── Topic-based typing template pools ──
@@ -3138,12 +3383,12 @@ function buildTypingPrompts(currentAnswer: string, previousPhrases: string[], ty
     }
   }
 
-  // Gap-fill fallback if still need more
+  // Scene-related expressions fallback
   if (prompts.length < TYPING_ROUNDS) {
-    const gapFills = buildGapFillVariations(currentAnswer)
-    for (const g of gapFills) {
+    const related = buildSceneRelatedVariations(currentAnswer)
+    for (const r of related) {
       if (prompts.length >= TYPING_ROUNDS) break
-      prompts.push(g)
+      if (!prompts.includes(r)) prompts.push(r)
     }
   }
 
@@ -3598,6 +3843,697 @@ function buildReuseQuestion(phrase: string): string {
   return 'What do you usually do after that?'
 }
 
+// ── AI Question Listening Comprehension Stage ──
+
+type AiQuestionChoice = { label: string; isCorrect: boolean }
+
+/**
+ * Parse a question into a structured intent, then build 1 correct label + 3 distractors.
+ * Correct label is always generated from the parsed question — never from a vague pool.
+ */
+
+// ── Dictionaries for locale-aware label rendering ──
+
+// ══════════════════════════════════════════════════════════════════════════════
+// AI Question — Sentence classifier, label renderer, and choice builder
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Dictionaries ──
+
+const NOUN_JA: Record<string, string> = {
+  breakfast: '朝ごはん', lunch: 'お昼ごはん', dinner: '夕ごはん', snack: 'おやつ',
+  school: '学校', work: '仕事', class: '授業', homework: '宿題', meeting: '会議',
+  'class today': '今日の授業', 'work today': '今日の仕事', 'a meeting': '会議', 'plans': '予定', 'time': '時間',
+  cooking: '料理', shopping: '買い物', coffee: 'コーヒー', tea: 'お茶',
+  'the morning': '朝', 'the evening': '夕方', 'the afternoon': '午後',
+  morning: '朝', evening: '夕方', afternoon: '午後', night: '夜', 'the night': '夜',
+  today: '今日', tomorrow: '明日', yesterday: '昨日',
+  'the weekend': '週末', weekend: '週末',
+  math: '算数', english: '英語', science: '理科', music: '音楽',
+  tired: '疲れている', hungry: 'お腹が空いている', sleepy: '眠い', happy: '嬉しい',
+  home: '家', after: 'のあと', before: 'のまえ', during: 'の間',
+  'after school': '放課後', 'after work': '仕事のあと', 'after lunch': '昼食のあと',
+}
+
+const VERB_JA: Record<string, string> = {
+  'wake up': '起きる', 'get up': '起きる',
+  'go': '行く', 'go to': '行く', 'go home': '帰る', 'get home': '帰る',
+  'eat': '食べる', 'have': '食べる', 'have breakfast': '朝ごはんを食べる',
+  'cook': '料理する', 'make': '作る', 'make breakfast': '朝ごはんを作る',
+  'make dinner': '夕ごはんを作る', 'prepare': '準備する',
+  'clean up': '片付ける', 'clean up after breakfast': '朝食の片付けをする',
+  'wash': '洗う', 'wash the dishes': '食器を洗う', 'tidy': '片付ける',
+  'do the laundry': '洗濯する', 'sort the garbage': 'ゴミを分別する',
+  'take out the garbage': 'ゴミを出す',
+  'study': '勉強する', 'read': '読む', 'read a book': '本を読む',
+  'watch': '見る', 'watch videos': '動画を見る', 'play games': 'ゲームをする',
+  'walk': '歩く', 'run': '走る', 'exercise': '運動する', 'go for a walk': '散歩する',
+  'take a bath': 'お風呂に入る', 'take a shower': 'シャワーを浴びる',
+  'sleep': '寝る', 'go to bed': '寝る',
+  'talk to': '話す', 'talk with': '話す', 'meet': '会う', 'see': '会う',
+  'leave': '出かける', 'come home': '帰る',
+  'drink': '飲む', 'buy': '買う',
+  'brush my teeth': '歯を磨く', 'brush teeth': '歯を磨く',
+  'get dressed': '着替える', 'get ready': '準備する',
+  'set my alarm': '目覚ましをセットする', 'set the alarm': '目覚ましをセットする',
+  'write': '書く', 'write a diary': '日記を書く',
+  'sit down': '座る', 'wash your hands': '手を洗う', 'want to go home': '家に帰りたい',
+  'try again': 'もう一度試す', 'try': '試す', 'remember': '覚える',
+}
+
+const PREP_JA: Record<string, string> = {
+  after: 'のあと', before: 'のまえ', in: 'の', on: 'のとき', at: 'に', during: 'の間', every: '毎',
+}
+
+function toJa(word: string): string {
+  const lower = word.toLowerCase().trim()
+  // Exact match first
+  if (NOUN_JA[lower]) return NOUN_JA[lower]
+  // Try verb dictionary for phrases like "to go home"
+  const stripped = lower.replace(/^to\s+/, '')
+  if (VERB_JA[stripped]) return VERB_JA[stripped]
+  // Word-by-word: translate each known word, keep unknown ones
+  const parts = lower.split(/\s+/)
+  if (parts.length > 1) {
+    const translated = parts.map(p => NOUN_JA[p] ?? VERB_JA[p] ?? p)
+    // If at least one word translated, return combined
+    if (translated.some((t, i) => t !== parts[i])) return translated.join('')
+  }
+  return word
+}
+
+function verbToJa(phrase: string): string {
+  const lower = phrase.toLowerCase().trim()
+  for (const [en, ja] of Object.entries(VERB_JA).sort((a, b) => b[0].length - a[0].length)) {
+    if (lower.startsWith(en)) return ja
+  }
+  return lower
+}
+
+function jaVerbSuffix(v: string, suru: string): string {
+  return /[るくすむぶつぬうぐ]$/.test(v) ? v : v + suru
+}
+
+// ── Sentence type system ──
+
+type SentenceType =
+  | 'wh_question'
+  | 'yes_no_question'
+  | 'declarative_action'
+  | 'declarative_state'
+  | 'greeting_social'
+  | 'request_instruction'
+
+type ClassifiedSentence = {
+  sentenceType: SentenceType
+  verb?: string
+  object?: string
+  context?: string
+  prep?: string
+  whTarget?: 'action' | 'food' | 'place' | 'time' | 'person' | 'general'
+}
+
+function classifySentence(sentence: string): ClassifiedSentence {
+  const s = sentence.replace(/[.!?]+$/, '').trim()
+  const lower = s.toLowerCase()
+
+  // ── Greetings / social ──
+  if (/^(thank|thanks)\b/i.test(lower)) return { sentenceType: 'greeting_social', verb: 'thank' }
+  if (/^(see you|bye|take care|have a good)\b/i.test(lower)) return { sentenceType: 'greeting_social', verb: 'bye' }
+  if (/^(hi|hello|hey|good (morning|afternoon|evening|night)|nice to meet)\b/i.test(lower)) return { sentenceType: 'greeting_social', verb: 'greet' }
+
+  // ── Requests / instructions ──
+  if (/^(please |could you |can you |would you |let's |don't forget to )/i.test(lower)) {
+    const verb = lower.replace(/^(please |could you |can you |would you |let's |don't forget to )/i, '').trim()
+    return { sentenceType: 'request_instruction', verb }
+  }
+  // Bare imperative: starts with a verb not preceded by a subject
+  if (/^(wash |sit |stand |open |close |turn |put |pick |clean |come |stop |wait |hurry |listen |look |try |remember )/i.test(lower)) {
+    return { sentenceType: 'request_instruction', verb: lower }
+  }
+
+  // ── Wh-questions ──
+  const whActionCtx = lower.match(/^what do you (?:usually )?do\s+(after|before|in|on|at|during)\s+(.+)$/)
+  if (whActionCtx) return { sentenceType: 'wh_question', whTarget: 'action', prep: whActionCtx[1], context: whActionCtx[2] }
+
+  if (/^what do you (?:usually )?do\b/.test(lower)) return { sentenceType: 'wh_question', whTarget: 'action' }
+
+  if (/^what (?:do you |did you |are you )?(eat|have|cook|make)\b/.test(lower)) {
+    const m = lower.match(/(?:eat|have|cook|make)\s*(?:for\s+)?(.+)?$/)
+    return { sentenceType: 'wh_question', whTarget: 'food', context: m?.[1]?.trim() }
+  }
+
+  if (/^where\b/.test(lower)) {
+    const verb = lower.replace(/^where\s+(do|does|did)\s+you\s+/i, '').trim()
+    return { sentenceType: 'wh_question', whTarget: 'place', verb }
+  }
+
+  if (/^(what time|when)\b/.test(lower)) {
+    const verb = lower.replace(/^(what time|when)\s+(do|does|did)\s+you\s+/i, '').trim()
+    return { sentenceType: 'wh_question', whTarget: 'time', verb }
+  }
+
+  if (/^who\b/.test(lower)) return { sentenceType: 'wh_question', whTarget: 'person' }
+  if (/^how (are you|is your|'s your)\b/.test(lower)) return { sentenceType: 'greeting_social' }
+  if (/^(what|which|how)\b/.test(lower)) return { sentenceType: 'wh_question', whTarget: 'general' }
+
+  // ── Yes/no questions ──
+  if (/^(do |does |did |are |is |can |could |will |would |shall |should |have you |has )/.test(lower)) {
+    const body = lower.replace(/^(do|does|did|are|is|can|could|will|would|shall|should|have|has)\s+(you\s+)?/i, '').trim()
+    // Sub-classify
+    if (/^have\s+/.test(body) || /\b(today|tomorrow|tonight|this)\b/.test(body)) {
+      const obj = body.replace(/^have\s+/i, '').trim()
+      return { sentenceType: 'yes_no_question', verb: 'have', object: obj }
+    }
+    if (/^(like|enjoy|love|prefer|want)\b/.test(body)) {
+      const m = body.match(/^(like|enjoy|love|prefer|want)\s+(.+)$/)
+      return { sentenceType: 'yes_no_question', verb: m?.[1], object: m?.[2] }
+    }
+    if (/^(feeling|feel|tired|hungry|happy|sleepy|busy)\b/.test(body)) {
+      return { sentenceType: 'declarative_state', object: body }
+    }
+    return { sentenceType: 'yes_no_question', verb: body }
+  }
+
+  // ── Declarative: state / feeling ──
+  const stateMatch = lower.match(/^i('m|'m feeling| am| feel| like| love| enjoy| prefer| want| need| hope| wish)\s*(.*)$/)
+  if (stateMatch) {
+    const rawVerb = stateMatch[1].trim().replace(/^'m\s*/, '').replace(/^'m$/, 'am')
+    const verb = rawVerb || 'am'
+    const obj = stateMatch[2]?.trim() || undefined
+    return { sentenceType: 'declarative_state', verb, object: obj }
+  }
+  if (/^(it's|it is|there's|there is)\b/.test(lower)) {
+    return { sentenceType: 'declarative_state', object: lower }
+  }
+
+  // ── Declarative: action with time/place context ──
+  const routineMatch = lower.match(/^(?:i\s+)(.+?)\s+(at|in|on|every|after|before|during)\s+(.+)$/)
+  if (routineMatch) {
+    return { sentenceType: 'declarative_action', verb: routineMatch[1], context: routineMatch[3], prep: routineMatch[2] }
+  }
+
+  // ── Declarative: general action ──
+  const stmtVerb = lower.match(/^(?:i\s+)(.+)$/)
+  if (stmtVerb) {
+    return { sentenceType: 'declarative_action', verb: stmtVerb[1].trim() }
+  }
+
+  // ── Fallback: treat as declarative action ──
+  return { sentenceType: 'declarative_action', verb: lower }
+}
+
+// ── Per-type label renderers ──
+
+function buildCorrectLabelJa(c: ClassifiedSentence): string {
+  switch (c.sentenceType) {
+    case 'wh_question': {
+      switch (c.whTarget) {
+        case 'action': return c.context ? `${toJa(c.context)}${PREP_JA[c.prep!] ?? 'のとき'}に何をするか聞いている` : 'ふだん何をするか聞いている'
+        case 'food': return c.context ? `${toJa(c.context)}に何を食べるか聞いている` : '何を食べるか聞いている'
+        case 'place': return `どこへ${jaVerbSuffix(verbToJa(c.verb || 'go'), 'する')}か聞いている`
+        case 'time': return `いつ${jaVerbSuffix(verbToJa(c.verb || 'do it'), 'する')}か聞いている`
+        case 'person': return '誰について聞いている'
+        default: return 'この質問の内容について聞いている'
+      }
+    }
+    case 'yes_no_question': {
+      if (c.verb === 'have') return `${toJa(c.object || '')}があるか聞いている`
+      if (['like', 'enjoy', 'love', 'prefer', 'want'].includes(c.verb || '')) return `${toJa(c.object || '')}が好きか聞いている`
+      const v = verbToJa(c.verb || '')
+      return `${jaVerbSuffix(v, 'する')}か聞いている`
+    }
+    case 'declarative_action': {
+      const v = verbToJa(c.verb || '')
+      if (c.context) {
+        const ctx = toJa(c.context)
+        const p = PREP_JA[c.prep || ''] ?? 'に'
+        return `${ctx}${p}${jaVerbSuffix(v, 'する')}ことを伝えている`
+      }
+      return `${jaVerbSuffix(v, 'する')}ことを伝えている`
+    }
+    case 'declarative_state': {
+      const verb = c.verb || 'am'
+      // Preference: like/love/enjoy/prefer
+      if (['like', 'love', 'enjoy', 'prefer'].includes(verb)) {
+        const obj = c.object ? toJa(c.object) : ''
+        return obj ? `${obj}が好きだと伝えている` : '好きだという気持ちを伝えている'
+      }
+      // Desire: want/need/hope/wish
+      if (['want', 'need', 'hope', 'wish'].includes(verb)) {
+        const vObj = c.object ? toJa(c.object) : ''
+        // る-verb → りたい, other → したい
+        const tai = /る$/.test(vObj) ? vObj.slice(0, -1) + 'りたい'
+          : /[くすむぶつぬうぐ]$/.test(vObj) ? vObj + 'たい'
+          : vObj ? vObj + 'したい' : ''
+        return tai ? `${tai}気持ちを伝えている` : '〜したいという気持ちを伝えている'
+      }
+      // Feeling/state: feel/am/'m — split time context from adjective using RAW English
+      if (c.object) {
+        const raw = c.object
+        // "tired today" → adj=tired, time=today
+        const timeEnd = raw.match(/^(.+?)\s+(today|tomorrow|yesterday|tonight)$/i)
+        if (timeEnd) {
+          return `${toJa(timeEnd[2].trim())}は${toJa(timeEnd[1].trim())}ことを伝えている`
+        }
+        // "hungry after school" → adj=hungry, context="after school"
+        const prepCtx = raw.match(/^(.+?)\s+(after|before|every|during|at|in)\s+(.+)$/i)
+        if (prepCtx) {
+          const adj = toJa(prepCtx[1].trim())
+          // Try translating "prep + place" as a unit first (e.g., "after school" → "放課後")
+          const fullCtx = `${prepCtx[2]} ${prepCtx[3]}`.trim()
+          const ctxJa = toJa(fullCtx)
+          if (ctxJa !== fullCtx) {
+            return `${ctxJa}に${adj}ことを伝えている`
+          }
+          const p = PREP_JA[prepCtx[2].toLowerCase()] ?? 'に'
+          const place = toJa(prepCtx[3].trim())
+          return `${place}${p}${adj}ことを伝えている`
+        }
+        return `${toJa(raw)}ことを伝えている`
+      }
+      return '自分の気持ちを伝えている'
+    }
+    case 'greeting_social': {
+      if (c.verb === 'thank') return 'お礼を言っている'
+      if (c.verb === 'bye') return 'お別れの挨拶をしている'
+      return '挨拶をしている'
+    }
+    case 'request_instruction': {
+      const raw = c.verb || ''
+      // "let's go" style → invitation
+      if (/^(go|do|try|play|eat|start)$/i.test(raw) || /^go\b/.test(raw)) {
+        const v = verbToJa(raw)
+        return `一緒���${jaVerbSuffix(v, 'する')}ことを誘っている`
+      }
+      const v = verbToJa(raw)
+      return `${jaVerbSuffix(v, 'する')}ようにお願いしている`
+    }
+  }
+}
+
+function buildCorrectLabelEn(c: ClassifiedSentence): string {
+  switch (c.sentenceType) {
+    case 'wh_question': {
+      switch (c.whTarget) {
+        case 'action': return c.context ? `Asking what you do ${c.prep} ${c.context}` : 'Asking what you usually do'
+        case 'food': return c.context ? `Asking what you eat for ${c.context}` : 'Asking what you eat'
+        case 'place': return `Asking where you ${c.verb || 'go'}`
+        case 'time': return `Asking when you ${c.verb || 'do it'}`
+        case 'person': return 'Asking about who'
+        default: return 'Asking about this topic'
+      }
+    }
+    case 'yes_no_question': return `Asking whether you ${c.verb || 'do that'}`
+    case 'declarative_action': {
+      if (c.context) return `Saying you ${c.verb} ${c.prep} ${c.context}`
+      return `Saying you ${c.verb}`
+    }
+    case 'declarative_state': return c.object ? `Expressing that you ${c.object}` : 'Expressing a feeling or state'
+    case 'greeting_social': {
+      if (c.verb === 'thank') return 'Saying thank you'
+      if (c.verb === 'bye') return 'Saying goodbye'
+      return 'Greeting someone'
+    }
+    case 'request_instruction': return `Asking someone to ${c.verb || 'do something'}`
+  }
+}
+
+// ── Per-type distractor pools (strict family separation) ──
+
+const QUESTION_DISTRACTORS_JA = [
+  'どこに行くか聞いている', '何を食べるか聞いている', '気持ちについて聞いている',
+  '時間について聞いている', '誰と一緒か聞いている', 'ふだん何をするか聞いている',
+]
+const STATEMENT_DISTRACTORS_JA = [
+  '朝ごはんを食べることを伝えている', '出かける準備をすることを伝えている',
+  '歯を磨くことを伝えている', '夕ごはんを作ることを伝えている',
+  '散歩することを伝えている', '本を読むことを伝えている',
+  'シャワーを浴びることを伝えている', '寝ることを伝えている',
+]
+const STATE_DISTRACTORS_JA = [
+  '疲れていることを伝えている', '楽しいという気持ちを伝えている',
+  'お腹が空いていることを伝えている', '眠いことを伝えている',
+  '好きだという気持ちを伝えている', '帰りたいという気持ちを伝えている',
+]
+const SOCIAL_DISTRACTORS_JA = [
+  'お礼を言っている', 'お別れの挨拶をしている', '自己紹介をしている', '声をかけている',
+]
+const REQUEST_DISTRACTORS_JA = [
+  '手伝ってほしいとお願いしている', '静かにするようにお願いしている',
+  '一緒に行こうと誘っている', '準備するようにお願いしている',
+  '座るようにお願いしている', '手を洗うようにお願いしている',
+]
+
+const QUESTION_DISTRACTORS_EN = [
+  'Asking where you go', 'Asking what you eat', 'Asking how you feel',
+  'Asking about the time', 'Asking who you are with', 'Asking what you usually do',
+]
+const STATEMENT_DISTRACTORS_EN = [
+  'Saying you eat breakfast', 'Saying you get ready to leave',
+  'Saying you brush your teeth', 'Saying you make dinner',
+  'Saying you go for a walk', 'Saying you read a book',
+  'Saying you take a shower', 'Saying you go to bed',
+]
+const STATE_DISTRACTORS_EN = [
+  'Expressing that you are tired', 'Expressing that you are happy',
+  'Expressing that you are hungry', 'Expressing that you are sleepy',
+  'Expressing that you like something', 'Expressing that you want to go home',
+]
+const SOCIAL_DISTRACTORS_EN = [
+  'Saying thank you', 'Saying goodbye', 'Introducing yourself', 'Greeting someone',
+]
+const REQUEST_DISTRACTORS_EN = [
+  'Requesting help', 'Requesting someone to be quiet',
+  'Suggesting to go together', 'Requesting someone to get ready',
+  'Instructing to sit down', 'Instructing to wash hands',
+]
+
+function getDistractorPool(sentenceType: SentenceType, isJa: boolean): string[] {
+  // Strict same-family pools — NO cross-family mixing
+  switch (sentenceType) {
+    case 'wh_question':
+    case 'yes_no_question':
+      return isJa ? QUESTION_DISTRACTORS_JA : QUESTION_DISTRACTORS_EN
+    case 'declarative_action':
+      return isJa ? STATEMENT_DISTRACTORS_JA : STATEMENT_DISTRACTORS_EN
+    case 'declarative_state':
+      return isJa ? STATE_DISTRACTORS_JA : STATE_DISTRACTORS_EN
+    case 'greeting_social':
+      return isJa ? SOCIAL_DISTRACTORS_JA : SOCIAL_DISTRACTORS_EN
+    case 'request_instruction':
+      return isJa ? REQUEST_DISTRACTORS_JA : REQUEST_DISTRACTORS_EN
+  }
+}
+
+/** Hard rejection: a choice must belong to the same family as the sentence type.
+ *  Returns false if ANY cross-family signal is detected. Zero tolerance. */
+function isChoiceFamilyValid(label: string, sentenceType: SentenceType): boolean {
+  // Detect family signals in the label
+  const sigQuestion = /聞いている$/.test(label) || /^Asking /.test(label)
+  const sigStatement = /ことを伝えている$/.test(label) || /^Saying you /.test(label)
+  const sigState = /気持ち|状態|伝えている$/.test(label) || /^Expressing /.test(label)
+  const sigSocial = /挨拶|お礼|お別れ|自己紹介|声をかけ/.test(label) || /^(Saying (thank|goodbye)|Introducing|Greeting)/.test(label)
+  const sigRequest = /お願い|誘って/.test(label) || /^(Requesting |Instructing |Suggesting )/.test(label)
+
+  switch (sentenceType) {
+    case 'wh_question':
+    case 'yes_no_question':
+      // Only question-family allowed
+      if (sigStatement || sigState || sigSocial || sigRequest) return false
+      return true
+    case 'declarative_action':
+      // Only statement-family allowed
+      if (sigQuestion || sigSocial || sigRequest) return false
+      return true
+    case 'declarative_state':
+      // Only state-family allowed
+      if (sigQuestion || sigStatement || sigSocial || sigRequest) return false
+      return true
+    case 'greeting_social':
+      // Only social-family allowed
+      if (sigQuestion || sigStatement || sigState || sigRequest) return false
+      return true
+    case 'request_instruction':
+      // Only request-family allowed
+      if (sigQuestion || sigStatement || sigState || sigSocial) return false
+      return true
+  }
+}
+
+// ── Choice builder ──
+
+function generateAiQuestionChoices(
+  sentence: string,
+  uiText: LessonCopy['activeCard'],
+): AiQuestionChoice[] {
+  const isJa = /[\u3000-\u9FFF]/.test(uiText.aiQInstruction)
+  const classified = classifySentence(sentence)
+  const correctLabel = isJa ? buildCorrectLabelJa(classified) : buildCorrectLabelEn(classified)
+
+  const pool = getDistractorPool(classified.sentenceType, isJa)
+  const distractors = pool
+    .filter(d => d !== correctLabel && isChoiceFamilyValid(d, classified.sentenceType))
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 2)
+
+  const meaningChoices: AiQuestionChoice[] = [
+    { label: correctLabel, isCorrect: true },
+    ...distractors.map(l => ({ label: l, isCorrect: false })),
+  ].sort(() => Math.random() - 0.5)
+
+  return [
+    ...meaningChoices,
+    { label: uiText.aiQChoiceUnsure, isCorrect: false },
+  ]
+}
+
+function AiQuestionListenStage({
+  item,
+  uiText,
+  onInputChange,
+  ctaLabel,
+}: {
+  item: LessonBlockItem
+  uiText: LessonCopy['activeCard']
+  onInputChange: (value: string) => void
+  ctaLabel?: string
+}) {
+  const questionText = (item as LessonBlockItem & { aiQuestionText?: string | null }).aiQuestionText
+    ?? item.answer?.trim()
+    ?? item.prompt?.trim()
+    ?? ''
+
+  const [choices] = useState(() => generateAiQuestionChoices(questionText, uiText))
+  const sentenceType = useMemo(() => classifySentence(questionText).sentenceType, [questionText])
+  const isDeclarative = sentenceType === 'declarative_action' || sentenceType === 'declarative_state'
+  const [selected, setSelected] = useState<number | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [hasPlayed, setHasPlayed] = useState(false)
+  const [showHint, setShowHint] = useState(false)
+  // Speaking phase (unlocked after correct intent — skipped for declaratives)
+  const [speakingUnlocked, setSpeakingUnlocked] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [spokenTranscript, setSpokenTranscript] = useState('')
+  const [speakingDone, setSpeakingDone] = useState(false)
+  const audioUrlRef = useRef<string | null>(null)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  const playQuestion = useCallback(async () => {
+    if (isPlaying || !questionText) return
+    setIsPlaying(true)
+    try {
+      let url = audioUrlRef.current
+      if (!url) {
+        const authHdrs = await getAuthHeaders()
+        const res = await fetch('/api/audio/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHdrs },
+          body: JSON.stringify({ text: questionText, speed: 0.85 }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.audio_url) { url = data.audio_url; audioUrlRef.current = url }
+        }
+      }
+      if (url) {
+        const audio = new Audio(url)
+        audio.onended = () => { setIsPlaying(false); setHasPlayed(true) }
+        audio.onerror = () => { setIsPlaying(false); setHasPlayed(true) }
+        audio.play().catch(() => { setIsPlaying(false); setHasPlayed(true) })
+      } else {
+        setIsPlaying(false)
+        setHasPlayed(true)
+      }
+    } catch {
+      setIsPlaying(false)
+      setHasPlayed(true)
+    }
+  }, [isPlaying, questionText])
+
+  const handleSelect = (index: number) => {
+    if (selected !== null) return
+    setSelected(index)
+    const choice = choices[index]
+    if (choice.isCorrect) {
+      if (isDeclarative) {
+        // Declarative sentences: complete immediately, no speaking phase
+        onInputChange('[ai-question-done]')
+        return
+      }
+      setSpeakingUnlocked(true)
+    } else if (choice.label === uiText.aiQChoiceUnsure) {
+      setShowHint(true)
+      setTimeout(() => { setSelected(null); setShowHint(false) }, 3000)
+    } else {
+      // Wrong answer — auto-reset after brief feedback
+      setTimeout(() => { setSelected(null) }, 1500)
+    }
+  }
+
+  const isCorrect = selected !== null && choices[selected]?.isCorrect
+
+  // Recording handler
+  const handleStartRecording = async () => {
+    if (isRecording) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const recorder = new MediaRecorder(stream)
+      recorderRef.current = recorder
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
+        setIsRecording(false)
+        // Score the recording
+        try {
+          const formData = new FormData()
+          formData.append('file', blob, 'recording.webm')
+          formData.append('expectedText', questionText)
+          const authHdrs = await getAuthHeaders()
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
+          if (res.ok) {
+            const data = await res.json()
+            setSpokenTranscript(data.transcript?.trim() || '')
+          }
+        } catch { /* non-blocking */ }
+        setSpeakingDone(true)
+        onInputChange('[ai-question-done]')
+      }
+      recorder.start()
+      setIsRecording(true)
+      setTimeout(() => { if (recorder.state === 'recording') recorder.stop() }, 6000)
+    } catch {
+      setIsRecording(false)
+    }
+  }
+
+  const handleStopRecording = () => {
+    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
+  }
+
+  return (
+    <div className="mt-4">
+      {/* Audio control */}
+      <div className="flex flex-col items-center gap-3">
+        {isPlaying && (
+          <p className="text-sm font-semibold text-blue-600">{uiText.aiConvSpeaking}</p>
+        )}
+        {!isPlaying && !hasPlayed && (
+          <button type="button" onClick={playQuestion} className={BTN_PRIMARY}>
+            {ICON_LISTEN}{uiText.aiQPlayButton}
+          </button>
+        )}
+        {!isPlaying && hasPlayed && !speakingUnlocked && (
+          <button
+            type="button"
+            onClick={playQuestion}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100"
+          >
+            <img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiQReplayButton}
+          </button>
+        )}
+      </div>
+
+      {/* Phase 1: Intent selection */}
+      {!speakingUnlocked && (
+        <>
+          {hasPlayed && selected === null && (
+            <p className="mt-4 text-center text-sm text-[#5a5a7a]">{uiText.aiQInstruction}</p>
+          )}
+
+          {hasPlayed && (
+            <div className="mx-auto mt-4 grid max-w-[360px] grid-cols-1 gap-2">
+              {choices.map((c, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => handleSelect(i)}
+                  disabled={selected !== null}
+                  className={`w-full rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                    selected === null
+                      ? 'border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'
+                      : selected === i
+                        ? c.isCorrect
+                          ? 'border-[#22c55e] bg-[#F0FDF4] text-[#22c55e]'
+                          : 'border-[#F5A623] bg-[#FFF9EC] text-[#F5A623]'
+                        : c.isCorrect && selected !== null
+                          ? 'border-[#22c55e] bg-[#F0FDF4] text-[#22c55e]'
+                          : 'border-[#E8E4DF] bg-white text-[#b5b5c3]'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Wrong answer — brief feedback then auto-reset */}
+          {selected !== null && !isCorrect && !showHint && (
+            <div className="mt-4 text-center">
+              <p className="text-sm font-bold text-[#F5A623]">{uiText.aiQIncorrect}</p>
+            </div>
+          )}
+
+          {/* Hint for unsure */}
+          {showHint && (
+            <div className="mx-auto mt-3 max-w-[360px] rounded-xl bg-blue-50 px-4 py-3">
+              <p className="text-xs leading-5 text-blue-700">{uiText.aiQHint}</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Phase 2: Speaking response (unlocked after correct intent) */}
+      {speakingUnlocked && !speakingDone && (
+        <div className="mt-5 text-center">
+          <p className="text-sm font-bold text-[#22c55e]">{uiText.aiQCorrect}</p>
+          <p className="mt-3 text-sm text-[#5a5a7a]">{uiText.aiQSpeakPrompt}</p>
+          <div className="mt-4 flex justify-center gap-3">
+            {!isRecording ? (
+              <button type="button" onClick={handleStartRecording} className={BTN_PRIMARY}>
+                {ICON_SPEAK}{uiText.aiQRecordButton}
+              </button>
+            ) : (
+              <button type="button" onClick={handleStopRecording} className={BTN_STOP}>
+                {uiText.aiQStopButton}
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={playQuestion}
+            disabled={isPlaying}
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 disabled:opacity-50"
+          >
+            <img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiQReplayButton}
+          </button>
+        </div>
+      )}
+
+      {/* Phase 3: Done — show feedback + next */}
+      {speakingDone && (
+        <div className="mt-5 text-center">
+          <p className="text-sm font-bold text-[#22c55e]">{uiText.aiQSpokenFeedback}</p>
+          {spokenTranscript && (
+            <p className="mt-2 rounded-xl bg-[#FAF7F2] px-4 py-2 text-sm text-[#5a5a7a]">{spokenTranscript}</p>
+          )}
+          <button
+            type="button"
+            onClick={() => { window.dispatchEvent(new Event('next-step')) }}
+            className="mt-4 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+          >
+            {ctaLabel ?? uiText.scaffoldNextButton}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AiQuestionPlayer({
   item,
   uiText,
@@ -3791,7 +4727,8 @@ function AiQuestionPlayer({
           formData.append('file', blob, 'recording.webm')
           formData.append('expectedText', expectedAnswer)
 
-          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData })
+          const authHdrs = await getAuthHeaders()
+          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
 
           if (res.ok) {
             const data = await res.json()
@@ -4040,7 +4977,10 @@ function AiQuestionPlayer({
                     : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
               }`}
             >
-              {loadingQuestion ? '...' : questionPlaying ? uiText.aiQuestionPlaying : questionError ? uiText.aiQuestionRetryPlay : uiText.aiQuestionPlayButton}
+              <span className="inline-flex items-center gap-1.5 text-sm font-bold">
+                <LpIcon emoji="🎧" size={16} />
+                {loadingQuestion ? '...' : questionPlaying ? uiText.aiQuestionPlaying : questionError ? uiText.aiQuestionRetryPlay : uiText.aiQuestionPlayButton}
+              </span>
             </button>
           </div>
 
@@ -4089,8 +5029,9 @@ function AiQuestionPlayer({
                 {isHintExpanded && (
                   <div className="rounded-xl border border-[#E5E7EB] bg-[#FAFDF7] px-4 py-3">
                     <div className="flex items-start justify-between">
-                      <p className="text-xs font-bold text-[#6B7280]">
-                        {isFollowUp ? '🎯' : uiText.aiQuestionGoalLabel}
+                      <p className="text-xs font-bold text-[#6B7280] inline-flex items-center gap-1">
+                        <LpIcon emoji="🎯" size={14} />
+                        {!isFollowUp && uiText.aiQuestionGoalLabel}
                       </p>
                       {showToggle && (
                         <button
@@ -4381,6 +5322,7 @@ function ScaffoldAutoPlay({
   const [allDone, setAllDone] = useState(false)
   const [loading, setLoading] = useState(true)
   const [stepAudioUrls, setStepAudioUrls] = useState<(string | null)[]>([])
+  const stepAudioUrlsRef = useRef<(string | null)[]>([])
   const [playRequested, setPlayRequested] = useState(false)
   const [hasPlayedOnce, setHasPlayedOnce] = useState(false)
   const [hasPlayedMixStep, setHasPlayedMixStep] = useState(false)
@@ -4388,6 +5330,7 @@ function ScaffoldAutoPlay({
   const cancelledRef = useRef(false)
   /** Guards against duplicate play triggers for the same step. */
   const playingStepRef = useRef<number>(-1)
+  const meaningAudioUrlRef = useRef<string | null>(null)
   const totalSteps = Math.max(Math.min(scaffoldSteps.length, 3), 1)
   const stepsKey = scaffoldSteps.slice(0, 3).join('||')
 
@@ -4417,28 +5360,53 @@ function ScaffoldAutoPlay({
   const startPlayback = useCallback((stepIndex: number) => {
     cleanup()
     setCurrentStep(stepIndex)
-    setIsPlaying(false)
+    // Do NOT setIsPlaying(false) here — it causes a one-frame flicker between passes.
+    // Each branch sets isPlaying when audio actually starts or stops.
     playingStepRef.current = stepIndex
 
-    // Step 2 (mix): text only — pause for reading/meaning association, then advance
+    // Step 2 (meaning bridge): English chunk audio → native meaning audio → advance
     if (stepIndex === 1) {
       setHasPlayedMixStep(true)
-      // Dynamic duration: base 2000ms + 100ms per character, capped at 4000ms
-      const chunkText = scaffoldSteps[1] ?? ''
-      const displayMs = Math.min(4000, Math.max(2000, 1500 + chunkText.length * 100))
-      mixTimerRef.current = setTimeout(() => {
-        mixTimerRef.current = null
+      const engUrl = stepAudioUrlsRef.current[1] // English chunk audio (not full sentence)
+      const jpUrl = meaningAudioUrlRef.current
+
+      let mixAdvanced = false
+      const advanceFromMix = (_reason: string) => {
+        if (mixAdvanced) return
+        mixAdvanced = true
+        if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null }
         const next = stepIndex + 1
-        if (next >= totalSteps) {
-          setAllDone(true)
-        } else {
-          startPlayback(next)
-        }
-      }, displayMs)
+        if (next >= totalSteps) { setIsPlaying(false); setAllDone(true) } else { startPlayback(next) }
+      }
+
+      const playMeaningAudio = () => {
+        const url = jpUrl
+        if (!url) { advanceFromMix('no-jp-url'); return }
+        const jp = new Audio(url)
+        audioRef.current = jp
+        jp.onended = () => advanceFromMix('jp-onended')
+        jp.onerror = () => advanceFromMix('jp-onerror')
+        safetyTimerRef.current = setTimeout(() => advanceFromMix('jp-timeout'), 8_000)
+        jp.play().catch(() => advanceFromMix('jp-play-rejected'))
+      }
+
+      if (engUrl) {
+        const eng = new Audio(engUrl)
+        audioRef.current = eng
+        eng.playbackRate = 0.85
+        let engEnded = false
+        eng.onended = () => { if (!engEnded) { engEnded = true; playMeaningAudio() } }
+        eng.onerror = () => { if (!engEnded) { engEnded = true; playMeaningAudio() } }
+        safetyTimerRef.current = setTimeout(() => { if (!engEnded) { engEnded = true; playMeaningAudio() } }, 8_000)
+        setIsPlaying(true)
+        eng.play().catch(() => { engEnded = true; playMeaningAudio() })
+      } else {
+        playMeaningAudio()
+      }
       return
     }
 
-    const url = stepAudioUrls[stepIndex]
+    const url = stepAudioUrlsRef.current[stepIndex]
     if (!url) {
       // No audio URL — skip to next step
       const next = stepIndex + 1
@@ -4458,11 +5426,12 @@ function ScaffoldAutoPlay({
       if (ended) return
       ended = true
       if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null }
-      setIsPlaying(false)
       const next = stepIndex + 1
       if (next >= totalSteps) {
+        setIsPlaying(false)
         setAllDone(true)
       } else {
+        // Do not setIsPlaying(false) — next pass will start immediately, avoiding flicker
         startPlayback(next)
       }
     }
@@ -4483,7 +5452,7 @@ function ScaffoldAutoPlay({
         // Autoplay blocked — user can tap play
       })
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepAudioUrls, totalSteps, cleanup])
+  }, [totalSteps, cleanup])
 
   // Fetch audio URLs on mount / when steps change, then auto-start
   useEffect(() => {
@@ -4507,9 +5476,18 @@ function ScaffoldAutoPlay({
     const stepSpeeds: (number | undefined)[] =
       level === 'beginner' ? [0.85, undefined, 1.0] : [undefined, undefined, undefined]
 
-    Promise.all(texts.map((t, i) => fetchAudioUrl(t, stepSpeeds[i]))).then((urls) => {
+    // Pre-fetch step audio + native meaning audio in parallel
+    // prepareTtsInput auto-normalizes Japanese kanji readings as fallback
+    const meaningText = prepareTtsInput(nativeHint?.trim() || '')
+    const fetchAll = Promise.all([
+      Promise.all(texts.map((t, i) => fetchAudioUrl(t, stepSpeeds[i]))),
+      meaningText ? fetchAudioUrl(meaningText) : Promise.resolve(null),
+    ])
+    fetchAll.then(([urls, meaningUrl]) => {
       if (!cancelledRef.current) {
         setStepAudioUrls(urls)
+        stepAudioUrlsRef.current = urls
+        meaningAudioUrlRef.current = meaningUrl
         setLoading(false)
       }
     })
@@ -4544,33 +5522,15 @@ function ScaffoldAutoPlay({
     <div className="mt-4 text-center">
       <div className="rounded-[14px] border border-[#E8E4DF] bg-white px-4 py-6">
         {lessonImageUrl && (
-          <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+          <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} />
         )}
 
-        {/* Mix step (step 2): phrase pair or mix-text fallback */}
-        {/* Step 2: chunk display — show meaning; fall back to nativeHint for first chunk */}
-        {currentStep === 1 && semanticChunks != null && semanticChunks.length > 0 && (
-          <div className="mx-auto mt-3 max-w-[320px] space-y-2">
-            {semanticChunks.map((c, i) => {
-              const meaning = c.meaning || (i === 0 && nativeHint ? nativeHint : '')
-              return (
-                <div key={i} className="rounded-xl border border-[#E8E4DF] bg-[#FAF8F5] px-4 py-3 text-center">
-                  <p className="text-base font-bold leading-7 text-[#1a1a2e]">{c.chunk}</p>
-                  {meaning ? (
-                    <p className="mt-0.5 text-sm leading-6 text-[#5a5a7a]">{meaning}</p>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        )}
+        {/* Step 2 (meaning bridge): audio-only, no visible text */}
 
         {/* Hide instruction text during mix step — phrase pair is sufficient */}
-        {currentStep !== 1 && (
-          <p className="mt-4 text-sm text-[#5a5a7a]">
-            {uiText.scaffoldInstruction}
-          </p>
-        )}
+        <p className="mt-4 text-sm text-[#5a5a7a]">
+          {uiText.scaffoldInstruction}
+        </p>
 
         {loading && (
           <p className="mt-3 text-sm text-[#7b7b94]">{uiText.scaffoldAudioPreparing}</p>
@@ -4592,7 +5552,7 @@ function ScaffoldAutoPlay({
                 onClick={handleManualPlay}
                 className={BTN_PRIMARY}
               >
-                {uiText.scaffoldPlayButton}
+                {ICON_LISTEN}{uiText.scaffoldPlayButton}
               </button>
             ) : currentStep === 2 ? (
               <button
@@ -4616,7 +5576,7 @@ function ScaffoldAutoPlay({
               <button
                 type="button"
                 onClick={handleRestart}
-                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                className="rounded-xl border border-blue-200 bg-blue-50 px-6 py-3 text-sm font-bold text-blue-600 transition hover:bg-blue-100"
               >
                 {uiText.scaffoldRestartButton}
               </button>
@@ -4631,7 +5591,7 @@ function ScaffoldAutoPlay({
           onClick={() => {
             window.dispatchEvent(new Event('next-step'))
           }}
-          className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+          className="mt-6 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
         >
           {ctaLabel ?? uiText.scaffoldNextButton}
         </button>
@@ -4676,9 +5636,17 @@ export function LessonActiveCard({
   const previousRecordedAudioUrlRef = useRef<string | null>(null)
   const resultRef = useRef<HTMLDivElement | null>(null)
 
-  const stageTone = getStageTone({ currentStageId })
+  const stageTone = useMemo(() => getStageTone({ currentStageId }), [currentStageId])
   const sceneId = block.sceneId ?? null
-  const dynamicConversationHeading = scenarioLabel || targetLanguageLabel
+  // Heading: prefer scenarioLabel when it is a valid concrete JP scene label.
+  // Reject: English text, generic labels, marketing copy, stale meta.
+  const _isValidSceneLabel = (s: string) =>
+    /[\u3000-\u9FFF]/.test(s) && s !== '英語' && s !== '日常の短いやり取り'
+  const dynamicConversationHeading =
+    (scenarioLabel && _isValidSceneLabel(scenarioLabel) ? scenarioLabel : null)
+    || (sceneId ? buildScenarioLabel(sceneId) : null)
+    || block.title
+    || _copy.overviewCard.defaultSceneLabel
   // Scene image resolution: prefer centralized resolver, fall back to legacy item.image_url
   const sceneCategory = block.sceneCategory ?? null
   const sceneImages = useMemo(
@@ -4689,7 +5657,6 @@ export function LessonActiveCard({
     currentStageId === 'listen' ? 'listen'
     : currentStageId === 'repeat' ? 'repeat'
     : currentStageId === 'ai_question' ? 'ai_question'
-    : currentStageId === 'typing' ? 'typing'
     : currentStageId === 'ai_conversation' ? 'conversation'
     : currentStageId === 'scaffold_transition' ? 'predict'
     : null
@@ -4761,22 +5728,10 @@ export function LessonActiveCard({
   const audioStatus = audioPendingTimedOut ? 'failed' : (rawAudioStatus ?? 'ok')
   const isAudioPending = !audioUrl && audioStatus !== 'failed'
 
-  const currentIndex =
-    currentStageId === 'listen'
-      ? 0
-      : currentStageId === 'repeat'
-        ? 1
-        : currentStageId === 'scaffold_transition'
-          ? 2
-          : currentStageId === 'ai_question'
-            ? 3
-            : currentStageId === 'typing'
-              ? 4
-              : currentStageId === 'ai_conversation'
-                ? 5
-                : 0
-
   const TOTAL_STAGES = 6
+
+  // currentIndex is computed later after guideMessageOverride is declared
+  let currentIndex = 0
   const questionProgressPercent =
     ((currentIndex + 1) / TOTAL_STAGES) * 100
 
@@ -4844,8 +5799,8 @@ export function LessonActiveCard({
     uiText.timelineRepeat,
     uiText.stageScaffoldLabel,
     uiText.timelineAiQuestion,
-    uiText.timelineTyping,
     uiText.timelineAiConversation,
+    uiText.challengeTitle,
   ]
 
   const typingResultClassName =
@@ -4858,6 +5813,7 @@ export function LessonActiveCard({
   // Mini review between stages
   const [pendingMiniReview, setPendingMiniReview] = useState<MiniReviewItem | null>(null)
   const miniReviewSentence = item.answer?.trim() || item.prompt?.trim() || ''
+  const itemRelatedExpressions = (item as LessonBlockItem & { related_expressions?: { en: string }[] | null }).related_expressions
   const miniSlots = useMemo(() => {
     const words = miniReviewSentence.split(/\s+/)
     let pSlot = ''
@@ -4883,8 +5839,19 @@ export function LessonActiveCard({
   const [challengeResult, setChallengeResult] = useState<'correct' | 'incorrect' | null>(null)
   const [challengePhase, setChallengePhase] = useState<'intro' | 'question' | 'result'>('intro')
   const [challengeAttempt, setChallengeAttempt] = useState(0)
+  const [preloadedChallengeAudioUrl, setPreloadedChallengeAudioUrl] = useState<string | null>(null)
   const [guideMessageOverride, setGuideMessageOverride] = useState<string | null>(null)
   const [convResetNonce, setConvResetNonce] = useState(0)
+
+  // Compute currentIndex now that guideMessageOverride is declared
+  const isChallengePhase = currentStageId === 'ai_conversation' && guideMessageOverride != null
+  currentIndex =
+    currentStageId === 'listen' ? 0
+    : currentStageId === 'repeat' ? 1
+    : currentStageId === 'scaffold_transition' ? 2
+    : currentStageId === 'ai_question' ? 3
+    : currentStageId === 'ai_conversation' ? (isChallengePhase ? 5 : 4)
+    : 0
 
   // Reset validation when stage changes
   useEffect(() => {
@@ -4894,7 +5861,28 @@ export function LessonActiveCard({
     setChallengeResult(null)
     setChallengePhase('intro')
     setPendingMiniReview(null)
+    setPreloadedChallengeAudioUrl(null)
   }, [currentStageId])
+
+  // Preload challenge audio as soon as pendingMiniReview is set (during intro screen)
+  useEffect(() => {
+    if (!pendingMiniReview?.audioText) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/audio/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: pendingMiniReview.audioText, speed: 0.8 }),
+        })
+        if (res.ok && !cancelled) {
+          const data = await res.json()
+          if (data.audio_url) setPreloadedChallengeAudioUrl(data.audio_url)
+        }
+      } catch { /* non-blocking */ }
+    })()
+    return () => { cancelled = true }
+  }, [pendingMiniReview])
 
   // Auto-trigger validation for stages where task completion is tracked by sub-components
   // Sub-components dispatch 'next-step' which now goes through normally (no interceptor)
@@ -4902,7 +5890,7 @@ export function LessonActiveCard({
   // we skip mini-review validation and let them advance directly
   // (mini-review only applies to listen/repeat where the CTA is in the main card)
   useEffect(() => {
-    if (currentStageId === 'scaffold_transition' || currentStageId === 'ai_question' || currentStageId === 'typing') {
+    if (currentStageId === 'scaffold_transition' || currentStageId === 'ai_question') {
       setStageValidated(true) // Sub-components manage their own flow
     }
   }, [currentStageId])
@@ -4927,7 +5915,8 @@ export function LessonActiveCard({
       miniSlots.personAlt,
       miniSlots.timeSlot,
       miniSlots.timeAlt,
-      uiText
+      uiText,
+      itemRelatedExpressions
     )
 
     if (review) {
@@ -4940,7 +5929,7 @@ export function LessonActiveCard({
       setStageValidated(true)
     }
   }, [currentStageId, stageValidated, pendingMiniReview, miniReviewSentence, miniSlots, uiText])
-  const guideCharacter = getGuideCharacter({
+  const guideCharacter = useMemo(() => getGuideCharacter({
     currentStageId,
     isRecordingRepeat,
     isListenPlaying,
@@ -4948,7 +5937,7 @@ export function LessonActiveCard({
     uiText,
     level,
     uiLang: isJaUi ? 'ja' : 'en',
-  })
+  }), [currentStageId, isRecordingRepeat, isListenPlaying, progress.isCorrect, uiText, level, isJaUi])
 
   const mediaRecordingSupported = useMemo(() => {
     if (typeof window === 'undefined') return false
@@ -5103,9 +6092,11 @@ export function LessonActiveCard({
       try {
         setIsScoringRepeat(true)
 
+        const authHdrs = await getAuthHeaders()
         const response = await fetch('/api/pronunciation/score', {
           method: 'POST',
           body: formData,
+          headers: authHdrs,
         })
 
         const data = (await response.json()) as PronunciationScoreApiResponse
@@ -5376,9 +6367,9 @@ export function LessonActiveCard({
   }, [currentStageId, listenResetNonce, stopListenAudio])
 
   return (
-    <section className="mt-5 rounded-[24px] border border-[#E8E4DF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
-      {/* Sticky timeline header — always visible */}
-      <div className="sticky top-0 z-10 rounded-t-[24px] border-b border-[#E8E4DF] bg-white px-5 pb-4 pt-5 sm:px-6">
+    <>
+      {/* Lesson header — normal flow */}
+      <div className="mt-5 rounded-t-[24px] border border-b-0 border-[#E8E4DF] bg-white px-5 pb-4 pt-4 sm:px-6">
         <div className="mb-3 rounded-[18px] border border-[#E8E4DF] bg-[#FCFBF8] px-4 py-4">
           <StageProgressBar currentBlockIndex={currentQuestionIndex} totalBlocks={totalQuestions} label={uiText.blockProgressLabel} />
         </div>
@@ -5427,110 +6418,20 @@ export function LessonActiveCard({
             }}
           />
         </div>
+
+        <p className="mt-3 text-center text-xs font-bold tracking-widest text-[#4a4a6a]">
+          STEP {currentIndex + 1} / {timelineSteps.length}
+        </p>
       </div>
 
-      {/* Scrollable lesson content — or challenge view */}
-      {validationView === 'challenge' ? (
-        <div className="px-5 py-8 sm:px-6 sm:py-10">
-
-          {/* Phase: intro */}
-          {challengePhase === 'intro' && (
-            <div className="mx-auto max-w-[360px] animate-[fadeInUp_200ms_ease-out] text-center">
-              <p className="text-lg font-black text-[#1a1a2e]">🎧 {uiText.challengeTitle}</p>
-              <p className="mt-2 text-sm text-[#5a5a7a] whitespace-nowrap">{uiText.challengeDescription}</p>
-              <button
-                type="button"
-                onClick={() => setChallengePhase('question')}
-                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-              >
-                {uiText.challengeStart}
-              </button>
-            </div>
-          )}
-
-          {/* Phase: question — card stays visible after answer, result shown below */}
-          {challengePhase === 'question' && pendingMiniReview && (
-            <>
-              <MiniReviewCard
-                key={challengeAttempt}
-                item={{ ...pendingMiniReview, mode: 'audio-first' }}
-                uiText={uiText}
-                stage={currentStageId ?? undefined}
-                hideAudioHelperText
-                autoPlay
-                hideInlineResult
-                onComplete={(correct) => {
-                  setChallengeResult(correct ? 'correct' : 'incorrect')
-                  setValidationAttempted(true)
-                }}
-              />
-
-              {/* Result: correct — shown below the still-visible choices */}
-              {challengeResult === 'correct' && (
-                <div className="mx-auto mt-4 max-w-[320px] animate-[fadeInUp_200ms_ease-out] text-center">
-                  <p className="text-lg font-black text-[#22c55e]">{uiText.challengeCorrect}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingMiniReview(null)
-                      setStageValidated(true)
-                      setValidationView('result')
-                      setChallengeResult(null)
-                      setChallengePhase('intro')
-                      window.dispatchEvent(new Event('next-step'))
-                    }}
-                    className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-                  >
-                    {ctaLabel}
-                  </button>
-                </div>
-              )}
-
-              {/* Result: incorrect — shown below the still-visible choices */}
-              {challengeResult === 'incorrect' && (
-                <div className="mx-auto mt-4 max-w-[320px] animate-[fadeInUp_200ms_ease-out] text-center">
-                  <p className="text-lg font-black text-[#F5A623]">{uiText.challengeIncorrect}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const stageForReview =
-                        currentStageId === 'listen' ? 'listen' as const
-                        : currentStageId === 'repeat' ? 'repeat' as const
-                        : currentStageId === 'scaffold_transition' ? 'scaffold' as const
-                        : currentStageId === 'ai_question' ? 'ai_question' as const
-                        : null
-                      const review = stageForReview
-                        ? generateMiniReview(stageForReview, miniReviewSentence, miniSlots.personSlot, miniSlots.personAlt, miniSlots.timeSlot, miniSlots.timeAlt, uiText)
-                        : null
-                      if (review) {
-                        setChallengeResult(null)
-                        setValidationAttempted(false)
-                        setChallengePhase('question')
-                        setChallengeAttempt((n) => n + 1)
-                        setPendingMiniReview(review)
-                      }
-                    }}
-                    className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-                  >
-                    {uiText.miniReviewRetryChallenge}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-        </div>
-      ) : (
-      <div className="px-5 py-5 sm:px-6 sm:py-6">
+      <section className="rounded-b-[24px] border border-t-0 border-[#E8E4DF] bg-white shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+      {/* Scrollable lesson content */}
+      <div className="px-5 py-3 sm:px-6 sm:py-4">
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-bold text-[#9c9c9c]">
-            STEP {currentIndex + 1} / {timelineSteps.length}
-          </p>
-
           <div
-            className={`mt-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-bold tracking-wider ${stageTone.badgeClassName}`}
+            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold tracking-wider ${stageTone.badgeClassName}`}
           >
             {getStageLabel(currentStageId, uiText)}
           </div>
@@ -5541,13 +6442,15 @@ export function LessonActiveCard({
           </h2>
         </div>
 
-        <div className="w-full rounded-[16px] border border-[#D9E8FF] bg-[#F8FBFF] px-5 py-4 lg:max-w-[520px]">
+        <div className="w-full rounded-[16px] border border-[#D9E8FF] bg-[#F8FBFF] px-5 py-4 lg:max-w-[520px]" style={{ minHeight: 100 }}>
           <div className="flex items-start gap-4">
             <div className="flex shrink-0 flex-col items-center min-w-[64px]">
               <img
                 src={guideCharacter.imageSrc}
                 alt={guideCharacter.name}
                 className="h-14 w-14 rounded-full border-2 border-[#BFDBFE] bg-white object-cover shadow-sm"
+                style={{ contentVisibility: 'auto' }}
+                loading="eager"
               />
               <p className="mt-2 text-xs font-bold tracking-wider text-[#2563EB]">
                 {guideCharacter.name}
@@ -5563,15 +6466,16 @@ export function LessonActiveCard({
               <p className="mt-1 whitespace-pre-line text-sm font-semibold leading-6 text-[#5a5a7a]">
                 {guideMessageOverride ?? guideCharacter.messagePrimary}
               </p>
+              <RationaleHelpButton uiText={uiText} />
             </div>
           </div>
         </div>
       </div>
 
       <div
-        className={`mt-5 rounded-[20px] px-4 py-4 sm:px-5 sm:py-5 ${stageTone.panelClassName}`}
+        className={`mt-3 rounded-[20px] px-4 py-3 sm:px-5 sm:py-4 ${stageTone.panelClassName}`}
       >
-        <div className="rounded-[20px] px-4 py-4 sm:px-5 sm:py-5">
+        <div className="rounded-[20px] px-4 py-2 sm:px-5 sm:py-3">
           {audioUrl ? (
             <audio
               key={audioUrl}
@@ -5626,27 +6530,27 @@ export function LessonActiveCard({
           ) : null}
 
           {currentStageId === 'listen' && (
-            <div className="mt-4 text-center">
+            <div className="mt-2 text-center">
               {lessonImageUrl && (
-                <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+                <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} />
               )}
 
-              <p className="mt-4 text-sm leading-6 text-[#5a5a7a]">
+              <p className="mt-2 text-sm leading-6 text-[#5a5a7a]">
                 {uiText.listenInstruction}
               </p>
 
-              <div className="mt-4 flex items-center justify-center gap-3">
+              <div className="mt-3 flex items-center justify-center gap-3">
                 <button
                   type="button"
                   onClick={playListenAudio}
                   disabled={isRecordingRepeat}
-                  className={`rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
+                  className={`inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
                     isRecordingRepeat
                       ? 'cursor-not-allowed bg-gray-300'
                       : 'bg-blue-500 hover:bg-blue-600'
                   }`}
                 >
-                  {uiText.listenPlayButton}
+                  {ICON_LISTEN}{uiText.listenPlayButton}
                 </button>
                 <button
                   type="button"
@@ -5674,11 +6578,11 @@ export function LessonActiveCard({
                 ))}
               </div>
 
-              <p className="mt-8 whitespace-pre-line text-sm leading-6 text-[#5a5a7a]">
+              <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[#5a5a7a]">
                 {uiText.listenStartRepeatInstruction}
               </p>
 
-              <div className="mt-4 flex justify-center">
+              <div className="mt-3 flex justify-center">
                 <button
                   type="button"
                   onClick={onStartRepeatFromListen}
@@ -5700,6 +6604,7 @@ export function LessonActiveCard({
               {!audioUrl && (
                 <p className="mt-2 text-sm text-amber-700">{uiText.listenAudioNotReady}</p>
               )}
+
             </div>
           )}
 
@@ -5720,13 +6625,13 @@ export function LessonActiveCard({
                     type="button"
                     onClick={isRecordingRepeat ? stopRepeatRecognition : startRepeatRecognition}
                     disabled={isScoringRepeat || isListenPlaying}
-                    className={`rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
+                    className={`inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
                       isScoringRepeat || isListenPlaying
                         ? 'cursor-not-allowed bg-gray-300'
                         : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
                     }`}
                   >
-                    {isRecordingRepeat
+                    {ICON_SPEAK}{isRecordingRepeat
                       ? uiText.repeatStopRecordingButton
                       : repeatTranscript
                         ? uiText.repeatRecordAgainButton
@@ -5898,21 +6803,12 @@ export function LessonActiveCard({
                     <AudioCompareCard correctUrl={audioUrl} recordedUrl={recordedAudioUrl} uiText={uiText} />
                   )}
 
-                  {/* 6. Primary action */}
-                  {repeatIsPass && !stageValidated && !pendingMiniReview && (
-                    <button
-                      type="button"
-                      onClick={triggerValidation}
-                      className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-                    >
-                      {uiText.miniReviewValidationCta}
-                    </button>
-                  )}
-                  {repeatIsPass && stageValidated && (
+                  {/* 6. Primary action — advance directly */}
+                  {repeatIsPass && (
                     <button
                       type="button"
                       onClick={() => { window.dispatchEvent(new Event('next-step')) }}
-                      className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
+                      className="mt-3 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
                     >
                       {ctaLabel}
                     </button>
@@ -5959,6 +6855,17 @@ export function LessonActiveCard({
                 itemId={item.id}
                 ctaLabel={ctaLabel}
               />
+              {onGoBackToStage && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => onGoBackToStage('repeat')}
+                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                  >
+                    {uiText.backToRepeat}
+                  </button>
+                </div>
+              )}
             </>
           )}
 
@@ -5966,19 +6873,15 @@ export function LessonActiveCard({
             <div>
               {lessonImageUrl && (
                 <div className="mb-4">
-                  <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} caption={getSceneCaption({ scenarioLabel, dynamicConversationHeading })} />
+                  <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} />
                 </div>
               )}
-            <AiQuestionPlayer
+            <AiQuestionListenStage
               key={item.id}
               item={item}
               uiText={uiText}
-              inputValue={inputValue}
               onInputChange={onInputChange}
-              previousPhrases={previousPhrases}
-              level={level}
               ctaLabel={ctaLabel}
-              regionContext={getRegionContext(block.region ?? null)}
             />
             {onGoBackToStage && (
               <div className="mt-6 flex justify-center">
@@ -5994,71 +6897,7 @@ export function LessonActiveCard({
             </div>
           )}
 
-          {currentStageId === 'typing' && responseStage === 'typing' && (
-            <>
-              <TypingMultiRound
-                key={item.id}
-                item={item}
-                uiText={uiText}
-                copy={_copy}
-                previousPhrases={previousPhrases}
-                onInputChange={onInputChange}
-                level={level}
-                ctaLabel={ctaLabel}
-              />
-              {onGoBackToStage && (
-                <div className="mt-6 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => onGoBackToStage('ai_question')}
-                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
-                  >
-                    {uiText.backToAiQuestion}
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          {currentStageId === 'typing' && responseStage === 'audio_choice' && (
-            <>
-              {(() => {
-                try {
-                  const answer = item.answer?.trim() || item.prompt?.trim() || ''
-                  const nativeHint = (item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null
-                  const audioChoiceItem: AudioChoiceItem = {
-                    promptTranslation: nativeHint || answer,
-                    options: [
-                      { audioUrl: '', textNative: answer, translation: nativeHint || '', isCorrect: true },
-                      { audioUrl: '', textNative: '(option 2)', translation: '', isCorrect: false },
-                      { audioUrl: '', textNative: '(option 3)', translation: '', isCorrect: false },
-                    ],
-                  }
-                  return (
-                    <AudioChoiceStage
-                      key={item.id}
-                      item={audioChoiceItem}
-                      onComplete={() => onInputChange(answer)}
-                    />
-                  )
-                } catch {
-                  // Fallback to typing on any error
-                  return (
-                    <TypingMultiRound
-                      key={item.id}
-                      item={item}
-                      uiText={uiText}
-                      copy={_copy}
-                      previousPhrases={previousPhrases}
-                      onInputChange={onInputChange}
-                      level={level}
-                      ctaLabel={ctaLabel}
-                    />
-                  )
-                }
-              })()}
-            </>
-          )}
+          {/* typing stage removed from core flow — code preserved in git history */}
 
           {currentStageId === 'ai_conversation' && (
             <>
@@ -6075,21 +6914,23 @@ export function LessonActiveCard({
                 onGuideMessageChange={setGuideMessageOverride}
                 problemNumber={currentQuestionIndex + 1}
               />
-              <div className="mt-6 flex justify-center">
-                <button
-                  type="button"
-                  onClick={() => { setConvResetNonce((n) => n + 1); setGuideMessageOverride(null) }}
-                  className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
-                >
-                  {uiText.backToTyping}
-                </button>
-              </div>
+              {onGoBackToStage && !isChallengePhase && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => onGoBackToStage('ai_question')}
+                    className="cursor-pointer rounded-xl border border-[#E5E7EB] bg-white px-4 py-2 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
+                  >
+                    {uiText.backToAiQuestion}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
       </div>
-      )}
     </section>
+    </>
   )
 }

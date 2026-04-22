@@ -22,6 +22,8 @@ export type AiConversationRequest = {
   conversationHistory: { ai: string; user: string }[]
   /** Optional flavor context for emotionally natural conversation. */
   flavorContext?: AiConversationFlavorContext | null
+  /** Numeric rank for difficulty scaling. 0 = brand new, 100+ = advanced. */
+  rank?: number | null
 }
 
 export type AiConversationEvaluation = {
@@ -103,7 +105,7 @@ When closing the conversation:
 - Examples: "That sounds nice. See you later!" / "I see. Have a good day!"
 - Keep it warm and brief
 
-Keep aiReply to 1-2 SHORT sentences (under 20 words).
+Keep aiReply SHORT. Exact length depends on DIFFICULTY section below.
 
 EVALUATION:
 Also evaluate the learner's reply:
@@ -180,14 +182,67 @@ function buildFlavorSection(ctx: AiConversationFlavorContext | null | undefined)
   return '\n\n' + parts.join('\n\n')
 }
 
+/** Build rank-based difficulty constraints for the AI prompt. */
+function buildRankSection(rank: number | null | undefined): string {
+  if (rank == null) return ''
+  const r = Math.max(0, rank)
+
+  if (r < 20) {
+    return `\n\nDIFFICULTY (rank ${r}, ultra-beginner):
+- Reply in EXACTLY 1 short sentence (5-8 words max)
+- Use only basic daily words (eat, go, like, have, do, good, nice)
+- ONE purpose per turn: either react OR ask — never both
+- NO stacked praise. Pick ONE short reaction word only.
+- NO "Tell me more" or "What else?" style expansion
+- Stay connected to the scene topic
+- Good: "Do you like breakfast?" / "That sounds nice." / "What did you eat?"
+- Bad: "Cool! Nice! So what did you do?" (too many ideas)`
+  }
+
+  if (r < 40) {
+    return `\n\nDIFFICULTY (rank ${r}, beginner):
+- Reply in 1 sentence (max 10 words)
+- Use simple everyday vocabulary
+- ONE idea per turn
+- One short reaction + one short question is OK if total stays under 10 words
+- NO stacked exclamations
+- Stay connected to the scene
+- Good: "Nice. Do you do that every day?" / "I see. Was it fun?"
+- Bad: "Great! That's awesome! Tell me about your morning!" (too much)`
+  }
+
+  if (r < 60) {
+    return `\n\nDIFFICULTY (rank ${r}, lower-intermediate):
+- Up to 2 short sentences (max 15 words total)
+- Simple follow-up questions are fine
+- Keep vocabulary accessible — no idioms or complex phrases
+- React naturally + ask one related question
+- Good: "That sounds good. What time do you usually eat?" (10 words)`
+  }
+
+  if (r < 80) {
+    return `\n\nDIFFICULTY (rank ${r}, intermediate):
+- Up to 2 sentences, moderate naturality (max 20 words)
+- Follow-up depth allowed
+- Can reference scene context
+- Light opinions and personal comments are fine`
+  }
+
+  return `\n\nDIFFICULTY (rank ${r}, advanced):
+- Natural conversational style, up to 2-3 sentences
+- Flexible expression, opinions, humor allowed
+- Keep it scene-relevant and under 25 words`
+}
+
 export function buildChatMessages(
   request: AiConversationRequest,
 ): ChatMessage[] {
   const flavorSection = buildFlavorSection(request.flavorContext)
   const regionPrompt = buildRegionPromptContext(request.flavorContext?.region ?? null)
   const regionSection = regionPrompt ? `\n\nREGION:\n${regionPrompt}` : ''
+  const rankSection = buildRankSection(request.rank)
   const messages: ChatMessage[] = [
-    { role: 'system', content: buildSystemPrompt(request.lessonPhrase) + flavorSection + regionSection },
+    { role: 'system', content: buildSystemPrompt(request.lessonPhrase) + rankSection + flavorSection + regionSection },
   ]
 
   // Replay conversation history (includes the current turn's user message)

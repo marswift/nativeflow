@@ -57,25 +57,43 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
 
-    const cookieStore = await cookies()
+    // Auth: try Bearer token first (browser client uses localStorage, not cookies)
+    const authHeader = request.headers.get('authorization')
+    let user: { id: string } | null = null
+    let supabase: ReturnType<typeof createServerClient> | null = null
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get: (name) => cookieStore.get(name)?.value,
-          set: () => {},
-          remove: () => {},
-        },
-      }
-    )
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7)
+      const { createClient } = await import('@supabase/supabase-js')
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        { global: { headers: { Authorization: `Bearer ${token}` } } }
+      )
+      const { data } = await supabaseWithToken.auth.getUser()
+      user = data?.user ?? null
+      if (user) supabase = supabaseWithToken as unknown as ReturnType<typeof createServerClient>
+    }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
+    // Fallback: try cookie-based session
     if (!user) {
+      const cookieStore = await cookies()
+      supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          cookies: {
+            get: (name) => cookieStore.get(name)?.value,
+            set: () => {},
+            remove: () => {},
+          },
+        }
+      )
+      const { data } = await supabase.auth.getUser()
+      user = data?.user ?? null
+    }
+
+    if (!user || !supabase) {
       return NextResponse.json(
         { ok: false, error: 'unauthorized' },
         { status: 401 }

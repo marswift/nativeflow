@@ -25,6 +25,7 @@ export type LessonDraftSessionItem = {
   semantic_chunks: SemanticChunk[] | null
   image_url: string | null
   typing_variations: string[] | null
+  related_expressions: { en: string; ja: string; category: string }[] | null
 }
 
 export type DraftSessionBlockType = 'conversation' | 'review' | 'typing'
@@ -83,6 +84,7 @@ function mapDraftItemToSessionItem(
     semantic_chunks: item.semantic_chunks ?? null,
     image_url: item.image_url ?? null,
     typing_variations: item.typing_variations ?? null,
+    related_expressions: item.related_expressions ?? null,
   }
 }
 

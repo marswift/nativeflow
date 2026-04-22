@@ -5,6 +5,17 @@
  * Used by conversation-resolver.ts for safe fallback resolution.
  */
 
+export type RelatedExpression = {
+  /** The English expression. */
+  en: string
+  /** Japanese meaning hint for beginners. */
+  ja: string
+  /** Category: action = same-scene action, follow-up = what happens next, support = useful filler/response */
+  category: 'action' | 'follow-up' | 'support'
+  /** TTS override for Japanese text (e.g. hiragana for correct reading). */
+  jaTts?: string | null
+}
+
 export type ConversationVariant = {
   aiQuestionText: string
   typingVariations: string[]
@@ -13,6 +24,12 @@ export type ConversationVariant = {
     chunk: string
     meaning: string
   }[]
+
+  /**
+   * Related expressions network — expands a single core phrase into a usable speaking cluster.
+   * Used by: typing stage, AI conversation support, review queue, scene expansion.
+   */
+  relatedExpressions?: RelatedExpression[] | null
 
   /**
    * Optional emotional / cultural flavor layer.
@@ -54,6 +71,14 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
       { chunk: 'wake up', meaning: '目が覚める' },
       { chunk: 'get up', meaning: '起きる' },
       { chunk: 'this morning', meaning: '今朝' },
+    ],
+    relatedExpressions: [
+      { en: 'I get out of bed.', ja: 'ベッドから出る', category: 'action' },
+      { en: 'I open the curtains.', ja: 'カーテンを開ける', category: 'action' },
+      { en: 'I check my phone.', ja: 'スマホを確認する', category: 'follow-up' },
+      { en: 'I stretch a little.', ja: '少しストレッチする', category: 'action' },
+      { en: 'Good morning.', ja: 'おはようございます', category: 'support' },
+      { en: 'I slept well.', ja: 'よく眠れた', category: 'support' },
     ],
   },
 
@@ -118,6 +143,14 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
       { chunk: 'eat breakfast', meaning: '朝ごはんを食べる' },
       { chunk: 'usually', meaning: 'いつもは' },
       { chunk: 'this morning', meaning: '今朝' },
+    ],
+    relatedExpressions: [
+      { en: 'I make some toast.', ja: 'トーストを作る', category: 'action' },
+      { en: 'I pour some coffee.', ja: 'コーヒーを注ぐ', category: 'action' },
+      { en: 'I sit down and eat.', ja: '座って食べる', category: 'action' },
+      { en: 'I clean up after breakfast.', ja: '朝食後に片付ける', category: 'follow-up' },
+      { en: 'I wash the dishes.', ja: 'お皿を洗う', category: 'follow-up' },
+      { en: 'It was good.', ja: 'おいしかった', category: 'support' },
     ],
   },
 
@@ -229,6 +262,14 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
       { chunk: 'traffic', meaning: '交通状況' },
       { chunk: 'be bad', meaning: '悪い状態だ' },
     ],
+    relatedExpressions: [
+      { en: 'I check my bag.', ja: 'かばんを確認する', category: 'action' },
+      { en: 'I lock the door.', ja: 'ドアに鍵をかける', category: 'action' },
+      { en: 'I walk to the station.', ja: '駅まで歩く', category: 'follow-up' },
+      { en: 'I take the train.', ja: '電車に乗る', category: 'follow-up' },
+      { en: 'See you later.', ja: 'また後でね', category: 'support' },
+      { en: 'I am on my way.', ja: '向かっています', category: 'support' },
+    ],
   },
 
   // leave_home — en_us_general — 40s — beginner
@@ -338,6 +379,14 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
       { chunk: 'hang out', meaning: '遊ぶ' },
       { chunk: 'this weekend', meaning: '今週末' },
       { chunk: 'no plans', meaning: '予定がない' },
+    ],
+    relatedExpressions: [
+      { en: 'Do you want to go?', ja: '行きたい？', category: 'support' },
+      { en: 'That sounds fun.', ja: '楽しそう', category: 'support' },
+      { en: 'I am free on Saturday.', ja: '土曜日は空いてる', category: 'follow-up' },
+      { en: 'Let me check my schedule.', ja: '予定を確認させて', category: 'follow-up' },
+      { en: 'I texted my friend.', ja: '友達にメッセージした', category: 'action' },
+      { en: 'We decided to meet.', ja: '会うことにした', category: 'action' },
     ],
     flavor: {
       setting: 'coffee shop or campus hangout spot',
@@ -474,6 +523,14 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
       { chunk: 'go to bed', meaning: '寝る' },
       { chunk: 'get some rest', meaning: '休む' },
       { chunk: 'long day', meaning: '長い一日' },
+    ],
+    relatedExpressions: [
+      { en: 'I brush my teeth.', ja: '歯を磨く', category: 'action' },
+      { en: 'I turn off the lights.', ja: '電気を消す', category: 'action' },
+      { en: 'I set my alarm.', ja: 'アラームをセットする', category: 'action' },
+      { en: 'I read for a while.', ja: 'しばらく読書する', category: 'follow-up' },
+      { en: 'Good night.', ja: 'おやすみなさい', category: 'support' },
+      { en: 'I am tired.', ja: '疲れた', category: 'support' },
     ],
   },
 

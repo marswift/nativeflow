@@ -108,42 +108,4 @@ export async function checkIsStaff(
 }
 
 // ── Server-side guard ──
-
-/**
- * Check admin via server-side Supabase client (service role).
- */
-export async function checkIsAdminServer(userId: string): Promise<boolean> {
-  try {
-    const { supabaseServer } = await import('./supabase-server')
-
-    const { data } = await supabaseServer
-      .from('user_profiles')
-      .select('is_admin, role')
-      .eq('id', userId)
-      .maybeSingle()
-
-    const role = parseRole(data?.role)
-    return isAdminByRoleOrFlag(role, data?.is_admin === true)
-  } catch {
-    return false
-  }
-}
-
-/**
- * Get the user's role via server-side client.
- */
-export async function getUserRoleServer(userId: string): Promise<UserRole> {
-  try {
-    const { supabaseServer } = await import('./supabase-server')
-
-    const { data } = await supabaseServer
-      .from('user_profiles')
-      .select('role')
-      .eq('id', userId)
-      .maybeSingle()
-
-    return parseRole(data?.role)
-  } catch {
-    return 'user'
-  }
-}
+// Moved to lib/admin-guard-server.ts to avoid bundling 'server-only' into client components.

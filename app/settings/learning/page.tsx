@@ -236,6 +236,15 @@ export default function LearningSettingsPage() {
         return
       }
 
+      // Sync UI language to localStorage and cookie
+      if (uiLanguageCode) {
+        try {
+          const { writeUiLanguageToStorage } = await import('@/lib/auth-copy')
+          writeUiLanguageToStorage(uiLanguageCode)
+          document.cookie = `NEXT_LOCALE=${uiLanguageCode};path=/;max-age=31536000;SameSite=Lax`
+        } catch { /* non-blocking */ }
+      }
+
       setInfoMessage('学習設定を更新しました')
       router.refresh()
     } catch (err) {
@@ -330,11 +339,12 @@ export default function LearningSettingsPage() {
           </div>
 
           <div className="mt-4">
-            <label htmlFor="target_region_slug" className="block text-sm font-medium text-[#2c2c2c]">
+            <label htmlFor="target_region_slug_text" className="block text-sm font-medium text-[#2c2c2c]">
               {copy.labels.regionOptional}
             </label>
             <input
-              id="target_region_slug"
+              id="target_region_slug_text"
+              name="target_region_slug_text"
               type="text"
               value={targetRegionSlug}
               onChange={(e) => setTargetRegionSlug(e.target.value)}
