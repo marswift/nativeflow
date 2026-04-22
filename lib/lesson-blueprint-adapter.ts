@@ -15,7 +15,7 @@
  */
 
 import type { CurrentLevel } from './constants'
-import { resolveSceneConversation } from './conversation-resolver'
+import { getLessonContentRepository } from './lesson-content-repository'
 import type {
   LessonBlueprint,
   LessonBlueprintBlock,
@@ -3287,13 +3287,14 @@ function mapBlockToDraft(
   const ageGroup = '20s' // TODO: read from user profile when available
 
   // Overlay catalog content when available (scene + region + age + level)
-  const catalogVariant = resolveSceneConversation(sceneKey, region, ageGroup, level)
-  const aiQuestionText = catalogVariant?.aiQuestionText ?? englishContent.aiQuestionText
-  const typingVariations = catalogVariant?.typingVariations ?? englishContent.typingVariations
-  const relatedExpressions = catalogVariant?.relatedExpressions ?? null
+  const repo = getLessonContentRepository()
+  const enrichment = repo.getConversationEnrichment(sceneKey, region, ageGroup, level)
+  const aiQuestionText = enrichment?.aiQuestionText ?? englishContent.aiQuestionText
+  const typingVariations = enrichment?.typingVariations ?? englishContent.typingVariations
+  const relatedExpressions = enrichment?.relatedExpressions ?? null
   // Merge semantic chunks: catalog coreChunks + scene chunks + shared verb dictionary
-  const catalogChunks: SemanticChunk[] = catalogVariant?.coreChunks
-    ? catalogVariant.coreChunks.map((c): SemanticChunk => ({ chunk: c.chunk, meaning: c.meaning, type: 'phrase' }))
+  const catalogChunks: SemanticChunk[] = enrichment?.coreChunks
+    ? enrichment.coreChunks.map((c): SemanticChunk => ({ chunk: c.chunk, meaning: c.meaning, type: 'phrase' }))
     : []
   const sceneChunks: SemanticChunk[] = englishContent.semanticChunks ?? []
   const seen = new Set(catalogChunks.map((c) => c.chunk.toLowerCase()))

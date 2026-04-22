@@ -122,11 +122,22 @@ export interface LessonContentRepository {
 // Object-catalog implementation — delegates to existing modules
 // ══════════════════════════════════════════════════════════════════════════════
 
-import {
-  selectScenePhraseVariant,
-  lookupSceneByAnswer,
-} from './lesson-blueprint-adapter'
 import { resolveSceneConversation } from './conversation-resolver'
+
+// These are resolved lazily on first use to avoid circular dependency
+// (adapter imports repository, repository imports adapter).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _adapterModule: any = null
+function adapter() {
+  if (!_adapterModule) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _adapterModule = require('./lesson-blueprint-adapter')
+  }
+  return _adapterModule as {
+    selectScenePhraseVariant: (sceneKey: string, level: CurrentLevel, mode: 'base' | 'variation', exposureCount: number) => { conversationAnswer: string; typingAnswer: string; reviewPrompt: string; aiConversationPrompt: string; nativeHint: string; mixHint: string; aiQuestionText: string }
+    lookupSceneByAnswer: (englishAnswer: string) => { sceneKey: string; nativeHint: string } | null
+  }
+}
 
 /**
  * Normalize a CurrentLevel to the catalog's 3-bucket system.
@@ -139,6 +150,7 @@ function toLevelForCatalog(level: CurrentLevel): CurrentLevel {
 class ObjectCatalogRepository implements LessonContentRepository {
   getScenePhrase(sceneKey: string, level: CurrentLevel): ScenePhraseContent | null {
     try {
+      const { selectScenePhraseVariant } = adapter()
       const base = selectScenePhraseVariant(sceneKey, toLevelForCatalog(level), 'base', 0)
 
       // Collect variations
@@ -207,7 +219,7 @@ class ObjectCatalogRepository implements LessonContentRepository {
   }
 
   lookupByAnswer(englishAnswer: string): SceneLookupResult | null {
-    return lookupSceneByAnswer(englishAnswer)
+    return adapter().lookupSceneByAnswer(englishAnswer)
   }
 }
 
