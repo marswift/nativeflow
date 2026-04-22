@@ -10,7 +10,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { LessonBlock, LessonSession } from './lesson-engine'
 import { getDueReviewItems, type ReviewItemRow } from './review-items-repository'
-import { lookupSceneByAnswer } from './lesson-blueprint-adapter'
+import { getLessonContentRepository } from './lesson-content-repository'
 import { buildScenarioLabel } from './lesson-blueprint-service'
 
 const MAX_REVIEW_BLOCKS = 3
@@ -160,8 +160,9 @@ function reviewItemToBlock(source: ReviewItemWithContent): LessonBlock {
     } catch { /* ignore */ }
   }
 
-  // Reverse-lookup source scene from catalog so heading shows scene label and pass 2 gets JP audio
-  const sourceScene = lookupSceneByAnswer(displayAnswer ?? '')
+  // Reverse-lookup source scene via repository so heading shows scene label and pass 2 gets JP audio
+  const repo = getLessonContentRepository()
+  const sourceScene = repo.lookupByAnswer(displayAnswer ?? '')
   const sceneId = sourceScene?.sceneKey ?? null
   const nativeHint = sourceScene?.nativeHint ?? null
 
