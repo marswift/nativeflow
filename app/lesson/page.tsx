@@ -938,8 +938,15 @@ export default function LessonPage() {
       if (completed) {
         setNeedsOnboarding(false)
       } else {
-        setNeedsOnboarding(true)
-        setOnboardingStep('explanation')
+        // Skip full-screen onboarding gate — go straight to lesson
+        setNeedsOnboarding(false)
+        setOnboardingStep('done')
+        // Mark onboarding as completed in DB
+        supabase
+          .from('user_profiles')
+          .update({ onboarding_completed: true })
+          .eq('id', userId)
+          .then(() => {})
       }
     }
 
