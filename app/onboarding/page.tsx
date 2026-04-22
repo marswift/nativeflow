@@ -31,24 +31,8 @@ import {
 
 const AFTER_SAVE_REDIRECT = '/lesson'
 
-/** API may return url or checkoutUrl; we accept both. */
-type CheckoutResponse = { url?: string; checkoutUrl?: string; message?: string; error?: string }
-
 const DEFAULT_SUBMIT_LABEL = '7日間無料を開始する'
 const CHECKOUT_LAUNCHING_LABEL = '決済画面へ移動中...'
-const CHECKOUT_ERROR_FALLBACK = '決済画面の起動に失敗しました。時間をおいて再度お試しください。'
-
-async function requestCheckout(accessToken: string, plan: string): Promise<{ url?: string; error?: string }> {
-  const res = await fetch('/api/stripe/checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({ plan }),
-  })
-  const data: CheckoutResponse = await res.json().catch(() => ({}))
-  const url = data.url ?? data.checkoutUrl
-  if (res.ok && url) return { url }
-  return { error: data.message ?? data.error ?? CHECKOUT_ERROR_FALLBACK }
-}
 
 /** UI languages available for onboarding display switching. Only production-verified languages. Korean copy exists but is hidden until human-reviewed. */
 const ONBOARDING_UI_LANGUAGES = UI_LANGUAGE_OPTIONS.filter((o) => o.value === 'ja' || o.value === 'en')
@@ -70,11 +54,6 @@ const AGE_GROUP_OPTIONS = [
   { value: '30s', label: '30代' },
   { value: '40s', label: '40代' },
   { value: '50plus', label: '50代以上' },
-] as const
-
-const PLANNED_PLAN_OPTIONS = [
-  { value: 'monthly', label: '月額プラン' },
-  { value: 'yearly', label: '年額プラン' },
 ] as const
 
 /** Region options derived from REGION_MASTER, filtered by language and enabled flag. */
@@ -107,7 +86,7 @@ const ORIGIN_COUNTRY_OPTIONS = [
   { value: 'OTHER', label: 'その他' },
 ] as const
 
-type PlannedPlanCode = (typeof PLANNED_PLAN_OPTIONS)[number]['value']
+type PlannedPlanCode = 'monthly' | 'yearly'
 
 /** Derive native language code from origin country. Used to auto-populate native_language_code. */
 function deriveNativeLanguageCode(countryCode: string): string {
@@ -203,7 +182,7 @@ export default function OnboardingPage() {
   const [speakByDeadlineText, setSpeakByDeadlineText] = useState('')
   const [targetOutcomeText, setTargetOutcomeText] = useState('')
   const [loading, setLoading] = useState(false)
-  const [checkoutLaunching, setCheckoutLaunching] = useState(false)
+  const [checkoutLaunching, _setCheckoutLaunching] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   const [formError, setFormError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
