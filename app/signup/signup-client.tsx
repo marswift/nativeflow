@@ -72,7 +72,7 @@ export function SignupClient() {
 
   /** Build redirect URL preserving plan query param for post-auth routing. */
   function buildRedirectUrl(): string {
-    const base = `${window.location.origin}/auth/confirm`
+    const base = `${window.location.origin}/auth/callback`
     return hasPlan ? `${base}?plan=${plan}` : base
   }
 
