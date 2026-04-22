@@ -1,9 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getEmmaHint, getLessonCopy, type EmmaHintStage } from '../../../lib/lesson-copy'
-import { generateConversation, evaluateConversationAnswer, type ConversationPromptSpec } from '../../../lib/ai-question-conversation-engine'
-import { generateExtendedConversation, evaluateExtendedAnswer } from '../../../lib/ai-conversation-extended-engine'
+import { getEmmaHint, type EmmaHintStage } from '../../../lib/lesson-copy'
 import { trackEvent } from '../../../lib/analytics'
 import { evaluateRepeat } from '../../../lib/repeat-evaluator'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
@@ -13,9 +11,7 @@ import type { SemanticChunk } from '../../../lib/lesson-blueprint-adapter'
 import type { LessonProgressState } from '../../../lib/lesson-progress'
 import type { LessonStageId } from '../../../lib/lesson-runtime'
 import type { CurrentLevel } from '../../../lib/constants'
-import AudioChoiceStage from './audio-choice-stage'
-import type { AudioChoiceItem } from '../../../lib/audio-choice-types'
-import { buildFallbackEvaluation, incrementAiCallCount, isAiLimitReached } from '../../../lib/ai-conversation-fallback'
+import { buildFallbackEvaluation, incrementAiCallCount } from '../../../lib/ai-conversation-fallback'
 import { getRegionContext } from '../../../lib/daily-timeline'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
 import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
@@ -144,31 +140,16 @@ function RationaleHelpButton({ uiText }: { uiText: LessonCopy['activeCard'] }) {
   )
 }
 
-
-
-function ConfirmMeaningBlock({ uiText, hint }: { uiText: LessonCopy['activeCard']; hint: string }) {
-  if (!hint) return null
-  return (
-    <div className="rounded-xl border border-[#E8E4DF] bg-[#FAF7F2] px-4 py-3">
-      <p className="text-xs font-bold text-[#7b7b94]">{uiText.confirmMeaningLabel}</p>
-      <p className="mt-1 text-sm leading-6 text-[#5a5a7a]">{hint}</p>
-    </div>
-  )
-}
-
 // ── Button class constants (design system) ──
 const BTN_PRIMARY = 'inline-flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600'
 const ICON_LISTEN = <img src="/images/lp/icons/listen.webp" alt="" className="h-5 w-5" aria-hidden="true" />
 const ICON_SPEAK = <img src="/images/lp/icons/speak.webp" alt="" className="h-5 w-5" aria-hidden="true" />
-const BTN_ACTION = 'rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]'
-const BTN_SECONDARY = 'rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]'
 const BTN_STOP = 'rounded-xl bg-gray-400 px-6 py-3 text-sm font-bold text-white transition hover:bg-gray-500'
 const BTN_DISABLED = 'rounded-xl bg-gray-300 px-6 py-3 text-sm font-bold text-white cursor-not-allowed'
 
 /** Debug logger — only outputs in development, silent in production */
 const debugLog = process.env.NODE_ENV === 'production'
   ? (() => {}) as (...args: unknown[]) => void
-  // eslint-disable-next-line no-console
   : (tag: string, data?: unknown) => console.log(tag, data)
 
 // ── Challenge audio cache + prefetch (shared across SoundGame / QuickResponseGame) ──
@@ -227,13 +208,6 @@ type ConvEvalDetail = {
   followUp: string | null
 }
 
-const LESSON_STAGE_ORDER: LessonStageId[] = [
-  'listen',
-  'repeat',
-  'scaffold_transition',
-  'ai_question',
-  'ai_conversation',
-]
 
 /** Reusable scene image block — consistent styling across stages.
  *  Scene assets are 1:1 — same file on desktop and mobile, no _p variant. */
@@ -260,11 +234,6 @@ function LessonSceneImage({
       )}
     </div>
   )
-}
-
-function getSceneCaption(input: { scenarioLabel: string; dynamicConversationHeading: string }): string {
-  const s = input.scenarioLabel.trim()
-  return s || input.dynamicConversationHeading
 }
 
 /** Paths that should NOT be rendered as lesson images (placeholders only). */
@@ -300,31 +269,6 @@ function getListenSpeechText(item: LessonBlockItem): string {
   if (sceneLabel) return sceneLabel
 
   return ''
-}
-
-function getFallbackTranslation(item: LessonBlockItem): string {
-  const maybe = item as LessonBlockItem & {
-    translation_ja?: string | null
-    translation?: string | null
-  }
-
-  // Only return actual native-language translations; never fall back to
-  // English prompt/answer — that would defeat the purpose of scaffolding.
-  return (
-    maybe.translation_ja?.trim() ||
-    maybe.translation?.trim() ||
-    ''
-  )
-}
-
-/**
- * Builds a mixed sentence: subject in target language + rest in native language.
- * e.g. target="I take a bath before bed", native="寝る前にお風呂に入ります"
- *   → "I ... 寝る前にお風呂に入ります"
- */
-function buildMixedText(nativeText: string, targetText: string): string {
-  const firstWord = targetText.split(/\s+/)[0] ?? ''
-  return `${firstWord} ... ${nativeText}`
 }
 
 const SUBJECT_PRONOUNS = new Set(['i', 'you', 'we', 'they', 'he', 'she', 'it'])
@@ -706,7 +650,7 @@ function getGuideCharacter(input: {
   level?: string | null
   uiLang?: string | null
 }) {
-  const { currentStageId, isRecordingRepeat, isListenPlaying, isCorrect, uiText, level, uiLang } = input
+  const { currentStageId, isRecordingRepeat, isListenPlaying, isCorrect: _isCorrect, uiText, level, uiLang } = input
   const emmaStage = toEmmaStage(currentStageId)
   const emmaLevel = (level === 'beginner' || level === 'intermediate' || level === 'advanced') ? level : 'beginner'
   const emmaHint = emmaStage ? getEmmaHint(emmaStage, emmaLevel, uiLang) : ''
@@ -771,26 +715,6 @@ function getGuideCharacter(input: {
     title: uiText.guideDefaultTitle,
     messagePrimary: uiText.guideDefaultPrimary,
     messageSecondary: uiText.guideDefaultSecondary,
-  }
-}
-
-function getCurrentActionLabel(
-  stage: LessonStageId | null,
-  uiText: LessonCopy['activeCard']
-): string {
-  switch (stage) {
-    case 'listen':
-      return uiText.listenAction
-    case 'repeat':
-      return uiText.repeatAction
-    case 'scaffold_transition':
-      return uiText.scaffoldAction
-    case 'ai_question':
-      return uiText.aiQuestionAction
-    case 'ai_conversation':
-      return uiText.aiConversationAction
-    default:
-      return ''
   }
 }
 
@@ -911,7 +835,7 @@ function scoreTurn(evalDetail: ConvEvalDetail | null, transcript: string, prevRe
   return { semanticScore, continuityScore, languageScore, speechScore, weightedScore }
 }
 
-function summarizeSession(turns: ConvTurn[], isJa: boolean, lessonPhrase?: string): ConvSessionResult {
+function summarizeSession(turns: ConvTurn[], isJa: boolean, _lessonPhrase?: string): ConvSessionResult {
   const scored = turns.filter((t) => t.eval && t.eval.weightedScore > 0)
   if (scored.length === 0) {
     return {
@@ -963,65 +887,10 @@ function summarizeSession(turns: ConvTurn[], isJa: boolean, lessonPhrase?: strin
   return { finalScore, finalEvaluation, summary, improvementHint }
 }
 
-function buildConversationTurns(currentAnswer: string, _previousPhrases: string[]): ConvTurn[] {
-  // Turn 2: concrete scene-related question, NOT "How do you say X in English?"
-  const lower = currentAnswer.toLowerCase()
-  let turn2: string
-  if (/woke up|wake up|get up|sleepy|morning/i.test(lower)) {
-    turn2 = 'What time did you wake up today?'
-  } else if (/breakfast|cook|eat|dinner|lunch/i.test(lower)) {
-    turn2 = 'What did you have?'
-  } else if (/work|office|meeting|coworker/i.test(lower)) {
-    turn2 = 'How was work today?'
-  } else if (/home|back|return/i.test(lower)) {
-    turn2 = 'What did you do when you got home?'
-  } else if (/bed|sleep|tired|bath/i.test(lower)) {
-    turn2 = 'What time do you usually go to bed?'
-  } else if (/store|shop|supermarket|buy/i.test(lower)) {
-    turn2 = 'What did you buy?'
-  } else if (/friend|talk|chat/i.test(lower)) {
-    turn2 = 'What did you talk about?'
-  } else if (/video|watch|youtube/i.test(lower)) {
-    turn2 = 'What kind of stuff do you watch?'
-  } else {
-    turn2 = 'Do you do that every day?'
-  }
-
-  const messages = [
-    'Hey! How are you doing today?',
-    turn2,
-    'How was today\'s lesson for you?',
-    'Great talking with you! See you next time!',
-  ]
-  return messages.map((msg) => ({
-    aiMessage: msg,
-    userReply: '',
-    hint: null,
-    nextPrompt: null,
-    reaction: '',
-  }))
-}
-
-/**
- * Extract content keywords from an AI message (skip stop words).
- */
-const STOP_WORDS = new Set([
-  'i', 'a', 'an', 'the', 'is', 'am', 'are', 'was', 'were', 'be', 'been',
-  'do', 'does', 'did', 'to', 'in', 'at', 'on', 'of', 'for', 'and', 'but',
-  'or', 'so', 'if', 'it', 'its', 'my', 'me', 'you', 'your', 'we', 'our',
-  'that', 'this', 'with', 'from', 'by', 'as', 'not', 'no', 'can', 'will',
-  'would', 'should', 'could', 'have', 'has', 'had', 'just', 'about',
-])
-
-function extractKeywords(text: string): string[] {
-  return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/)
-    .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
-}
-
 /**
  * Pick a context-aware AI reaction based on the user's reply and the AI question.
  */
-function pickReaction(userReply: string, aiMessage?: string): string {
+function pickReaction(userReply: string, _aiMessage?: string): string {
   const words = userReply.trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return ''
 
@@ -1039,145 +908,6 @@ function pickReaction(userReply: string, aiMessage?: string): string {
   return ['Okay!', 'Sure!', 'Alright!'][Math.floor(Math.random() * 3)]
 }
 
-/**
- * Generate a per-turn hint and optional next prompt to guide the user's response.
- * Returns { hint, nextPrompt } — both null when the reply is good.
- */
-function buildTurnHint(
-  userReply: string,
-  turnIndex: number,
-  uiLanguageIsJa: boolean,
-  aiMessage?: string,
-): { hint: string | null; nextPrompt: string | null } {
-  const words = userReply.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean)
-  const replyLower = words.join(' ')
-
-  const HINT_JA = '今日の表現を使って、英語で1文で答えてみましょう'
-  const HINT_EN = 'Try answering in one English sentence using today\'s expression.'
-  const hint = uiLanguageIsJa ? HINT_JA : HINT_EN
-
-  const turnPrompts: Record<number, string> = {
-    0: "I'm good, thanks!",
-    1: 'I usually...',
-    2: 'It was great!',
-    3: 'See you next time!',
-  }
-  const fallbackPrompt = turnPrompts[turnIndex] ?? 'Good!'
-
-  // Empty
-  if (words.length === 0) {
-    return { hint, nextPrompt: fallbackPrompt }
-  }
-
-  // --- Per-turn relevance checks ---
-  const ai = aiMessage?.toLowerCase() ?? ''
-
-  // Turn 0: greeting — must respond to "How are you?"
-  if (turnIndex === 0) {
-    const validResponses = [
-      'good', 'fine', 'great', 'okay', 'ok', 'well', 'thanks', 'thank',
-      'doing', 'not bad', 'pretty', 'tired', 'sleepy', 'busy', 'happy',
-      'excited', 'wonderful', 'fantastic', 'alright',
-    ]
-    const hasValidResponse = validResponses.some((r) => replyLower.includes(r))
-    const hasImPattern = /^i(?:m| am)\b/.test(replyLower)
-    if (!hasValidResponse && !hasImPattern) {
-      return { hint, nextPrompt: "I'm doing great!" }
-    }
-    return { hint: null, nextPrompt: null }
-  }
-
-  // Turn 3: goodbye
-  if (turnIndex === 3) {
-    const farewellPatterns = ['bye', 'goodbye', 'see you', 'later', 'thank', 'thanks', 'nice', 'fun', 'great time', 'next time', 'take care']
-    const hasFarewell = farewellPatterns.some((p) => replyLower.includes(p))
-    if (!hasFarewell) {
-      return { hint, nextPrompt: 'Thanks! See you next time!' }
-    }
-    return { hint: null, nextPrompt: null }
-  }
-
-  // --- Content turns (1, 2) ---
-
-  // Reject generic / filler-only replies
-  const GENERIC_REPLIES = new Set([
-    'yes', 'no', 'ok', 'okay', 'good', 'fine', 'sure', 'yeah', 'yep',
-    'nope', 'right', 'great', 'nice', 'cool', 'thanks', 'thank you',
-    'hi', 'hello', 'hey', 'good morning', 'good night', 'good evening',
-    'good afternoon', 'bye', 'goodbye', 'see you',
-  ])
-  if (GENERIC_REPLIES.has(replyLower)) {
-    return { hint, nextPrompt: fallbackPrompt }
-  }
-
-  // Very short reply (less than 3 words)
-  if (words.length < 3) {
-    return { hint, nextPrompt: fallbackPrompt }
-  }
-
-  // Relevance check: require at least 1 keyword overlap with AI message
-  if (aiMessage) {
-    const aiKeywords = extractKeywords(ai)
-    const replyKeywords = new Set(extractKeywords(replyLower))
-    const overlap = aiKeywords.filter((k) => replyKeywords.has(k)).length
-
-    if (overlap === 0 && aiKeywords.length > 0) {
-      return { hint, nextPrompt: fallbackPrompt }
-    }
-  }
-
-  // Require "I ..." pattern or a clear verb-containing sentence
-  const hasIPattern = /\bi\s+(am|was|do|did|have|had|go|went|like|think|feel|need|want|try|usually|sometimes|always|never)\b/.test(replyLower)
-  const hasVerb = /\b(is|am|are|was|were|do|does|did|have|has|had|go|goes|went|like|liked|think|thought|feel|felt|usually|always|sometimes|try|tried|need|want|get|got|take|took|make|made|use|used|come|came)\b/.test(replyLower)
-  if (!hasIPattern && !hasVerb) {
-    return { hint, nextPrompt: fallbackPrompt }
-  }
-
-  // Good reply
-  return { hint: null, nextPrompt: null }
-}
-
-function buildFeedback(turns: ConvTurn[], isJa: boolean): { feedback: string; advice: string } {
-  const totalWords = turns.reduce((sum, t) => sum + t.userReply.split(/\s+/).filter(Boolean).length, 0)
-  const replied = turns.filter((t) => t.userReply.trim().length > 0).length
-
-  let feedback: string
-  if (replied >= 4 && totalWords >= 10) {
-    feedback = isJa
-      ? '4回とも返答できました！会話を続ける力がついてきています。'
-      : 'All 4 replies — great job keeping the conversation going!'
-  } else if (replied >= 3) {
-    feedback = isJa
-      ? 'ほとんどの質問に答えられました。いい調子です！'
-      : 'You replied to most of the conversation. Nice effort!'
-  } else if (replied >= 1) {
-    feedback = isJa
-      ? '声に出せました！一言でも大きな一歩です。'
-      : 'You gave it a try! Every word counts.'
-  } else {
-    feedback = isJa
-      ? '大丈夫です。次回は一言だけでも声に出してみましょう！'
-      : 'No worries — next time, try saying even one word!'
-  }
-
-  let advice: string
-  if (totalWords < 5) {
-    advice = isJa
-      ? '今日習った文をそのまま使ってみましょう。短くてもOKです。'
-      : 'Try using full sentences like the ones you learned today.'
-  } else if (totalWords < 15) {
-    advice = isJa
-      ? 'いいスタートです！次は「いつ」「なぜ」などの詳細を加えてみましょう。'
-      : 'Good start! Try adding more details next time, like when or why.'
-  } else {
-    advice = isJa
-      ? 'たくさん話せています！次は新しい単語も混ぜてみましょう。'
-      : 'You spoke a lot — keep it up! Try mixing in new words each time.'
-  }
-
-  return { feedback, advice }
-}
-
 function AiConversationPlayer({
   item,
   uiText,
@@ -1185,7 +915,7 @@ function AiConversationPlayer({
   onInputChange,
   isLastBlock = false,
   flavorContext = null,
-  ctaLabel,
+  ctaLabel: _ctaLabel,
   level,
   onGuideMessageChange,
   problemNumber = 1,
@@ -1206,7 +936,7 @@ function AiConversationPlayer({
   const relatedExprs = (item as LessonBlockItem & { related_expressions?: { en: string }[] | null }).related_expressions
 
   // ── Slot extraction for extended engine ──
-  const convSlots = useMemo(() => {
+  const _convSlots = useMemo(() => {
     const words = currentAnswer.split(/\s+/)
     let personSlot = ''
     for (let i = 0; i < words.length; i++) {
@@ -1709,7 +1439,7 @@ function AiConversationPlayer({
 
   // ── Review screen — separate from conversation, focused single-task ──
   if (showReviewScreen) {
-    const allReviewDone = soundGameDone && quickResponseDone && (recallDone || !nativeHintForRecall)
+    const _allReviewDone = soundGameDone && quickResponseDone && (recallDone || !nativeHintForRecall)
     return (
       <div className="mt-4">
         {/* Back to conversation */}
@@ -2020,14 +1750,6 @@ type MiniReviewItem = {
   audioText?: string
 }
 
-/** In-memory performance tracking + adaptive engine. */
-type MiniReviewResult = {
-  type: MiniReviewType
-  correct: boolean
-  responseTimeMs: number
-  stage: string
-}
-
 type TypeBucket = { attempts: number; errors: number; slowCount: number }
 
 type WeaknessProfile = {
@@ -2041,10 +1763,6 @@ type WeaknessProfile = {
   subject: number
 }
 
-const SLOW_THRESHOLD_MS = 2000
-
-const miniReviewResults: MiniReviewResult[] = []
-
 const weaknessProfile: WeaknessProfile = {
   recognition: { attempts: 0, errors: 0, slowCount: 0 },
   recall: { attempts: 0, errors: 0, slowCount: 0 },
@@ -2052,31 +1770,10 @@ const weaknessProfile: WeaknessProfile = {
   person: 0, time: 0, tense: 0, subject: 0,
 }
 
-/** Update weakness profile from a review result. */
-function updateWeaknessProfile(result: MiniReviewResult) {
-  const bucket = weaknessProfile[result.type]
-  bucket.attempts += 1
-  if (!result.correct) {
-    bucket.errors += 1
-  } else if (result.responseTimeMs < SLOW_THRESHOLD_MS) {
-    // Decay: fast correct answers reduce error weight
-    bucket.errors = Math.max(0, bucket.errors - 0.3)
-  }
-  if (result.responseTimeMs > SLOW_THRESHOLD_MS) {
-    bucket.slowCount += 1
-  }
-}
-
 /** Get error rate for a review type (0–1). */
 function getErrorRate(type: MiniReviewType): number {
   const b = weaknessProfile[type]
   return b.attempts > 0 ? b.errors / b.attempts : 0
-}
-
-/** Get slow rate for a review type (0–1). */
-function getSlowRate(type: MiniReviewType): number {
-  const b = weaknessProfile[type]
-  return b.attempts > 0 ? b.slowCount / b.attempts : 0
 }
 
 /** True if user is consistently slow across types. */
@@ -2102,11 +1799,6 @@ function getWeakestType(): MiniReviewType | null {
     }
   }
   return maxRate > 0.3 ? weakest : null
-}
-
-/** Track a slot dimension weakness when user gets it wrong. */
-function trackSlotWeakness(dimension: 'person' | 'time' | 'tense' | 'subject') {
-  weaknessProfile[dimension] += 1
 }
 
 /** Get the weakest slot dimension. */
@@ -2365,229 +2057,6 @@ function generateMiniReview(
     default:
       return null
   }
-}
-
-function MiniReviewCard({
-  item,
-  uiText,
-  onComplete,
-  stage,
-  hideAudioHelperText = false,
-  autoPlay = false,
-  hideInlineResult = false,
-  preloadedAudioUrl,
-}: {
-  item: MiniReviewItem
-  uiText: LessonCopy['activeCard']
-  onComplete: (correct: boolean) => void
-  stage?: string
-  hideAudioHelperText?: boolean
-  autoPlay?: boolean
-  hideInlineResult?: boolean
-  preloadedAudioUrl?: string | null
-}) {
-  const [selected, setSelected] = useState<number | null>(null)
-  const [audioPlayed, setAudioPlayed] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [speakingState, setSpeakingState] = useState<'idle' | 'recording' | 'detected' | 'noSpeech' | 'fallback'>('idle')
-  const speakingAttemptRef = useRef(0)
-  const startTimeRef = useRef(Date.now())
-  const isCorrect = selected === item.correctIndex
-  const isSpeaking = item.mode === 'speaking'
-  const isAudioFirst = item.mode === 'audio-first' || isSpeaking
-  const showChoices = (!isAudioFirst || audioPlayed) && !isSpeaking
-
-  const cachedAudioUrlRef = useRef<string | null>(preloadedAudioUrl ?? null)
-
-  const playAudio = async () => {
-    if (isPlaying || !item.audioText) return
-    setIsPlaying(true)
-    try {
-      // Reuse cached audio URL if available
-      let audioUrl = cachedAudioUrlRef.current
-      if (!audioUrl) {
-        const res = await fetch('/api/audio/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: item.audioText, speed: 0.8 }),
-        })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.audio_url) {
-            audioUrl = data.audio_url
-            cachedAudioUrlRef.current = audioUrl
-          }
-        }
-      }
-      if (audioUrl) {
-        const audio = new Audio(audioUrl)
-        audio.onended = () => { setIsPlaying(false); setAudioPlayed(true); startTimeRef.current = Date.now() }
-        audio.onerror = () => { setIsPlaying(false); setAudioPlayed(true) }
-        audio.play().catch(() => { setIsPlaying(false); setAudioPlayed(true) })
-        return
-      }
-    } catch { /* ignore */ }
-    setIsPlaying(false)
-    setAudioPlayed(true)
-  }
-
-  // Auto-play on mount if requested
-  const autoPlayTriggered = useRef(false)
-  useEffect(() => {
-    if (autoPlay && !autoPlayTriggered.current && item.audioText) {
-      autoPlayTriggered.current = true
-      playAudio()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPlay])
-
-  const handleSpeak = async () => {
-    if (speakingState !== 'idle') return
-    setSpeakingState('recording')
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream)
-      const chunks: Blob[] = []
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
-      recorder.onstop = () => {
-        stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
-        const speechDetected = blob.size > 1024
-        const responseTimeMs = Date.now() - startTimeRef.current
-        speakingAttemptRef.current += 1
-
-        const result: MiniReviewResult = { type: item.type, correct: speechDetected, responseTimeMs, stage: stage ?? '' }
-        miniReviewResults.push(result)
-        updateWeaknessProfile(result)
-
-        if (speechDetected) {
-          setSpeakingState('detected')
-          setTimeout(() => onComplete(true), 700)
-        } else if (speakingAttemptRef.current < 2) {
-          // First failure: show feedback briefly then reset to idle for retry
-          setSpeakingState('noSpeech')
-          setTimeout(() => setSpeakingState('idle'), 900)
-        } else {
-          // Second failure: fallback to choice mode
-          setSpeakingState('fallback')
-        }
-      }
-      recorder.start()
-      setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, 1500)
-    } catch {
-      // Mic unavailable — fallback to choice mode
-      setSpeakingState('fallback')
-    }
-  }
-
-  const handleChoice = (index: 0 | 1) => {
-    if (selected !== null) return
-    const responseTimeMs = Date.now() - startTimeRef.current
-    const correct = index === item.correctIndex
-    setSelected(index)
-
-    const result: MiniReviewResult = { type: item.type, correct, responseTimeMs, stage: stage ?? '' }
-    miniReviewResults.push(result)
-    updateWeaknessProfile(result)
-
-    setTimeout(() => onComplete(correct), 700)
-  }
-
-  // Speaking mode: fallback renders choices instead
-  const showChoicesFallback = isSpeaking && speakingState === 'fallback'
-
-  return (
-    <div className="mx-auto mt-4 max-w-[320px] animate-[fadeInUp_200ms_ease-out] rounded-[16px] border border-[#E8E4DF] bg-[#FFFDF8] px-5 py-4 text-center">
-      {isAudioFirst && !audioPlayed ? (
-        <>
-          {isPlaying ? (
-            <p className="text-sm font-bold text-[#3B82F6]">{uiText.challengeAudioPlaying}</p>
-          ) : (
-            <>
-              {!hideAudioHelperText && (
-                <p className="text-sm text-[#7b7b94]">{isSpeaking ? uiText.miniReviewSpeakNow : uiText.miniReviewListenFirst}</p>
-              )}
-              <button
-                type="button"
-                onClick={playAudio}
-                className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#3B82F6] text-white transition hover:bg-[#2563EB]"
-              >
-                <LpIcon emoji="🎧" size={22} />
-              </button>
-            </>
-          )}
-        </>
-      ) : isSpeaking && speakingState !== 'fallback' ? (
-        <>
-          <p className="text-sm font-bold text-[#1a1a2e]">{item.prompt}</p>
-          <p className="mt-1 text-xs text-[#7b7b94]">{uiText.miniReviewSpeakNow}</p>
-          {speakingState === 'idle' && (
-            <button
-              type="button"
-              onClick={handleSpeak}
-              className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-500 text-white transition hover:bg-blue-600 active:scale-[0.95]"
-            >
-              <LpIcon emoji="🎤" size={22} />
-            </button>
-          )}
-          {speakingState === 'recording' && (
-            <div className="mx-auto mt-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-400 text-white">⏺</div>
-          )}
-          {speakingState === 'detected' && (
-            <p className="mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold text-[#22c55e]">{uiText.miniReviewSpeechDetected}</p>
-          )}
-          {speakingState === 'noSpeech' && (
-            <p className="mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold text-[#F5A623]">{uiText.miniReviewNoSpeech}</p>
-          )}
-        </>
-      ) : (
-        <>
-          <p className="text-sm font-bold text-[#1a1a2e]">{item.prompt}</p>
-          {(showChoices || showChoicesFallback) && (
-            <>
-              <div className="mt-3 flex justify-center gap-2">
-                {item.choices.map((choice, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => handleChoice(i as 0 | 1)}
-                    disabled={selected !== null}
-                    className={`min-w-[120px] rounded-xl border px-4 py-2.5 text-sm font-bold transition active:scale-[0.97] ${
-                      selected === null
-                        ? 'border-[#E8E4DF] bg-white text-[#1a1a2e] hover:bg-[#FAF8F5]'
-                        : selected === i
-                          ? i === item.correctIndex
-                            ? 'border-[#22c55e] bg-[#F0FDF4] text-[#22c55e]'
-                            : 'border-[#F5A623] bg-[#FFF9EC] text-[#F5A623]'
-                          : 'border-[#E8E4DF] bg-white text-[#b5b5c3]'
-                    }`}
-                  >
-                    {choice}
-                  </button>
-                ))}
-              </div>
-              {isAudioFirst && selected === null && item.audioText && (
-                <button
-                  type="button"
-                  onClick={playAudio}
-                  disabled={isPlaying}
-                  className="mx-auto mt-3 flex items-center gap-1.5 rounded-lg border border-[#E8E4DF] bg-white px-3 py-1.5 text-xs font-bold text-[#5a5a7a] transition hover:bg-[#FAF8F5] disabled:opacity-50"
-                >
-                  <LpIcon emoji="🎧" size={14} />
-                  {isPlaying ? uiText.challengeAudioPlaying : uiText.miniReviewListenAgain}
-                </button>
-              )}
-            </>
-          )}
-          {selected !== null && !hideInlineResult && (
-            <p className={`mt-2 animate-[fadeInUp_150ms_ease-out] text-sm font-bold ${isCorrect ? 'text-[#22c55e]' : 'text-[#F5A623]'}`}>
-              {isCorrect ? uiText.miniReviewNice : uiText.miniReviewAlmost}
-            </p>
-          )}
-        </>
-      )}
-    </div>
-  )
 }
 
 // ——— Sound Discrimination Mini-Game ———
@@ -3161,471 +2630,6 @@ function RecallChallenge({
   )
 }
 
-// ——— Typing Multi-Round ———
-
-const TYPING_ROUNDS = 3
-
-/**
- * Build gap-fill variations from a sentence by blanking out semantic chunks.
- * Returns sentences with ______ replacing key parts.
- */
-/**
- * Scene-related expression fallback for typing prompts.
- * Instead of gap-fills, generates natural related sentences
- * based on the verb/action in the original sentence.
- */
-const SCENE_RELATED_EXPRESSIONS: Record<string, string[]> = {
-  'clean up': [
-    'I wash the dishes.',
-    'I wipe the table.',
-    'I put the plates away.',
-    'I tidy up the kitchen.',
-  ],
-  'wake up': [
-    'I get out of bed.',
-    'I open the curtains.',
-    'I check my phone.',
-    'I stretch a little.',
-  ],
-  'get ready': [
-    'I take a shower.',
-    'I brush my teeth.',
-    'I get dressed.',
-    'I check my bag.',
-  ],
-  'make breakfast': [
-    'I boil some water.',
-    'I make some toast.',
-    'I pour some coffee.',
-    'I cut some fruit.',
-  ],
-  'go to work': [
-    'I leave the house.',
-    'I walk to the station.',
-    'I take the train.',
-    'I check my schedule.',
-  ],
-  'have lunch': [
-    'I go to a restaurant.',
-    'I eat a sandwich.',
-    'I take a break.',
-    'I sit down and eat.',
-  ],
-  'cook dinner': [
-    'I chop the vegetables.',
-    'I set the table.',
-    'I heat up the pan.',
-    'I prepare the ingredients.',
-  ],
-  'take a bath': [
-    'I fill the bathtub.',
-    'I wash my hair.',
-    'I relax in the water.',
-    'I dry off with a towel.',
-  ],
-  'go to bed': [
-    'I brush my teeth.',
-    'I turn off the lights.',
-    'I set my alarm.',
-    'I read for a while.',
-  ],
-  'go home': [
-    'I leave the office.',
-    'I walk to the station.',
-    'I take the bus home.',
-    'I arrive home.',
-  ],
-  'study': [
-    'I open my textbook.',
-    'I review my notes.',
-    'I practice writing.',
-    'I listen to English audio.',
-  ],
-  'exercise': [
-    'I go for a run.',
-    'I do some stretches.',
-    'I work out at the gym.',
-    'I go for a walk.',
-  ],
-}
-
-function buildSceneRelatedVariations(sentence: string): string[] {
-  const lower = sentence.toLowerCase()
-  for (const [verb, expressions] of Object.entries(SCENE_RELATED_EXPRESSIONS)) {
-    if (lower.includes(verb)) {
-      // Shuffle and return up to 2 random related expressions
-      const shuffled = [...expressions].sort(() => Math.random() - 0.5)
-      return shuffled.slice(0, 2)
-    }
-  }
-  return []
-}
-
-// ── Topic-based typing template pools ──
-
-type TypingTopic = 'who' | 'when' | 'what'
-
-const TYPING_WHO_TEMPLATES: ((person: string) => string)[] = [
-  (p) => `I talked with ${p}.`,
-  (p) => `I met ${p}.`,
-  (p) => `I was with ${p}.`,
-]
-
-const TYPING_WHEN_TEMPLATES: ((time: string) => string)[] = [
-  (t) => `I did it ${t}.`,
-  (t) => `It was ${t}.`,
-  (t) => `That happened ${t}.`,
-]
-
-// Verb-sensitive "what" templates — only returns safe variants for the given verb chunk
-const SOCIAL_VERBS = new Set(['talk', 'talked', 'speak', 'spoke', 'chat', 'chatted'])
-const DIRECT_OBJ_VERBS = new Set(['discuss', 'discussed'])
-const MEET_VERBS = new Set(['meet', 'met', 'visit', 'visited', 'see', 'saw'])
-
-function getTypingWhatVariants(verbChunk: string): string[] {
-  const firstVerb = verbChunk.split(/\s+/)[0]?.toLowerCase() ?? ''
-  const variants: string[] = [`I ${verbChunk}.`]
-
-  if (SOCIAL_VERBS.has(firstVerb)) {
-    variants.push(`I ${verbChunk} about it.`)
-    variants.push(`I ${verbChunk} with someone.`)
-  } else if (DIRECT_OBJ_VERBS.has(firstVerb)) {
-    // "discuss" takes a direct object — no "about"
-    variants.push(`I ${verbChunk} it.`)
-    variants.push(`I ${verbChunk} it with someone.`)
-  } else if (MEET_VERBS.has(firstVerb)) {
-    variants.push(`I ${verbChunk} someone.`)
-  }
-  // Self-contained actions (woke up, took a bath, went home, etc.)
-  // → only the base form `I ${verbChunk}.` — no unsafe extensions
-
-  return variants
-}
-
-function detectTypingTopic(sentence: string, personSlot: string, timeSlot: string): TypingTopic {
-  if (personSlot) return 'who'
-  if (timeSlot) return 'when'
-  return 'what'
-}
-
-function extractSlots(sentence: string): { personSlot: string; timeSlot: string; verbChunk: string } {
-  const words = sentence.split(/\s+/)
-  let personSlot = ''
-  for (let i = 0; i < words.length; i++) {
-    if (/^(with|to|about)$/i.test(words[i]) && words[i + 1]) {
-      personSlot = words.slice(i + 1, i + 3).join(' ').replace(/[.,!?]/g, '')
-      break
-    }
-  }
-  const lastWord = words[words.length - 1]?.replace(/[.,!?]/g, '') ?? ''
-  const timeSlot = /^(today|yesterday|tomorrow|tonight|now)$/i.test(lastWord) ? lastWord : ''
-  // Extract verb chunk (first 2-3 words after subject)
-  const verbChunk = words.slice(1, 4).join(' ').replace(/[.,!?]/g, '')
-  return { personSlot, timeSlot, verbChunk }
-}
-
-function buildTypingPrompts(currentAnswer: string, previousPhrases: string[], typingVariations?: string[] | null): string[] {
-  const prompts = [currentAnswer]
-  const { personSlot, timeSlot, verbChunk } = extractSlots(currentAnswer)
-  const topic = detectTypingTopic(currentAnswer, personSlot, timeSlot)
-
-  // Use typing variations from scene data if available
-  if (typingVariations && typingVariations.length > 0) {
-    for (const v of typingVariations) {
-      if (prompts.length >= TYPING_ROUNDS) break
-      if (v.trim() && v.trim() !== currentAnswer.trim()) prompts.push(v.trim())
-    }
-  }
-
-  // Generate topic-based structural variations
-  if (prompts.length < TYPING_ROUNDS) {
-    const personAlts = ['my teacher', 'my boss', 'my coworker']
-    const personAlt = personSlot
-      ? personAlts.find((p) => p.toLowerCase() !== personSlot.toLowerCase()) ?? 'my teacher'
-      : 'my friend'
-    const timeAlt = timeSlot
-      ? (timeSlot.toLowerCase() === 'today' ? 'yesterday' : 'today')
-      : 'today'
-
-    if (topic === 'who') {
-      // Round 2: same sentence with different person
-      const swapped = personSlot ? currentAnswer.replace(personSlot, personAlt) : null
-      if (swapped && swapped !== currentAnswer && prompts.length < TYPING_ROUNDS) {
-        prompts.push(swapped)
-      }
-      // Round 3: structural variation
-      if (prompts.length < TYPING_ROUNDS) {
-        const tmpl = TYPING_WHO_TEMPLATES[Math.floor(Math.random() * TYPING_WHO_TEMPLATES.length)]
-        const variant = tmpl(personAlt)
-        if (!prompts.includes(variant)) prompts.push(variant)
-      }
-    } else if (topic === 'when') {
-      // Round 2: same sentence with different time
-      const swapped = timeSlot ? currentAnswer.replace(new RegExp(`${timeSlot}`, 'i'), timeAlt) : null
-      if (swapped && swapped !== currentAnswer && prompts.length < TYPING_ROUNDS) {
-        prompts.push(swapped)
-      }
-      // Round 3: structural variation
-      if (prompts.length < TYPING_ROUNDS) {
-        const tmpl = TYPING_WHEN_TEMPLATES[Math.floor(Math.random() * TYPING_WHEN_TEMPLATES.length)]
-        const variant = tmpl(timeAlt)
-        if (!prompts.includes(variant)) prompts.push(variant)
-      }
-    } else {
-      // 'what' topic — verb-sensitive variations (only safe extensions)
-      if (verbChunk && prompts.length < TYPING_ROUNDS) {
-        const variants = getTypingWhatVariants(verbChunk)
-        for (const variant of variants) {
-          if (prompts.length >= TYPING_ROUNDS) break
-          if (variant !== currentAnswer && !prompts.includes(variant)) prompts.push(variant)
-        }
-      }
-    }
-  }
-
-  // Scene-related expressions fallback
-  if (prompts.length < TYPING_ROUNDS) {
-    const related = buildSceneRelatedVariations(currentAnswer)
-    for (const r of related) {
-      if (prompts.length >= TYPING_ROUNDS) break
-      if (!prompts.includes(r)) prompts.push(r)
-    }
-  }
-
-  // Previous phrases as review
-  if (prompts.length < TYPING_ROUNDS) {
-    const unique = previousPhrases.filter((p) => p.trim() !== currentAnswer.trim() && !prompts.includes(p.trim()))
-    for (const p of unique) {
-      if (prompts.length >= TYPING_ROUNDS) break
-      prompts.push(p.trim())
-    }
-  }
-
-  // Pad with currentAnswer if still short
-  while (prompts.length < TYPING_ROUNDS) {
-    prompts.push(currentAnswer)
-  }
-
-  return prompts.slice(0, TYPING_ROUNDS)
-}
-
-function TypingMultiRound({
-  item,
-  uiText,
-  copy,
-  previousPhrases = [],
-  onInputChange,
-  level,
-  ctaLabel,
-}: {
-  item: LessonBlockItem
-  uiText: LessonCopy['activeCard']
-  copy: LessonCopy
-  previousPhrases?: string[]
-  onInputChange: (value: string) => void
-  level?: CurrentLevel
-  ctaLabel?: string
-}) {
-  const [round, setRound] = useState(0)
-  const [input, setInput] = useState('')
-  const [checked, setChecked] = useState(false)
-  const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
-  const [allDone, setAllDone] = useState(false)
-  const [showEmptyGuidance, setShowEmptyGuidance] = useState(false)
-
-  const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
-  const typingVars = (item as LessonBlockItem & { typing_variations?: string[] | null }).typing_variations
-  const prompts = useMemo(
-    () => buildTypingPrompts(currentAnswer, previousPhrases, typingVars),
-    [currentAnswer, previousPhrases, typingVars]
-  )
-
-  // Per-prompt audio: fetch and cache audio for each typing prompt independently
-  const typingAudioCacheRef = useRef<Map<string, string>>(new Map())
-  const typingAudioRef = useRef<HTMLAudioElement | null>(null)
-
-  const currentPrompt = prompts[round] ?? currentAnswer
-
-  const playTypingAudio = useCallback(async () => {
-    // Stop previous
-    if (typingAudioRef.current) {
-      typingAudioRef.current.pause()
-      typingAudioRef.current = null
-    }
-
-    const text = currentPrompt
-    if (!text) return
-
-    // Check cache first
-    let url = typingAudioCacheRef.current.get(text)
-    if (!url) {
-      const fetched = await fetchAudioUrl(text)
-      if (fetched) {
-        typingAudioCacheRef.current.set(text, fetched)
-        url = fetched
-      }
-    }
-
-    if (url) {
-      const audio = new Audio(url)
-      typingAudioRef.current = audio
-      audio.play().catch(() => {})
-    }
-  }, [currentPrompt])
-
-  const handleCheck = () => {
-    if (!input.trim()) {
-      setShowEmptyGuidance(true)
-      return
-    }
-    setShowEmptyGuidance(false)
-    const isAdvanced = level === 'advanced'
-    const normalize = isAdvanced
-      ? (s: string) => s.replace(/\s+/g, ' ').trim()
-      : (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
-    const correct = normalize(input) === normalize(currentPrompt)
-    setIsCorrect(correct)
-    setChecked(true)
-    trackEvent('typing_answer', { round, correct })
-  }
-
-  const handleNext = () => {
-    const next = round + 1
-    if (next >= TYPING_ROUNDS) {
-      setAllDone(true)
-      onInputChange(input || '[typed]')
-    } else {
-      setRound(next)
-      setInput('')
-      setChecked(false)
-      setIsCorrect(null)
-      setShowEmptyGuidance(false)
-    }
-  }
-
-  const roundLabel = uiText.aiQuestionRoundLabel
-    .replace('{current}', String(round + 1))
-    .replace('{total}', String(TYPING_ROUNDS))
-
-  return (
-    <div className="mt-4">
-      <p className="text-center text-xs font-bold tracking-widest text-[#7b7b94]">
-        {roundLabel}
-      </p>
-
-      <div className="mt-3 flex justify-center">
-        <button
-          type="button"
-          onClick={playTypingAudio}
-          className="rounded-xl bg-blue-500 px-6 py-3 text-white transition hover:bg-blue-600"
-        >
-          {uiText.typingPlayButton}
-        </button>
-      </div>
-
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => { setInput(e.target.value); if (showEmptyGuidance) setShowEmptyGuidance(false) }}
-        className="mt-3 w-full rounded-xl border px-4 py-3 text-base"
-        placeholder={currentPrompt.split(/\s+/).slice(0, 2).join(' ') + '...'}
-      />
-
-      {!checked && (
-        <>
-          {showEmptyGuidance && (
-            <div className="mx-auto mt-2 max-w-[320px] rounded-xl bg-gray-50 px-4 py-2.5 text-center">
-              <p className="text-sm text-[#7b7b94]">{uiText.typingEmptyGuidance}</p>
-            </div>
-          )}
-          <div className="mt-3 flex justify-center">
-            <button
-              type="button"
-              onClick={handleCheck}
-              className="rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]"
-            >
-              {uiText.typingCheckButton}
-            </button>
-          </div>
-        </>
-      )}
-
-      {checked && (
-        <div className="mt-3 animate-[fadeInUp_200ms_ease-out] space-y-2">
-          {isCorrect && (
-            <p className="text-center text-sm font-bold text-[#22c55e]">{uiText.typingSuccess}</p>
-          )}
-          <div className={`rounded-xl px-4 py-3 ${isCorrect ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
-            <p className="text-sm font-bold">
-              {isCorrect ? copy.typing.correct : copy.typing.incorrect}
-            </p>
-            {!isCorrect && (() => {
-              const alts = generateAlternativeExpressions(currentPrompt)
-              return alts.length > 0 ? (
-                <div className="mt-1 text-sm">
-                  <p>{uiText.aiQuestionBetterWay}</p>
-                  {alts.map((alt, i) => (
-                    <p key={i} className="font-bold">・{alt}</p>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-1 text-sm">
-                  {uiText.aiQuestionBetterWay}
-                  <span className="font-bold">{currentPrompt}</span>
-                </p>
-              )
-            })()}
-          </div>
-
-          {round < TYPING_ROUNDS - 1 && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={handleNext}
-                className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-              >
-                {uiText.aiQuestionNextQuestion}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {(allDone || (checked && round >= TYPING_ROUNDS - 1)) && (
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setRound(0)
-              setInput('')
-              setChecked(false)
-              setIsCorrect(null)
-              setAllDone(false)
-              setShowEmptyGuidance(false)
-            }}
-            className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
-          >
-            {uiText.aiQuestionRetryTurn}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!allDone) {
-                setAllDone(true)
-                onInputChange(input || '[typed]')
-              }
-              window.dispatchEvent(new Event('next-step'))
-            }}
-            className="flex-1 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-          >
-            {ctaLabel ?? uiText.scaffoldNextButton}
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 /**
  * Evaluate: conversation-first.
  * 'good' = natural response, conversation works
@@ -3634,216 +2638,6 @@ function TypingMultiRound({
  * 'silent' = nothing recognizable was said
  */
 
-/** Question-type detectors and the keywords a valid answer should contain. */
-const QUESTION_RELEVANCE_RULES: {
-  detect: (q: string) => boolean
-  validAnswer: (words: Set<string>, raw: string) => boolean
-}[] = [
-  {
-    // "What time..." questions — answer should mention time
-    detect: (q) => /what time/i.test(q) || /when did you/i.test(q) || /when do you/i.test(q),
-    validAnswer: (words, raw) =>
-      /\d/.test(raw) ||
-      ['morning', 'afternoon', 'evening', 'night', 'noon', 'oclock', 'around', 'early', 'late', 'ago', 'am', 'pm'].some((w) => words.has(w)),
-  },
-  {
-    // "Where..." questions — answer should mention a place
-    detect: (q) => /where did you|where do you|where are/i.test(q),
-    validAnswer: (words) =>
-      ['home', 'work', 'office', 'school', 'store', 'station', 'restaurant', 'park', 'gym', 'kitchen', 'bed', 'room', 'there', 'here', 'outside', 'inside', 'supermarket', 'shop', 'cafe', 'hospital'].some((w) => words.has(w)),
-  },
-  {
-    // "Why..." questions — answer should contain a reason/purpose signal
-    detect: (q) => /^why /i.test(q) || /why do you|why did you/i.test(q),
-    validAnswer: (words) =>
-      ['because', 'so', 'since', 'want', 'need', 'helps', 'help', 'makes', 'make', 'better', 'easier', 'like', 'love', 'prefer', 'tired', 'busy', 'healthy', 'save', 'cheap', 'expensive', 'important'].some((w) => words.has(w)),
-  },
-  {
-    // "What..." (general) questions — answer should not be a yes/no only
-    detect: (q) => /^what /i.test(q) || /what do you|what did you/i.test(q),
-    validAnswer: (_words, raw) => raw.replace(/[^a-z\s]/gi, '').split(/\s+/).filter(Boolean).length >= 2,
-  },
-]
-
-// ── ASR Transcript Sanitizer (context-aware) ──
-// Replaces invalid/unrecognized tokens with [unclear] using the expected sentence
-// as context, NOT a global dictionary. This scales with any vocabulary.
-
-// Minimal function-word whitelist — grammar glue that appears in any sentence
-const FUNCTION_WORDS = new Set([
-  'i','me','my','you','your','he','she','it','we','they','them','his','her','its','our','their',
-  'a','an','the','this','that','these','those',
-  'is','am','are','was','were','be','been','being',
-  'do','does','did','done','doing',
-  'have','has','had','having',
-  'will','would','shall','should','can','could','may','might','must',
-  'not','no','yes','yeah','yep','nope','ok','okay',
-  'and','or','but','so','if','because','when','where','who','what','how','why','which',
-  'to','of','in','on','at','for','with','from','by','about','into','out','up','down','off','over','under',
-  'just','also','too','very','really','well','here','there','then','again','more',
-])
-
-/** Levenshtein distance — standard edit distance for fuzzy matching */
-function editDistance(a: string, b: string): number {
-  const m = a.length
-  const n = b.length
-  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0) as number[])
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      dp[i][j] = a[i - 1] === b[j - 1]
-        ? dp[i - 1][j - 1]
-        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
-    }
-  }
-  return dp[m][n]
-}
-
-/** Similarity score 0..1 based on edit distance */
-function similarity(a: string, b: string): number {
-  if (a === b) return 1
-  const maxLen = Math.max(a.length, b.length)
-  if (maxLen === 0) return 1
-  return 1 - editDistance(a, b) / maxLen
-}
-
-/**
- * Context-aware transcript sanitizer.
- * @param raw - Raw ASR transcript
- * @param unclearLabel - Replacement text for unrecognized tokens (e.g. "[unclear]")
- * @param contextSentence - The expected/target sentence used as vocabulary source
- */
-function sanitizeTranscript(raw: string, unclearLabel: string, contextSentence: string): string {
-  if (!raw.trim()) return raw
-
-  // Build expected word set from context sentence
-  const expectedWords = contextSentence.toLowerCase().replace(/[^a-z0-9\s']/g, '').split(/\s+/).filter(Boolean)
-
-  return raw.split(/\s+/).map((token) => {
-    const clean = token.replace(/[.,!?;:'"]+$/g, '').toLowerCase()
-    if (!clean) return token
-    // Pass through numbers
-    if (/^\d+$/.test(clean)) return token
-    // Must look like an English word (letters + optional apostrophe)
-    if (!/^[a-z]+(?:'[a-z]+)?$/i.test(clean)) return unclearLabel
-    // Pass through short words (1-3 chars) — likely real
-    if (clean.length <= 3) return token
-    // Pass through function words
-    if (FUNCTION_WORDS.has(clean)) return token
-    // Check against expected sentence context (exact or fuzzy match)
-    const isClose = expectedWords.some((w) => similarity(clean, w) > 0.6)
-    if (isClose) return token
-    // Not close to any expected word — replace
-    return unclearLabel
-  }).join(' ')
-}
-
-function isAnswerRelevantToQuestion(question: string, transcript: string): boolean {
-  const lower = transcript.toLowerCase().replace(/[^a-z0-9\s]/g, '')
-  const words = new Set(lower.split(/\s+/).filter(Boolean))
-
-  for (const rule of QUESTION_RELEVANCE_RULES) {
-    if (rule.detect(question)) {
-      return rule.validAnswer(words, lower)
-    }
-  }
-
-  // No specific rule matched — accept any non-empty answer
-  return true
-}
-
-// ── Alternative expression generator ──
-// Produces varied phrasings of a sentence by swapping common verbs/phrases.
-const VERB_ALT_MAP: Record<string, string[]> = {
-  'talk with': ['speak with', 'chat with'],
-  'speak with': ['talk with', 'chat with'],
-  'chat with': ['talk with', 'speak with'],
-  'talk to': ['speak to', 'chat with'],
-  'speak to': ['talk to', 'chat with'],
-  'go to': ['head to', 'visit'],
-  'head to': ['go to', 'visit'],
-  'get up': ['wake up', 'rise'],
-  'wake up': ['get up', 'rise'],
-  'take a bath': ['take a shower', 'have a bath'],
-  'take a shower': ['take a bath', 'have a shower'],
-  'have lunch': ['eat lunch', 'grab lunch'],
-  'eat lunch': ['have lunch', 'grab lunch'],
-  'have dinner': ['eat dinner', 'grab dinner'],
-  'eat dinner': ['have dinner', 'grab dinner'],
-  'have breakfast': ['eat breakfast', 'grab breakfast'],
-  'eat breakfast': ['have breakfast', 'grab breakfast'],
-  'watch TV': ['watch television', 'watch a show'],
-  'read a book': ['read books', 'do some reading'],
-  'go shopping': ['do some shopping', 'shop'],
-  'go for a walk': ['take a walk', 'go walking'],
-  'take a walk': ['go for a walk', 'go walking'],
-  'listen to music': ['put on music', 'play music'],
-  'play games': ['play video games', 'game'],
-  'do homework': ['work on homework', 'study'],
-  'go home': ['head home', 'return home'],
-  'come home': ['get home', 'arrive home'],
-  'make dinner': ['cook dinner', 'prepare dinner'],
-  'cook dinner': ['make dinner', 'prepare dinner'],
-}
-
-function generateAlternativeExpressions(sentence: string): string[] {
-  const lower = sentence.toLowerCase()
-  const alts: string[] = []
-  for (const [phrase, replacements] of Object.entries(VERB_ALT_MAP)) {
-    if (lower.includes(phrase)) {
-      for (const rep of replacements) {
-        const alt = sentence.replace(new RegExp(phrase, 'i'), rep)
-        if (alt.toLowerCase() !== lower && !alts.some((a) => a.toLowerCase() === alt.toLowerCase())) {
-          alts.push(alt)
-        }
-      }
-    }
-  }
-  return alts.length >= 2 ? alts.slice(0, 3) : []
-}
-
-const TOTAL_ROUNDS = 3
-
-type ConversationTurn = {
-  speaker: 'ai' | 'user'
-  text: string
-}
-
-/**
- * Builds a natural follow-up question that encourages reuse of a previous phrase.
- * Uses sequence/routine patterns so the question feels like a real conversation.
- */
-function buildReuseQuestion(phrase: string): string {
-  const lower = phrase.toLowerCase()
-
-  // Sequence questions — "what do you do after/before that?"
-  if (/before bed|before sleep|at night|every night/i.test(lower))
-    return 'And what do you do after that?'
-  if (/in the morning|every morning|when.*wake/i.test(lower))
-    return 'What do you do next?'
-  if (/after work|after school|come home|came home/i.test(lower))
-    return 'And then what do you do?'
-  if (/after dinner|after breakfast|after lunch/i.test(lower))
-    return 'What do you usually do next?'
-  if (/before leaving|before going out/i.test(lower))
-    return 'What do you do right before that?'
-
-  // Routine questions — "how about on weekends?"
-  if (/every day|every morning|every night|usually/i.test(lower))
-    return 'How about on weekends?'
-
-  // Location questions
-  if (/at home|at the office|at work/i.test(lower))
-    return 'What else do you do there?'
-  if (/to work|to school|to the station/i.test(lower))
-    return 'How long does that take?'
-
-  // Generic conversational follow-up
-  return 'What do you usually do after that?'
-}
-
-// ── AI Question Listening Comprehension Stage ──
 
 type AiQuestionChoice = { label: string; isCorrect: boolean }
 
@@ -4534,668 +3328,6 @@ function AiQuestionListenStage({
   )
 }
 
-function AiQuestionPlayer({
-  item,
-  uiText,
-  inputValue,
-  onInputChange,
-  previousPhrases = [],
-  level,
-  ctaLabel,
-  regionContext: regionCtxProp = null,
-}: {
-  item: LessonBlockItem
-  uiText: LessonCopy['activeCard']
-  inputValue: string
-  onInputChange: (value: string) => void
-  previousPhrases?: string[]
-  level?: string
-  ctaLabel?: string
-  regionContext?: import('../../../lib/daily-timeline').RegionContext | null
-}) {
-  const [round, setRound] = useState(0)
-  const [allDone, setAllDone] = useState(false)
-  const [loadingQuestion, setLoadingQuestion] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [isRecognizing, setIsRecognizing] = useState(false)
-  const [transcript, setTranscript] = useState('')
-  const [evaluation, setEvaluation] = useState<'good' | 'partial' | 'retry' | 'silent' | null>(null)
-  const [roundAnswered, setRoundAnswered] = useState(false)
-  const [conversationTurns, setConversationTurns] = useState<ConversationTurn[]>([])
-  const [hintExpandedByTurn, setHintExpandedByTurn] = useState<Record<number, boolean>>({})
-  const [goodRoundsCount, setGoodRoundsCount] = useState(0)
-  const [totalAnsweredCount, setTotalAnsweredCount] = useState(0)
-  const [showSilentGuidance, setShowSilentGuidance] = useState(false)
-  /** Whether the question audio is currently playing. */
-  const [questionPlaying, setQuestionPlaying] = useState(false)
-  /** Whether the question audio has been played to completion at least once for the current round. */
-  const [questionPlayed, setQuestionPlayed] = useState(false)
-  /** Whether the question audio failed (error, blocked, fetch failure). Recording stays locked. */
-  const [questionError, setQuestionError] = useState(false)
-  const questionAudioRef = useRef<HTMLAudioElement | null>(null)
-  const audioUrlCacheRef = useRef<Map<string, string>>(new Map())
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-
-  const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
-  const aiQuestion = (item as LessonBlockItem & { aiQuestionText?: string | null }).aiQuestionText?.trim() || ''
-  // Target-language copy for AI question prompts (learner practices English)
-  const targetCopy = useMemo(() => getLessonCopy('en').activeCard, [])
-  const lastPhrase = previousPhrases.length > 0
-    ? previousPhrases[previousPhrases.length - 1]
-    : null
-
-  // ── Slot extraction for structured variation questions ──
-  const sentenceSlots = useMemo(() => {
-    const words = currentAnswer.split(/\s+/)
-    // Find person/object slot (word after "with"/"to"/"about" or possessive+noun)
-    let personSlot = ''
-    let personAlt = ''
-    for (let i = 0; i < words.length; i++) {
-      if (/^(with|to|about)$/i.test(words[i]) && words[i + 1]) {
-        // Take up to 2 words after preposition (e.g. "my friend")
-        personSlot = words.slice(i + 1, i + 3).join(' ').replace(/[.,!?]/g, '')
-        break
-      }
-    }
-    // Find time slot (last word if it's a time word)
-    const lastWord = words[words.length - 1]?.replace(/[.,!?]/g, '') ?? ''
-    const timeSlot = /^(today|yesterday|tomorrow|tonight|now)$/i.test(lastWord) ? lastWord : ''
-    const timeAlt = timeSlot.toLowerCase() === 'today' ? 'yesterday' : 'today'
-
-    // Generate person alternatives
-    const personAlts = ['my teacher', 'my boss', 'my coworker', 'my neighbor']
-    personAlt = personSlot
-      ? personAlts.find((p) => p.toLowerCase() !== personSlot.toLowerCase()) ?? 'my teacher'
-      : ''
-
-    return { personSlot, personAlt, timeSlot, timeAlt }
-  }, [currentAnswer])
-
-  // ── Conversation engine — generates all 3 turns once and freezes them ──
-  // useState ensures specs are stable across re-renders (useMemo is only a cache hint).
-  const [frozenSpecs] = useState<ConversationPromptSpec[]>(() => {
-    const conv = generateConversation(currentAnswer, sentenceSlots, level, targetCopy, regionCtxProp)
-    return [conv.round1, conv.round2, conv.round3]
-  })
-
-  const currentSpec = frozenSpecs[round] ?? frozenSpecs[0]
-  const currentQuestion = currentSpec.prompt
-  const expectedAnswer = currentSpec.expectedAnswer
-
-  const roundLabel = uiText.aiQuestionRoundLabel
-    .replace('{current}', String(round + 1))
-    .replace('{total}', String(TOTAL_ROUNDS))
-
-  /** Clean up the current question audio element safely. */
-  const cleanupQuestionAudio = () => {
-    if (questionAudioRef.current) {
-      questionAudioRef.current.pause()
-      questionAudioRef.current.onended = null
-      questionAudioRef.current.onerror = null
-      questionAudioRef.current = null
-    }
-  }
-
-  /** Attach onended/onerror to an Audio element and play it. */
-  const playQuestionAudio = (audio: HTMLAudioElement) => {
-    cleanupQuestionAudio()
-    questionAudioRef.current = audio
-    setQuestionPlaying(true)
-    setQuestionError(false)
-
-    audio.onended = () => {
-      setQuestionPlaying(false)
-      setQuestionPlayed(true)
-    }
-    audio.onerror = () => {
-      setQuestionPlaying(false)
-      setQuestionError(true)
-    }
-
-    audio.play().catch(() => {
-      setQuestionPlaying(false)
-      setQuestionError(true)
-    })
-  }
-
-  const handlePlayQuestion = async () => {
-    setQuestionError(false)
-
-    const cached = audioUrlCacheRef.current.get(currentQuestion)
-    if (cached) {
-      playQuestionAudio(new Audio(cached))
-      return
-    }
-
-    if (!currentQuestion) return
-    setLoadingQuestion(true)
-    const url = await fetchAudioUrl(currentQuestion, 0.75)
-    setLoadingQuestion(false)
-
-    if (url) {
-      audioUrlCacheRef.current.set(currentQuestion, url)
-      playQuestionAudio(new Audio(url))
-    } else {
-      setQuestionError(true)
-    }
-  }
-
-  const stopStream = () => {
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
-    recorderRef.current = null
-  }
-
-  const handleStartRecording = async () => {
-    if (isRecording) return
-    try {
-      stopStream()
-      chunksRef.current = []
-      setTranscript('')
-      setEvaluation(null)
-      setRoundAnswered(false)
-      setShowSilentGuidance(false)
-
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-
-      const recorder = new MediaRecorder(stream)
-      recorderRef.current = recorder
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      recorder.onstart = () => setIsRecording(true)
-
-      recorder.onstop = async () => {
-        setIsRecording(false)
-        stopStream()
-
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' })
-        chunksRef.current = []
-        if (blob.size === 0) {
-          setShowSilentGuidance(true)
-          return
-        }
-
-        setIsRecognizing(true)
-        try {
-          const formData = new FormData()
-          formData.append('file', blob, 'recording.webm')
-          formData.append('expectedText', expectedAnswer)
-
-          const authHdrs = await getAuthHeaders()
-          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
-
-          if (res.ok) {
-            const data = await res.json()
-            const rawTranscript = data.transcript?.trim() || ''
-            // Sanitize: replace invalid ASR tokens with [unclear]
-            const recognized = sanitizeTranscript(rawTranscript, uiText.unclearToken, expectedAnswer)
-            setTranscript(recognized)
-
-            // Strip [unclear] tokens before evaluation
-            const forEval = recognized.replace(/\[unclear\]|\[不明\]/g, '').replace(/\s+/g, ' ').trim()
-
-            // Evaluate using the conversation engine
-            let result: 'good' | 'partial' | 'retry' | 'silent'
-            if (!forEval) {
-              result = 'silent'
-              setShowSilentGuidance(true)
-            } else {
-              const bucket = evaluateConversationAnswer(forEval, currentSpec)
-              result = bucket === 'correct' ? 'good'
-                : bucket === 'partial' ? 'partial'
-                : 'retry'
-            }
-            setEvaluation(result)
-            if (result !== 'silent') {
-              trackEvent('ai_question_answer', { round, result })
-              setTotalAnsweredCount((c) => c + 1)
-              if (result === 'good') setGoodRoundsCount((c) => c + 1)
-            }
-            // silent = let user retry (don't mark as answered)
-            if (result !== 'silent' && result !== 'retry') {
-              setRoundAnswered(true)
-              if (round >= TOTAL_ROUNDS - 1) {
-                // Append final turn to conversation log — but do NOT set allDone yet.
-                // The user must see the result card first, then click "complete".
-                setConversationTurns((prev) => [
-                  ...prev,
-                  { speaker: 'ai', text: currentQuestion },
-                  { speaker: 'user', text: recognized || expectedAnswer },
-                ])
-              }
-            }
-          } else {
-            const text = await res.text()
-            console.error('[AiQuestion] score API error', res.status, text)
-            setTranscript('')
-            setEvaluation('silent')
-            // Don't mark as answered — let user retry
-          }
-        } catch (err) {
-          console.error('[AiQuestion] fetch error', err)
-          setTranscript('')
-          setEvaluation('silent')
-        }
-        setIsRecognizing(false)
-      }
-
-      recorder.start(250)
-    } catch {
-      setIsRecording(false)
-    }
-  }
-
-  const handleStopRecording = () => {
-    if (recorderRef.current && recorderRef.current.state !== 'inactive') {
-      recorderRef.current.stop()
-    }
-  }
-
-  const handleNextQuestion = () => {
-    cleanupQuestionAudio()
-    // Append completed turn to conversation log
-    const newTurns: ConversationTurn[] = [
-      ...conversationTurns,
-      { speaker: 'ai', text: currentQuestion },
-      { speaker: 'user', text: transcript || expectedAnswer },
-    ]
-    setConversationTurns(newTurns)
-
-    const next = round + 1
-    if (next >= TOTAL_ROUNDS) {
-      setAllDone(true)
-      onInputChange(transcript || '[answered]')
-    } else {
-      setRound(next)
-      setTranscript('')
-      setEvaluation(null)
-      setRoundAnswered(false)
-      setIsRecognizing(false)
-      setIsRecording(false)
-      setQuestionPlaying(false)
-      setQuestionPlayed(false)
-      setQuestionError(false)
-      setShowSilentGuidance(false)
-    }
-  }
-
-  const handleRetryAll = () => {
-    cleanupQuestionAudio()
-    setRound(0)
-    setAllDone(false)
-    setTranscript('')
-    setEvaluation(null)
-    setRoundAnswered(false)
-    setShowSilentGuidance(false)
-    setQuestionPlaying(false)
-    setQuestionPlayed(false)
-    setQuestionError(false)
-    setConversationTurns([])
-    setHintExpandedByTurn({})
-    onInputChange('')
-  }
-
-  // ── Progressive hint fade-out ──
-  // Combines level (stable) + session success count + accuracy (dynamic)
-  type HintDisplayLevel = 'full' | 'collapsed' | 'hidden_default' | 'optional_only'
-
-  const hintDisplayLevel: HintDisplayLevel = useMemo(() => {
-    const levelScore =
-      level === 'advanced' ? 0.95
-      : level === 'intermediate' ? 0.7
-      : 0.3
-
-    // Session boost: +0.1 per good round (max +0.2)
-    const sessionBoost = Math.min(goodRoundsCount * 0.1, 0.2)
-
-    // Accuracy boost: if ≥ 5 answers and ≥ 80% correct, add +0.1
-    const accuracy = totalAnsweredCount >= 5 ? goodRoundsCount / totalAnsweredCount : 0
-    const accuracyBoost = accuracy >= 0.8 ? 0.1 : 0
-
-    const readiness = Math.min(levelScore + sessionBoost + accuracyBoost, 1.0)
-
-    if (readiness >= 1.0) return 'optional_only'
-    if (readiness >= 0.85) return 'hidden_default'
-    if (readiness >= 0.7) return 'collapsed'
-    return 'full'
-  }, [level, goodRoundsCount, totalAnsweredCount])
-
-  // Per-turn hint expanded state — defaults based on hint level
-  const isHintExpanded = hintExpandedByTurn[round] ?? (hintDisplayLevel === 'full')
-  const setIsHintExpanded = (expanded: boolean) => {
-    setHintExpandedByTurn((prev) => ({ ...prev, [round]: expanded }))
-  }
-
-  const feedbackMessage = useMemo(() => {
-    if (!evaluation) return null
-    if (evaluation === 'silent') return uiText.aiQuestionSilent
-
-    const lower = transcript.toLowerCase()
-    const { person, time, requiresFullSentence } = currentSpec.requiredSlots
-    const personPresent = person ? person.toLowerCase().split(/\s+/).every((w) => lower.includes(w)) : false
-    const timePresent = time ? lower.includes(time.toLowerCase()) : false
-    const wordCount = lower.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean).length
-
-    // Light reinforcement — deterministic per round (no random on re-render)
-    const reinforcements = ["You're getting better.", 'That sounded more natural.', 'Keep it up.']
-    const maybeReinforce = (base: string) => {
-      // Use round as a seed — consistent across re-renders for the same turn
-      if (round % 2 === 0) return base
-      return `${base} ${reinforcements[round % reinforcements.length]}`
-    }
-
-    if (evaluation === 'good') {
-      // Full sentence with all slots
-      if (requiresFullSentence && wordCount >= 4 && (personPresent || timePresent)) {
-        const slotDetail = personPresent && timePresent
-          ? ` You used '${person}' and '${time}' correctly.`
-          : personPresent && person
-            ? ` You used '${person}' correctly.`
-            : timePresent && time
-              ? ` You used '${time}' correctly.`
-              : ''
-        return maybeReinforce(`Nice! You said the full sentence correctly.${slotDetail}`)
-      }
-      // Slot match (short answer OK)
-      if (personPresent && person) return maybeReinforce(`Nice! You used '${person}' correctly.`)
-      if (timePresent && time) return maybeReinforce(`Nice! You used '${time}' correctly.`)
-      return maybeReinforce('Nice! That sounded natural.')
-    }
-
-    if (evaluation === 'partial') {
-      if (requiresFullSentence && wordCount < 3) {
-        return 'Good! Try saying the whole sentence.'
-      }
-      if (person && !personPresent) return `Almost! Try using '${person}'.`
-      if (time && !timePresent) return `Almost! Try using '${time}'.`
-      return 'Almost! Try saying the whole sentence.'
-    }
-
-    // retry
-    if (person) return `Try using '${person}' in your answer.`
-    if (time) return `Try using '${time}' in your answer.`
-    return uiText.aiQuestionRetry
-  }, [evaluation, transcript, currentSpec, uiText, round])
-
-  const feedbackColor =
-    evaluation === 'good' ? 'text-green-700 bg-green-50'
-    : evaluation === 'partial' ? 'text-amber-700 bg-amber-50'
-    : evaluation === 'retry' ? 'text-amber-700 bg-amber-50'
-    : evaluation === 'silent' ? 'text-gray-700 bg-gray-50'
-    : 'text-blue-700 bg-blue-50'
-
-  return (
-    <div className="mt-4">
-      <p className="text-center text-xs font-bold tracking-widest text-[#7b7b94]">
-        {roundLabel}
-      </p>
-
-      {/* Conversation log — previous turns */}
-      {conversationTurns.length > 0 && (
-        <div className="mx-auto mt-6 max-w-[460px]">
-          <div className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-5 py-5">
-            <p className="mb-3 text-[11px] font-bold tracking-widest text-[#9CA3AF]">{uiText.conversationFlowLabel}</p>
-            <div className="flex flex-col gap-3">
-              {conversationTurns.map((turn, i) => (
-                <div key={i} className={`flex ${turn.speaker === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm ${
-                    turn.speaker === 'ai'
-                      ? 'rounded-bl-md bg-[#F0F4FF] text-[#1a1a2e]'
-                      : 'rounded-br-md bg-[#FFF8EE] text-[#1a1a2e]'
-                  }`}>
-                    <p className="text-[10px] font-bold text-[#9c9c9c]">
-                      {turn.speaker === 'ai' ? uiText.aiQuestionLabel : uiText.aiQuestionYourAnswer}
-                    </p>
-                    <p className="mt-0.5">{turn.text}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Active question controls */}
-      {!allDone && (
-        <>
-          <div className="mt-7 flex justify-center">
-            <button
-              type="button"
-              onClick={handlePlayQuestion}
-              disabled={loadingQuestion || questionPlaying}
-              className={`rounded-xl px-6 py-3 text-white transition ${
-                loadingQuestion || questionPlaying
-                  ? 'cursor-not-allowed bg-gray-300'
-                  : questionError
-                    ? 'cursor-pointer bg-amber-500 hover:bg-amber-600'
-                    : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
-              }`}
-            >
-              <span className="inline-flex items-center gap-1.5 text-sm font-bold">
-                <LpIcon emoji="🎧" size={16} />
-                {loadingQuestion ? '...' : questionPlaying ? uiText.aiQuestionPlaying : questionError ? uiText.aiQuestionRetryPlay : uiText.aiQuestionPlayButton}
-              </span>
-            </button>
-          </div>
-
-          {questionError && (
-            <p className="mt-2 text-center text-xs text-amber-600">
-              {uiText.aiQuestionAudioError}
-            </p>
-          )}
-
-          <p className="mt-3 text-sm text-[#5a5a7a] text-center">
-            {uiText.aiQuestionInstruction}
-          </p>
-
-          {/* Progressive hint — fades out as learner improves */}
-          {currentSpec.expectedAnswer && (() => {
-            const hasSlots = currentSpec.requiredSlots.person || currentSpec.requiredSlots.time
-            const isFollowUp = currentSpec.kind === 'follow_up'
-
-            const encouragement =
-              hintDisplayLevel === 'collapsed' ? uiText.hintEncouragementCollapsed
-              : hintDisplayLevel === 'hidden_default' ? uiText.hintEncouragementHidden
-              : hintDisplayLevel === 'optional_only' ? uiText.hintEncouragementOptional
-              : null
-
-            const showToggle = hintDisplayLevel !== 'full'
-
-            return (
-              <div className="mx-auto mt-4 max-w-[360px]">
-                {/* Collapsed: encouragement + CTA in one block */}
-                {showToggle && !isHintExpanded && (
-                  <div className="rounded-xl border border-[#E5E7EB] bg-[#FAF8F5] px-4 py-3 text-center">
-                    {encouragement && !isFollowUp && (
-                      <p className="text-xs text-[#7b7b94]">{encouragement}</p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIsHintExpanded(true)}
-                      className="mt-1.5 cursor-pointer rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5 text-xs text-[#6B7280] transition hover:bg-[#FAFDF7]"
-                    >
-                      {uiText.hintShowButton}
-                    </button>
-                  </div>
-                )}
-
-                {/* Hint card — full mode or expanded */}
-                {isHintExpanded && (
-                  <div className="rounded-xl border border-[#E5E7EB] bg-[#FAFDF7] px-4 py-3">
-                    <div className="flex items-start justify-between">
-                      <p className="text-xs font-bold text-[#6B7280] inline-flex items-center gap-1">
-                        <LpIcon emoji="🎯" size={14} />
-                        {!isFollowUp && uiText.aiQuestionGoalLabel}
-                      </p>
-                      {showToggle && (
-                        <button
-                          type="button"
-                          onClick={() => setIsHintExpanded(false)}
-                          className="ml-auto cursor-pointer text-[10px] text-[#9CA3AF] hover:text-[#6B7280]"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                    {/* Full sentence for production turns */}
-                    {!isFollowUp && (
-                      <p className="mt-1 text-sm font-bold text-[#1a1a2e]">{currentSpec.expectedAnswer}</p>
-                    )}
-                    {/* Follow-up: show expected answer as light text */}
-                    {isFollowUp && currentSpec.expectedAnswer && (
-                      <p className="mt-0.5 text-sm text-[#5a5a7a]">{currentSpec.expectedAnswer}</p>
-                    )}
-                    {/* Slot badges — all turn kinds */}
-                    {hasSlots && (
-                      <div className={!isFollowUp ? 'mt-2 border-t border-[#E5E7EB] pt-2' : 'mt-1.5'}>
-                        <p className="text-[10px] font-bold text-[#9CA3AF]">{uiText.aiQuestionGoalUse}</p>
-                        <div className="mt-1 flex flex-wrap gap-2">
-                          {currentSpec.requiredSlots.person && (
-                            <span className="rounded-md bg-[#EFF6FF] px-2 py-0.5 text-xs font-bold text-[#2563EB]">
-                              {currentSpec.requiredSlots.person}
-                            </span>
-                          )}
-                          {currentSpec.requiredSlots.time && (
-                            <span className="rounded-md bg-[#FFF7ED] px-2 py-0.5 text-xs font-bold text-[#F59E0B]">
-                              {currentSpec.requiredSlots.time}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-        </>
-      )}
-
-      {/* Silent guidance — shown immediately after empty recording */}
-      {showSilentGuidance && !roundAnswered && !isRecording && !isRecognizing && (
-        <div className="mx-auto mt-3 max-w-[320px] rounded-xl bg-gray-50 px-4 py-3 text-center">
-          <p className="text-sm text-[#7b7b94]">{uiText.aiQuestionSilent}</p>
-        </div>
-      )}
-
-      {!roundAnswered && (
-        <div className="mt-4 flex justify-center">
-          {!isRecording ? (
-            <button
-              type="button"
-              onClick={handleStartRecording}
-              disabled={isRecognizing || questionPlaying || !questionPlayed}
-              className={`rounded-xl px-6 py-3 text-sm font-bold text-white transition ${
-                isRecognizing || questionPlaying || !questionPlayed
-                  ? 'cursor-not-allowed bg-gray-300'
-                  : 'cursor-pointer bg-blue-500 hover:bg-blue-600'
-              }`}
-            >
-              {isRecognizing
-                ? uiText.aiQuestionRecognizing
-                : !questionPlayed
-                  ? uiText.aiQuestionInputGuide
-                  : uiText.aiQuestionRecordButton}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleStopRecording}
-              className={BTN_STOP}
-            >
-              {uiText.aiQuestionStopButton}
-            </button>
-          )}
-        </div>
-      )}
-
-      {(transcript || evaluation === 'silent') && roundAnswered && !allDone && (
-        <div className="mt-7 rounded-[14px] border border-[#E8E4DF] bg-white px-5 py-5">
-          {transcript && evaluation !== 'silent' && (
-            <>
-              <p className="text-sm text-[#7b7b94] text-center">{uiText.aiQuestionYourAnswer}</p>
-              <p className="mt-1 text-lg font-bold text-[#1a1a2e] text-center">
-                {transcript.split(/(\[unclear\]|\[不明\])/).map((part, i) =>
-                  /^\[unclear\]$|^\[不明\]$/.test(part)
-                    ? <span key={i} className="italic text-[#D1D5DB]" title={uiText.unclearToken}>{part}</span>
-                    : <span key={i}>{part}</span>
-                )}
-              </p>
-            </>
-          )}
-
-          {feedbackMessage && (
-            <div className={`mt-3 rounded-xl px-4 py-3 ${feedbackColor}`}>
-              <p className="text-sm font-bold">{feedbackMessage}</p>
-              {evaluation === 'partial' && (() => {
-                const answers = [currentSpec.expectedAnswer, ...currentSpec.alternativeAnswers]
-                  .filter((a, i, arr) => arr.indexOf(a) === i)
-                return answers.length > 0 ? (
-                  <div className="mt-1 text-sm">
-                    <p>{uiText.aiQuestionBetterWay}</p>
-                    {answers.map((a, i) => (
-                      <p key={i} className="font-bold">・{a}</p>
-                    ))}
-                  </div>
-                ) : null
-              })()}
-            </div>
-          )}
-
-          {roundAnswered && evaluation === 'good' && (
-            <p className="mt-2 animate-[fadeInUp_200ms_ease-out] text-center text-sm font-bold text-[#22c55e]">
-              {uiText.aiQuestionSuccess}
-            </p>
-          )}
-
-          {roundAnswered && !allDone && (
-            <div className="mt-4">
-              {round < TOTAL_ROUNDS - 1 ? (
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={handleNextQuestion}
-                    className="rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-                  >
-                    {uiText.aiQuestionNextQuestion}
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleRetryAll()}
-                    className="flex-1 rounded-xl border border-[#E5E7EB] bg-white px-6 py-3 text-sm font-bold text-[#4B5563] transition hover:bg-[#F9FAFB]"
-                  >
-                    {uiText.aiQuestionRetryTurn}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onInputChange(transcript || '[answered]')
-                      window.dispatchEvent(new Event('next-step'))
-                    }}
-                    className="flex-1 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
-                  >
-                    {uiText.aiQuestionNextStage}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-    </div>
-  )
-}
-
 async function fetchAudioUrl(text: string, speed?: number): Promise<string | null> {
   if (!text.trim()) return null
   try {
@@ -5278,31 +3410,17 @@ function AudioCompareCard({
   )
 }
 
-function SemanticChunkList({ chunks }: { chunks: SemanticChunk[] }) {
-  return (
-    <ul className="mt-3 space-y-1.5 text-left">
-      {chunks.map((c, i) => (
-        <li key={`${c.chunk}-${i}`} className="text-xs leading-5 text-gray-500">
-          <span className="font-semibold text-gray-600">{c.chunk}</span>
-          <span className="mx-1.5">→</span>
-          <span>{c.meaning}</span>
-        </li>
-      ))}
-    </ul>
-  )
-}
-
 function ScaffoldAutoPlay({
   scaffoldSteps,
-  semanticChunks,
+  semanticChunks: _semanticChunks,
   nativeHint,
   lessonImageUrl,
   dynamicConversationHeading,
-  scenarioLabel,
-  audioUrl,
+  scenarioLabel: _scenarioLabel,
+  audioUrl: _audioUrl,
   uiText,
   level,
-  itemId,
+  itemId: _itemId,
   ctaLabel,
 }: {
   scaffoldSteps: string[]
@@ -5321,11 +3439,11 @@ function ScaffoldAutoPlay({
   const [isPlaying, setIsPlaying] = useState(false)
   const [allDone, setAllDone] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [stepAudioUrls, setStepAudioUrls] = useState<(string | null)[]>([])
+  const [_stepAudioUrls, setStepAudioUrls] = useState<(string | null)[]>([])
   const stepAudioUrlsRef = useRef<(string | null)[]>([])
   const [playRequested, setPlayRequested] = useState(false)
   const [hasPlayedOnce, setHasPlayedOnce] = useState(false)
-  const [hasPlayedMixStep, setHasPlayedMixStep] = useState(false)
+  const [_hasPlayedMixStep, setHasPlayedMixStep] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const cancelledRef = useRef(false)
   /** Guards against duplicate play triggers for the same step. */
@@ -5422,7 +3540,7 @@ function ScaffoldAutoPlay({
     audioRef.current = audio
     let ended = false
 
-    const advance = (reason: string) => {
+    const advance = (_reason: string) => {
       if (ended) return
       ended = true
       if (safetyTimerRef.current) { clearTimeout(safetyTimerRef.current); safetyTimerRef.current = null }
@@ -5451,7 +3569,6 @@ function ScaffoldAutoPlay({
         setIsPlaying(false)
         // Autoplay blocked — user can tap play
       })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalSteps, cleanup])
 
   // Fetch audio URLs on mount / when steps change, then auto-start
@@ -5516,7 +3633,7 @@ function ScaffoldAutoPlay({
     .replace('{total}', String(totalSteps))
 
   // Scaffold is idle when not loading, not playing, not auto-advancing, and not done
-  const isScaffoldIdle = !loading && !isPlaying && !playRequested && !allDone
+  const _isScaffoldIdle = !loading && !isPlaying && !playRequested && !allDone
 
   return (
     <div className="mt-4 text-center">
@@ -5606,24 +3723,24 @@ export function LessonActiveCard({
   progress,
   currentQuestionIndex,
   totalQuestions,
-  inputValue,
+  inputValue: _inputValue,
   onInputChange,
-  onCheck,
+  onCheck: _onCheck,
   onStartRepeatFromListen,
   onRetryListenFromRepeat,
-  onRetryListenFromScaffold,
+  onRetryListenFromScaffold: _onRetryListenFromScaffold,
   onGoBackToStage,
   repeatAutoStartNonce,
   listenResetNonce,
   currentStageId,
   copy: _copy,
   isLessonComplete: _isLessonComplete,
-  targetLanguageLabel,
+  targetLanguageLabel: _targetLanguageLabel,
   scenarioLabel,
   previousPhrases = [],
   level,
   lessonSessionId,
-  responseStage = 'typing',
+  responseStage: _responseStage = 'typing',
 }: LessonActiveCardProps) {
   const repeatResultRef = useRef<HTMLDivElement | null>(null)
   const listenAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -5634,7 +3751,7 @@ export function LessonActiveCard({
   const stopFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastAutoStartedNonceRef = useRef(0)
   const previousRecordedAudioUrlRef = useRef<string | null>(null)
-  const resultRef = useRef<HTMLDivElement | null>(null)
+  const _resultRef = useRef<HTMLDivElement | null>(null)
 
   const stageTone = useMemo(() => getStageTone({ currentStageId }), [currentStageId])
   const sceneId = block.sceneId ?? null
@@ -5726,13 +3843,13 @@ export function LessonActiveCard({
   }, [audioUrl, rawAudioStatus, audioPendingTimedOut])
 
   const audioStatus = audioPendingTimedOut ? 'failed' : (rawAudioStatus ?? 'ok')
-  const isAudioPending = !audioUrl && audioStatus !== 'failed'
+  const _isAudioPending = !audioUrl && audioStatus !== 'failed'
 
   const TOTAL_STAGES = 6
 
   // currentIndex is computed later after guideMessageOverride is declared
   let currentIndex = 0
-  const questionProgressPercent =
+  const _questionProgressPercent =
     ((currentIndex + 1) / TOTAL_STAGES) * 100
 
   const [playbackRate, setPlaybackRate] = useState<0.75 | 1.0 | 1.25>(1.0)
@@ -5748,7 +3865,7 @@ export function LessonActiveCard({
   const [, setMatchedWords] = useState<string[]>([])
   const [repeatAttemptCount, setRepeatAttemptCount] = useState(0)
   const uiText = _copy.activeCard
-  const AUDIO_PREPARING_LABEL = uiText.audioPreparing
+  const _AUDIO_PREPARING_LABEL = uiText.audioPreparing
 
   const scaffoldSteps = useMemo(() => getScaffoldSteps(item), [item])
   // Use the exact target-language text from scaffold steps (same text used for audio)
@@ -5768,17 +3885,17 @@ export function LessonActiveCard({
     uiText.timelineTyping,
     uiText.timelineAiConversation,
   ]
-  const questionLabelText = `${stageNames[currentIndex] ?? ''} (${currentIndex + 1} / ${TOTAL_STAGES})`
-  const questionProgressLabelText = formatCopy(uiText.questionProgressLabel, {
+  const _questionLabelText = `${stageNames[currentIndex] ?? ''} (${currentIndex + 1} / ${TOTAL_STAGES})`
+  const _questionProgressLabelText = formatCopy(uiText.questionProgressLabel, {
     current: currentIndex + 1,
   })
   
-  const scaffoldStepLabelText = formatCopy(uiText.scaffoldStepLabel, {
+  const _scaffoldStepLabelText = formatCopy(uiText.scaffoldStepLabel, {
     current: scaffoldStepIndex + 1,
     total: scaffoldSteps.length,
   })
   
-  const repeatAttemptCountLabelText = formatCopy(uiText.repeatAttemptCountLabel, {
+  const _repeatAttemptCountLabelText = formatCopy(uiText.repeatAttemptCountLabel, {
     current: repeatAttemptCount,
     max: 3,
   })
@@ -5803,7 +3920,7 @@ export function LessonActiveCard({
     uiText.challengeTitle,
   ]
 
-  const typingResultClassName =
+  const _typingResultClassName =
     progress.isCorrect == null ? '' : progress.isCorrect ? 'text-green-700' : 'text-amber-700'
 
   const isJaUi = /[\u3000-\u9FFF]/.test(uiText.scaffoldNextButton)
@@ -5834,14 +3951,14 @@ export function LessonActiveCard({
 
   // Stage validation: mini-review must pass before CTA becomes visible
   const [stageValidated, setStageValidated] = useState(false)
-  const [validationAttempted, setValidationAttempted] = useState(false)
-  const [validationView, setValidationView] = useState<'result' | 'challenge'>('result')
-  const [challengeResult, setChallengeResult] = useState<'correct' | 'incorrect' | null>(null)
-  const [challengePhase, setChallengePhase] = useState<'intro' | 'question' | 'result'>('intro')
-  const [challengeAttempt, setChallengeAttempt] = useState(0)
-  const [preloadedChallengeAudioUrl, setPreloadedChallengeAudioUrl] = useState<string | null>(null)
+  const [_validationAttempted, setValidationAttempted] = useState(false)
+  const [_validationView, setValidationView] = useState<'result' | 'challenge'>('result')
+  const [_challengeResult, setChallengeResult] = useState<'correct' | 'incorrect' | null>(null)
+  const [_challengePhase, setChallengePhase] = useState<'intro' | 'question' | 'result'>('intro')
+  const [_challengeAttempt, _setChallengeAttempt] = useState(0)
+  const [_preloadedChallengeAudioUrl, setPreloadedChallengeAudioUrl] = useState<string | null>(null)
   const [guideMessageOverride, setGuideMessageOverride] = useState<string | null>(null)
-  const [convResetNonce, setConvResetNonce] = useState(0)
+  const [convResetNonce, _setConvResetNonce] = useState(0)
 
   // Compute currentIndex now that guideMessageOverride is declared
   const isChallengePhase = currentStageId === 'ai_conversation' && guideMessageOverride != null
@@ -5896,7 +4013,7 @@ export function LessonActiveCard({
   }, [currentStageId])
 
   // Generate validation challenge for the current stage
-  const triggerValidation = useCallback(() => {
+  const _triggerValidation = useCallback(() => {
     if (stageValidated || pendingMiniReview) return
 
     const stageForReview =
@@ -6048,7 +4165,7 @@ export function LessonActiveCard({
     setIsListenPlaying(false)
   }, [])
 
-  const playRecordedAudio = useCallback(() => {
+  const _playRecordedAudio = useCallback(() => {
     if (!recordedAudioUrl) {
       setRecordedPlaybackError(uiText.repeatPlaybackError)
       return
@@ -6108,7 +4225,7 @@ export function LessonActiveCard({
           if (noSpeech) {
             // Reset to retryable state so record button reappears
             setRecordedAudioUrl(null)
-            ;(window as any).__lastRecordedBlob = null
+            ;(window as unknown as { __lastRecordedBlob: Blob | null }).__lastRecordedBlob = null
           }
           return
         }
@@ -6231,7 +4348,7 @@ export function LessonActiveCard({
       setMatchedWords([])
       setRecordedAudioUrl(null)
       setIsScoringRepeat(false)
-      ;(window as any).__lastRecordedBlob = null
+      ;(window as unknown as { __lastRecordedBlob: Blob | null }).__lastRecordedBlob = null
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -6281,7 +4398,7 @@ export function LessonActiveCard({
         setRepeatRecognitionError(null)
       
         // blobをstateで保持
-        ;(window as any).__lastRecordedBlob = blob
+        ;(window as unknown as { __lastRecordedBlob: Blob | null }).__lastRecordedBlob = blob
       }
 
       mediaChunksRef.current = []
@@ -6362,7 +4479,7 @@ export function LessonActiveCard({
     setIsScoringRepeat(false)
 
     if (typeof window !== 'undefined') {
-      ;(window as any).__lastRecordedBlob = null
+      ;(window as unknown as { __lastRecordedBlob: Blob | null }).__lastRecordedBlob = null
     }
   }, [currentStageId, listenResetNonce, stopListenAudio])
 
@@ -6648,7 +4765,7 @@ export function LessonActiveCard({
                         setRepeatRecognitionError(uiText.repeatNoRecordingForScore)
                         return
                       }
-                      const blob = (window as any).__lastRecordedBlob
+                      const blob = (window as unknown as { __lastRecordedBlob: Blob | null }).__lastRecordedBlob
                       if (!blob) {
                         setRepeatRecognitionError(uiText.repeatNoRecordingForScore)
                         setRecordedAudioUrl(null)
