@@ -68,6 +68,7 @@ export type SceneConversationEnrichment = {
   level: CurrentLevel
 
   aiQuestionText: string
+  aiQuestionChoices?: { label: string; isCorrect: boolean }[] | null
   typingVariations: string[]
   aiConversationOpener: string
   coreChunks: { chunk: string; meaning: string }[]
@@ -284,6 +285,7 @@ class ObjectCatalogRepository implements LessonContentRepository {
       ageGroup,
       level,
       aiQuestionText: variant.aiQuestionText,
+      aiQuestionChoices: variant.aiQuestionChoices ?? null,
       typingVariations: variant.typingVariations,
       aiConversationOpener: variant.aiConversationOpener,
       coreChunks: variant.coreChunks,

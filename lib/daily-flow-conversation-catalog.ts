@@ -16,8 +16,11 @@ export type RelatedExpression = {
   jaTts?: string | null
 }
 
+export type AiQuestionChoice = { label: string; isCorrect: boolean }
+
 export type ConversationVariant = {
   aiQuestionText: string
+  aiQuestionChoices?: AiQuestionChoice[] | null
   typingVariations: string[]
   aiConversationOpener: string
   coreChunks: {
@@ -61,6 +64,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // wake_up — en_us_general — 20s — beginner
   [makeKey('wake_up', 'en_us_general', '20s', 'beginner')]: {
     aiQuestionText: 'Did you sleep well?',
+    aiQuestionChoices: [
+      { label: 'よく眠れたか聞いている', isCorrect: true },
+      { label: '朝ごはんについて聞いている', isCorrect: false },
+      { label: '今日の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I woke up early today.',
       'I woke up a little late.',
@@ -85,6 +93,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // wake_up — en_us_general — 40s — beginner
   [makeKey('wake_up', 'en_us_general', '40s', 'beginner')]: {
     aiQuestionText: 'How is your morning going so far?',
+    aiQuestionChoices: [
+      { label: '今朝の調子を聞いている', isCorrect: true },
+      { label: '昨日の出来事を聞いている', isCorrect: false },
+      { label: '仕事の内容を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I need to wake the kids up.',
       'It is already a busy morning.',
@@ -101,6 +114,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // wake_up — en_us_general — 30s — beginner
   [makeKey('wake_up', 'en_us_general', '30s', 'beginner')]: {
     aiQuestionText: 'How is your morning going?',
+    aiQuestionChoices: [
+      { label: '今朝の調子を聞いている', isCorrect: true },
+      { label: '何時に起きたか聞いている', isCorrect: false },
+      { label: '朝ごはんを食べたか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I need to get ready for work.',
       'I have a meeting this morning.',
@@ -117,6 +135,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // wake_up — en_gb_general — 20s — beginner
   [makeKey('wake_up', 'en_gb_general', '20s', 'beginner')]: {
     aiQuestionText: 'Did you sleep well?',
+    aiQuestionChoices: [
+      { label: 'よく眠れたか聞いている', isCorrect: true },
+      { label: '朝ごはんについて聞いている', isCorrect: false },
+      { label: '今日の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I woke up early today.',
       'I woke up a bit late.',
@@ -133,6 +156,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // eat_breakfast — en_us_general — 20s — beginner
   [makeKey('eat_breakfast', 'en_us_general', '20s', 'beginner')]: {
     aiQuestionText: 'What do you usually eat for breakfast?',
+    aiQuestionChoices: [
+      { label: '朝ごはんに何を食べるか聞いている', isCorrect: true },
+      { label: '何時に起きるか聞いている', isCorrect: false },
+      { label: '夕ごはんの予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I usually eat toast.',
       'I had eggs this morning.',
@@ -157,6 +185,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // eat_breakfast — en_us_general — 40s — beginner
   [makeKey('eat_breakfast', 'en_us_general', '40s', 'beginner')]: {
     aiQuestionText: 'Did you get to eat breakfast with your family?',
+    aiQuestionChoices: [
+      { label: '家族と朝ごはんを食べたか聞いている', isCorrect: true },
+      { label: '家族の人数を聞いている', isCorrect: false },
+      { label: '今日の仕事について聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I made breakfast for everyone.',
       'I ate with my family this morning.',
@@ -173,6 +206,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // eat_breakfast — en_us_general — 50plus — beginner
   [makeKey('eat_breakfast', 'en_us_general', '50plus', 'beginner')]: {
     aiQuestionText: 'What did you have for breakfast this morning?',
+    aiQuestionChoices: [
+      { label: '今朝の朝ごはんに何を食べたか聞いている', isCorrect: true },
+      { label: '今朝何時に起きたか聞いている', isCorrect: false },
+      { label: '昼ごはんの予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I had toast and coffee.',
       'I took my time this morning.',
@@ -196,6 +234,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // eat_breakfast — en_us_general — 30s — beginner
   [makeKey('eat_breakfast', 'en_us_general', '30s', 'beginner')]: {
     aiQuestionText: 'Did you have time for breakfast?',
+    aiQuestionChoices: [
+      { label: '朝ごはんを食べる時間があったか聞いている', isCorrect: true },
+      { label: '何を食べたか聞いている', isCorrect: false },
+      { label: '今日の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I grabbed something quick.',
       'I skipped breakfast.',
@@ -212,6 +255,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // eat_breakfast — en_gb_general — 20s — beginner
   [makeKey('eat_breakfast', 'en_gb_general', '20s', 'beginner')]: {
     aiQuestionText: 'What do you usually have for breakfast?',
+    aiQuestionChoices: [
+      { label: '朝ごはんにいつも何を食べるか聞いている', isCorrect: true },
+      { label: '何時に寝るか聞いている', isCorrect: false },
+      { label: '週末の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I usually have toast.',
       'I had eggs this morning.',
@@ -228,6 +276,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // eat_breakfast — en_au_general — 20s — beginner
   [makeKey('eat_breakfast', 'en_au_general', '20s', 'beginner')]: {
     aiQuestionText: 'What did you have for brekkie?',
+    aiQuestionChoices: [
+      { label: '朝ごはんに何を食べたか聞いている', isCorrect: true },
+      { label: 'どこに行くか聞いている', isCorrect: false },
+      { label: '誰と会ったか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I had some Vegemite toast.',
       'Just a flat white this morning.',
@@ -251,6 +304,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // leave_home — en_us_general — 30s — beginner
   [makeKey('leave_home', 'en_us_general', '30s', 'beginner')]: {
     aiQuestionText: 'Are you heading to work now?',
+    aiQuestionChoices: [
+      { label: '今から仕事に行くか聞いている', isCorrect: true },
+      { label: '仕事の内容を聞いている', isCorrect: false },
+      { label: '家に帰るか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I need to leave soon.',
       'I have a meeting this morning.',
@@ -275,6 +333,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // leave_home — en_us_general — 40s — beginner
   [makeKey('leave_home', 'en_us_general', '40s', 'beginner')]: {
     aiQuestionText: 'Are you taking the kids out now?',
+    aiQuestionChoices: [
+      { label: '子どもを連れて出かけるか聞いている', isCorrect: true },
+      { label: '子どもの年齢を聞いている', isCorrect: false },
+      { label: '買い物に行くか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I am taking them to school.',
       'We are running a bit late.',
@@ -291,6 +354,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // leave_home — en_us_general — 50plus — beginner
   [makeKey('leave_home', 'en_us_general', '50plus', 'beginner')]: {
     aiQuestionText: 'Where are you heading today?',
+    aiQuestionChoices: [
+      { label: '今日どこに行くか聞いている', isCorrect: true },
+      { label: '何時に帰るか聞いている', isCorrect: false },
+      { label: '朝ごはんを食べたか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I am going to my English class.',
       'I am meeting a friend for coffee.',
@@ -314,6 +382,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // leave_home — en_gb_general — 20s — beginner
   [makeKey('leave_home', 'en_gb_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you leave home?',
+    aiQuestionChoices: [
+      { label: '何時に家を出るか聞いている', isCorrect: true },
+      { label: '何時に寝るか聞いている', isCorrect: false },
+      { label: 'どこに住んでいるか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I'm heading out now.",
       "I'll catch the tube.",
@@ -330,6 +403,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // leave_home — en_au_general — 20s — beginner
   [makeKey('leave_home', 'en_au_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you head off in the morning?',
+    aiQuestionChoices: [
+      { label: '朝何時に出発するか聞いている', isCorrect: true },
+      { label: '朝何を食べるか聞いている', isCorrect: false },
+      { label: '何時に起きるか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I'm heading off now.",
       "I'll grab the bus.",
@@ -353,6 +431,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // leave_home — en_us_general — 20s — beginner
   [makeKey('leave_home', 'en_us_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you leave home?',
+    aiQuestionChoices: [
+      { label: '何時に家を出るか聞いている', isCorrect: true },
+      { label: '今日どこに行くか聞いている', isCorrect: false },
+      { label: '何時に帰ってくるか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I leave home at 8.',
       "I'm running late today.",
@@ -369,6 +452,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // talk_with_friends — en_us_general — 20s — beginner
   [makeKey('talk_with_friends', 'en_us_general', '20s', 'beginner')]: {
     aiQuestionText: 'What are you doing this weekend?',
+    aiQuestionChoices: [
+      { label: '週末の予定を聞いている', isCorrect: true },
+      { label: '昨日何をしたか聞いている', isCorrect: false },
+      { label: '仕事の内容を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I'm meeting friends.",
       "I'm just relaxing.",
@@ -400,6 +488,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // talk_with_friends — en_us_general — 30s — beginner
   [makeKey('talk_with_friends', 'en_us_general', '30s', 'beginner')]: {
     aiQuestionText: 'Have you had time to catch up with friends lately?',
+    aiQuestionChoices: [
+      { label: '最近友だちと会えたか聞いている', isCorrect: true },
+      { label: '新しい友だちができたか聞いている', isCorrect: false },
+      { label: '仕事が忙しいか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I've been busy with work.",
       "It's hard to find time lately.",
@@ -421,6 +514,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // talk_with_friends — en_us_general — 40s — beginner
   [makeKey('talk_with_friends', 'en_us_general', '40s', 'beginner')]: {
     aiQuestionText: 'Have you talked with any friends recently?',
+    aiQuestionChoices: [
+      { label: '最近友だちと話したか聞いている', isCorrect: true },
+      { label: '友だちの名前を聞いている', isCorrect: false },
+      { label: '週末の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "We've both been really busy.",
       "It's hard to make time these days.",
@@ -444,6 +542,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // talk_with_friends — en_us_general — 50plus — beginner
   [makeKey('talk_with_friends', 'en_us_general', '50plus', 'beginner')]: {
     aiQuestionText: 'Have you been in touch with anyone lately?',
+    aiQuestionChoices: [
+      { label: '最近誰かと連絡を取ったか聞いている', isCorrect: true },
+      { label: '今日の体調を聞いている', isCorrect: false },
+      { label: '買い物に行ったか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I met a friend for coffee.',
       "We talked about our travel plans.",
@@ -467,6 +570,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // talk_with_friends — en_gb_general — 20s — beginner
   [makeKey('talk_with_friends', 'en_gb_general', '20s', 'beginner')]: {
     aiQuestionText: 'What are you doing this weekend?',
+    aiQuestionChoices: [
+      { label: '週末の予定を聞いている', isCorrect: true },
+      { label: '先週何をしたか聞いている', isCorrect: false },
+      { label: '好きな食べ物を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I'm meeting some friends.",
       'Fancy grabbing a pint?',
@@ -490,6 +598,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // talk_with_friends — en_au_general — 20s — beginner
   [makeKey('talk_with_friends', 'en_au_general', '20s', 'beginner')]: {
     aiQuestionText: 'What are you up to this weekend?',
+    aiQuestionChoices: [
+      { label: '週末何をするか聞いている', isCorrect: true },
+      { label: '最近どこに行ったか聞いている', isCorrect: false },
+      { label: '仕事は楽しいか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I'm catching up with some mates.",
       'Might head to the beach.',
@@ -513,6 +626,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // go_to_bed — en_us_general — 30s — beginner
   [makeKey('go_to_bed', 'en_us_general', '30s', 'beginner')]: {
     aiQuestionText: 'Are you going to bed soon?',
+    aiQuestionChoices: [
+      { label: 'もうすぐ寝るか聞いている', isCorrect: true },
+      { label: '明日の予定を聞いている', isCorrect: false },
+      { label: '何を食べたか聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I have work early tomorrow.',
       'I need to get some rest.',
@@ -537,6 +655,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // go_to_bed — en_us_general — 40s — beginner
   [makeKey('go_to_bed', 'en_us_general', '40s', 'beginner')]: {
     aiQuestionText: 'Did everyone go to bed already?',
+    aiQuestionChoices: [
+      { label: 'みんなもう寝たか聞いている', isCorrect: true },
+      { label: '今日楽しかったか聞いている', isCorrect: false },
+      { label: '明日の朝ごはんを聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'The kids are finally asleep.',
       'I am exhausted.',
@@ -553,6 +676,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // go_to_bed — en_gb_general — 20s — beginner
   [makeKey('go_to_bed', 'en_gb_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you go to bed?',
+    aiQuestionChoices: [
+      { label: '何時に寝るか聞いている', isCorrect: true },
+      { label: '何時に起きるか聞いている', isCorrect: false },
+      { label: '週末の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       "I'm off to bed.",
       'I stayed up quite late.',
@@ -569,6 +697,11 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   // go_to_bed — en_us_general — 20s — beginner
   [makeKey('go_to_bed', 'en_us_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you go to bed?',
+    aiQuestionChoices: [
+      { label: '何時に寝るか聞いている', isCorrect: true },
+      { label: '今日何をしたか聞いている', isCorrect: false },
+      { label: '明日の予定を聞いている', isCorrect: false },
+    ],
     typingVariations: [
       'I go to bed around 11.',
       'I stayed up late.',

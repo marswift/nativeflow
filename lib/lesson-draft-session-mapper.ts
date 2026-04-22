@@ -20,6 +20,7 @@ export type LessonDraftSessionItem = {
   nativeHint: string | null
   mixHint: string | null
   aiQuestionText: string | null
+  aiQuestionChoices?: { label: string; isCorrect: boolean }[] | null
   scaffold_steps: string[] | null
   structured_scaffold_steps: ScaffoldStep[] | null
   semantic_chunks: SemanticChunk[] | null
@@ -79,6 +80,7 @@ function mapDraftItemToSessionItem(
     nativeHint: item.nativeHint ?? null,
     mixHint: item.mixHint ?? null,
     aiQuestionText: item.aiQuestionText ?? null,
+    aiQuestionChoices: item.aiQuestionChoices ?? null,
     scaffold_steps: item.scaffold_steps ?? null,
     structured_scaffold_steps: item.structured_scaffold_steps ?? null,
     semantic_chunks: item.semantic_chunks ?? null,

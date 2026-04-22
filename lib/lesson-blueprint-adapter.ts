@@ -49,6 +49,7 @@ export type LessonBlueprintDraftItem = {
   nativeHint: string | null
   mixHint: string | null
   aiQuestionText: string | null
+  aiQuestionChoices?: { label: string; isCorrect: boolean }[] | null
   scaffold_steps: string[] | null
   structured_scaffold_steps: ScaffoldStep[] | null
   semantic_chunks: SemanticChunk[] | null
@@ -283,7 +284,8 @@ function createDraftItem(
   imageUrl: string | null = null,
   semanticChunks: SemanticChunk[] | null = null,
   typingVariations: string[] | null = null,
-  relatedExpressions: { en: string; ja: string; category: string }[] | null = null
+  relatedExpressions: { en: string; ja: string; category: string }[] | null = null,
+  aiQuestionChoices: { label: string; isCorrect: boolean }[] | null = null
 ): LessonBlueprintDraftItem {
   const structuredSteps = buildStructuredScaffoldSteps(nativeHint, mixHint, answer)
   const flatSteps = structuredSteps.map((s) => s.text)
@@ -294,6 +296,7 @@ function createDraftItem(
     nativeHint,
     mixHint,
     aiQuestionText,
+    aiQuestionChoices,
     scaffold_steps: flatSteps,
     structured_scaffold_steps: structuredSteps,
     semantic_chunks: semanticChunks,
@@ -3317,7 +3320,8 @@ function mapBlockToDraft(
   ]
   const semanticChunks: SemanticChunk[] | null = merged.length > 0 ? merged : null
 
-  const items = [createDraftItem(englishContent.prompt, englishContent.answer, englishContent.nativeHint, englishContent.mixHint, aiQuestionText, imageUrl, semanticChunks, typingVariations, relatedExpressions)]
+  const aiQuestionChoices = enrichment?.aiQuestionChoices ?? null
+  const items = [createDraftItem(englishContent.prompt, englishContent.answer, englishContent.nativeHint, englishContent.mixHint, aiQuestionText, imageUrl, semanticChunks, typingVariations, relatedExpressions, aiQuestionChoices)]
 
   const blockBase = { title: block.title, description: sceneLabel, items, image_prompt: imagePrompt, sceneId: sceneKey, sceneCategory, region, ageGroup }
 
