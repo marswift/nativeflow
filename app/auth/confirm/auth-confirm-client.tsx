@@ -33,6 +33,7 @@ export function AuthConfirmClient() {
     if (didRun.current) return
     didRun.current = true
 
+    const code = searchParams.get('code')
     const tokenHash = searchParams.get('token_hash')
     const type = searchParams.get('type')
     const nextParam = searchParams.get('next')
@@ -98,6 +99,25 @@ export function AuthConfirmClient() {
     async function tryHashFallback() {
       await new Promise((r) => setTimeout(r, 500))
       await handlePostConfirmRedirect()
+    }
+
+    // ── PKCE flow: exchange auth code for session ──
+    if (code) {
+      ;(async () => {
+        try {
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) {
+            console.error('Auth confirm code exchange failed', error)
+            router.replace(FAILURE_REDIRECT)
+            return
+          }
+          await handlePostConfirmRedirect()
+        } catch (err) {
+          console.error('Auth confirm code exchange exception', err)
+          router.replace(FAILURE_REDIRECT)
+        }
+      })()
+      return
     }
 
     if (!tokenHash) {
