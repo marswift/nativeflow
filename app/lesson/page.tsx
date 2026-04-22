@@ -59,6 +59,8 @@ import DailyLanguagePicker from '@/components/daily-language-picker'
 import LpIcon from '@/components/lp-icon'
 import { isDailyLanguageLocked, setDailyLanguageLock, getDailyLockedLanguage } from '../../lib/daily-language-lock'
 import { getSelectedLanguages, type SelectedLanguage } from '../../lib/language-selection'
+import { CachedLessonContentRepository, setLessonContentRepository } from '../../lib/lesson-content-repository'
+import { SupabaseLessonContentRepository } from '../../lib/supabase-lesson-content-repository'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -888,6 +890,25 @@ export default function LessonPage() {
 
           // Clear any legacy daily flow selection from localStorage
           clearDailyFlowSelection()
+
+          // Preload lesson content from DB (non-blocking, falls back to object catalog)
+          try {
+            const lesson = nextPageData.lesson
+            if (lesson?.blocks) {
+              const sceneKeys = [...new Set(lesson.blocks.map((b: { sceneId?: string | null }) => b.sceneId).filter((s): s is string => !!s))]
+              if (sceneKeys.length > 0) {
+                const level = lesson.level ?? 'beginner'
+                const region = lesson.blocks[0]?.region ?? 'en_us_general'
+                const ageGroup = lesson.blocks[0]?.ageGroup ?? '20s'
+                const asyncRepo = new SupabaseLessonContentRepository(supabase)
+                const cached = new CachedLessonContentRepository(asyncRepo)
+                await cached.preload(sceneKeys, level, region, ageGroup)
+                setLessonContentRepository(cached)
+              }
+            }
+          } catch {
+            // Non-blocking — object catalog fallback remains active
+          }
 
           setPageData(nextPageData)
           setUserId(nextUserId)
