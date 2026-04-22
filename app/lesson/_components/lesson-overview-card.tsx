@@ -504,29 +504,16 @@ export function LessonOverviewCard({
               <div className="space-y-1">
                 {lesson.blocks
                   .filter((b: { type: string }) => b.type !== 'review')
-                  .map((block: { id: string; description: string; title: string; type: string }, i: number) => {
-                    const stepEmoji = block.type === 'listen' ? '🎧'
-                      : block.type === 'repeat' || block.type === 'speak' ? '🎤'
-                      : block.type === 'conversation' ? '💬'
-                      : block.type === 'typing' ? '🧠'
-                      : block.type === 'scaffold_transition' ? '🎯'
-                      : null
-                    return (
+                  .map((block: { id: string; description: string; title: string; type: string }) => (
                     <div
                       key={block.id}
-                      className="flex items-center gap-2.5 rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5"
+                      className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5"
                     >
-                      <div className="flex h-5 w-5 shrink-0 items-center justify-center">
-                        {stepEmoji ? <LpIcon emoji={stepEmoji} size={18} /> : (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-[#F0ECE6] text-[11px] font-bold text-[#7b7b94]">{i + 1}</div>
-                        )}
-                      </div>
                       <p className="text-sm font-medium text-[#4a4a6a]">
                         {block.description?.trim() || block.title}
                       </p>
                     </div>
-                    )
-                  })}
+                  ))}
               </div>
             </div>
 
