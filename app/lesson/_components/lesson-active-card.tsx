@@ -18,7 +18,7 @@ import type { AudioChoiceItem } from '../../../lib/audio-choice-types'
 import { buildFallbackEvaluation, incrementAiCallCount, isAiLimitReached } from '../../../lib/ai-conversation-fallback'
 import { getRegionContext } from '../../../lib/daily-timeline'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
-import { resolveSceneConversation } from '../../../lib/conversation-resolver'
+import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
 import LpIcon from '@/components/lp-icon'
 import { buildScenarioLabel } from '../../../lib/lesson-blueprint-service'
 
@@ -5675,8 +5675,8 @@ export function LessonActiveCard({
     if (!blockSceneId || !level) return null
 
     // Get catalog flavor if available
-    const variant = resolveSceneConversation(blockSceneId, blockRegion, blockAge, level)
-    const catalogFlavor = variant?.flavor
+    const enrichment = getLessonContentRepository().getConversationEnrichment(blockSceneId, blockRegion, blockAge, level)
+    const catalogFlavor = enrichment?.flavor
 
     // Merge region context for richer immersion
     const regionCtx = getRegionContext(blockRegion)

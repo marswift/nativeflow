@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import LessonShell from './lesson-shell'
 import LessonStageRouter, { type LessonStage } from './lesson-stage-router'
 import type { AiConversationMessage } from './stages/ai-conversation-stage'
-import { resolveSceneConversation } from '../../../lib/conversation-resolver'
+import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
 import {
   createLessonRun,
   saveStageItem,
@@ -75,9 +75,9 @@ export default function LessonRunner({
 }: LessonRunnerProps = {}) {
   const [lessonStartTime] = useState(() => Date.now())
 
-  // Resolve content from catalog using props (or defaults)
+  // Resolve content from repository (object-catalog now, DB-ready for future)
   const variant = useMemo(
-    () => resolveSceneConversation(sceneId, region, ageGroup, level),
+    () => getLessonContentRepository().getConversationEnrichment(sceneId, region, ageGroup, level as 'beginner' | 'intermediate' | 'advanced'),
     [sceneId, region, ageGroup, level]
   )
 
