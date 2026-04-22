@@ -354,7 +354,6 @@ function MiniCalendar({ completedDates }: { completedDates: string[] }) {
         {cells.map(({ day, dateStr }) => {
           const isToday = dateStr === todayStr
           const isCompleted = completedSet.has(dateStr)
-          const isPast = dateStr < todayStr && !isCompleted
           return (
             <div
               key={dateStr}
@@ -369,9 +368,6 @@ function MiniCalendar({ completedDates }: { completedDates: string[] }) {
                   alt=""
                   className="pointer-events-none absolute inset-0 m-auto h-6 w-6 opacity-80"
                 />
-              )}
-              {isPast && (
-                <span className="absolute bottom-0 left-1/2 h-0.5 w-0.5 -translate-x-1/2 rounded-full bg-[#d4d4d8]" />
               )}
             </div>
           )
