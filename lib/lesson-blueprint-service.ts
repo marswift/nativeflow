@@ -11,7 +11,7 @@
 import type { CurrentLevel } from './constants'
 import type { LessonSessionFactoryOutput } from './lesson-session-factory'
 import { getSceneImagePath, isSceneMapped } from './scene-image-map'
-import { selectDailyFlowScenes, getDailyFlowLabel } from './daily-timeline'
+import { selectDailyFlowScenes } from './daily-timeline'
 
 export type LessonBlueprintBlockType =
   | 'conversation'

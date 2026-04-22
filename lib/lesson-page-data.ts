@@ -8,7 +8,7 @@ import { createLessonBlueprintDraft, type LessonBlueprintDraft } from './lesson-
 import { createLessonDraftSession, type LessonDraftSession } from './lesson-draft-session-mapper'
 import { createLessonAIPromptPayload, type LessonAIPromptPayload } from './lesson-ai-prompt-builder'
 import { createLessonAIMessages, type LessonAIMessage } from './lesson-ai-message-builder'
-import { getSceneImagePath, isSceneMapped } from './scene-image-map'
+import { getSceneImagePath } from './scene-image-map'
 import type { CorpusSelectionMetadata } from './corpus/lesson-selection-adapter'
 import { getLanguageLearningMode, type LanguageLearningMode } from './language-learning-mode'
 

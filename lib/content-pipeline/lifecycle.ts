@@ -14,7 +14,6 @@
 
 import type {
   ContentBundle,
-  ContentStatus,
   ContentVersion,
   LessonContentPayload,
   ValidationResult,

@@ -5,9 +5,7 @@
  * they are intentionally excluded from current runtime preference resolution.
  */
 import {
-  type AppLocale,
   type CefrLevel,
-  type LearningLanguage,
   type UserLanguagePreferences,
   DEFAULT_APP_LOCALE,
   DEFAULT_LEARNING_LANGUAGE,

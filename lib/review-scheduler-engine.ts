@@ -1,5 +1,4 @@
 import type {
-  ReviewItemType,
   ReviewScheduleStatus,
   ReviewPerformanceRating,
   ReviewScheduleItem,

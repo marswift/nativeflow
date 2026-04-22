@@ -1,9 +1,7 @@
 import type {
   PhraseDefinition,
   LessonDefinition,
-  LessonStepDefinition,
   ReviewSourceLink,
-  PatternSlotOption,
 } from './lesson-domain-types'
 
 export const MVP_PHRASES: PhraseDefinition[] = [

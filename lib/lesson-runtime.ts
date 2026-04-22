@@ -35,7 +35,6 @@ import {
   type LessonRuntimeOverview,
   type LessonRuntimeAdvanceResult,
   type LessonAnswerKind,
-  type LessonAnswerRecord,
   type LessonStageId,
 } from './lesson-runtime-engine'
 export type { TypingCheckResult } from './lesson-actions'

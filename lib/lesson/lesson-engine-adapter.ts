@@ -1,5 +1,5 @@
 import type { LessonBlock, LessonBlockItem } from '../lesson-engine' // 既存型に合わせる
-import type { Scene, Phrase } from './lesson-types'
+import type { Scene } from './lesson-types'
 
 export function convertScenesToBlocks(scenes: Scene[]): LessonBlock[] {
   return scenes.map((scene) => {

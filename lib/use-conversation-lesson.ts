@@ -20,8 +20,6 @@ import {
 import type {
   StartConversationLessonApiResponse,
   GetConversationLessonPromptApiResponse,
-  SubmitConversationLessonAnswerApiResponse,
-  SkipConversationLessonStepApiResponse,
   CompleteConversationLessonApiResponse,
 } from '@/lib/conversation-lesson-api-client'
 
@@ -31,14 +29,6 @@ type StartConversationLessonApiOk = Extract<
 >
 type GetConversationLessonPromptApiOk = Extract<
   GetConversationLessonPromptApiResponse,
-  { ok: true }
->
-type SubmitConversationLessonAnswerApiOk = Extract<
-  SubmitConversationLessonAnswerApiResponse,
-  { ok: true }
->
-type SkipConversationLessonStepApiOk = Extract<
-  SkipConversationLessonStepApiResponse,
   { ok: true }
 >
 type CompleteConversationLessonApiOk = Extract<
