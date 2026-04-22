@@ -4659,10 +4659,7 @@ export function LessonActiveCard({
                 <LessonSceneImage src={lessonImageUrl} alt={dynamicConversationHeading} />
               )}
 
-              <p className="mt-2 text-xs font-semibold text-amber-600">
-                Just listen and repeat — no translation needed
-              </p>
-              <p className="mt-1 text-sm leading-6 text-[#5a5a7a]">
+              <p className="mt-2 text-sm leading-6 text-[#5a5a7a]">
                 {uiText.listenInstruction}
               </p>
 
@@ -4677,7 +4674,7 @@ export function LessonActiveCard({
                       : 'bg-blue-500 hover:bg-blue-600'
                   }`}
                 >
-                  {ICON_LISTEN}{uiText.listenPlayButton}
+                  {uiText.listenPlayButton}
                 </button>
                 <button
                   type="button"
