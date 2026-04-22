@@ -22,20 +22,20 @@ import {
 // and Upstash env vars are absent.
 // Any value other than literal 'development' is treated as non-dev.
 
-/** Exported for tests. True only when NODE_ENV is the exact string 'development'. */
-export const isDevExact = process.env.NODE_ENV === 'development'
+const isDevExact = process.env.NODE_ENV === 'development'
 
-/** Exported so tests can assert on exact text without hard-coding. */
-export const DEV_FALLBACK_WARNING =
+const DEV_FALLBACK_WARNING =
   '[DEV] Using in-memory rate-limit fallback; NOT production-equivalent'
 
 const _hasUpstash = !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN
 
-if (!isDevExact && !_hasUpstash) {
-  throw new Error(
-    'Shared rate-limiting requires Upstash Redis in non-development environments.\n' +
-    'Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (see .env.example).'
-  )
+function assertRateLimitConfig() {
+  if (!isDevExact && !_hasUpstash) {
+    throw new Error(
+      'Shared rate-limiting requires Upstash Redis in non-development environments.\n' +
+      'Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (see .env.example).'
+    )
+  }
 }
 
 type RateLimitResult = { success: boolean; remaining: number; reset: number }
@@ -134,6 +134,7 @@ import { hashIp } from '@/lib/metrics/hash-ip'
 // ── GET: Read locale preferences ──────────────────────────────────────────
 
 export async function GET(request: Request) {
+  assertRateLimitConfig()
   const token = extractToken(request)
   if (!token) {
     return NextResponse.json(DEFAULT_RESPONSE)
@@ -171,6 +172,7 @@ export async function GET(request: Request) {
 // ── POST: Update UI language ──────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  assertRateLimitConfig()
   const token = extractToken(request)
   if (!token) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 })

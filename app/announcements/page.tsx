@@ -4,7 +4,7 @@
  * Announcements Page — paginated list of published announcements.
  */
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
@@ -34,7 +34,15 @@ function isNewAnnouncement(iso: string): boolean {
   return published > threeDaysAgo
 }
 
-export default function AnnouncementsPage() {
+export default function AnnouncementsPageWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-[#f7f4ef]"><p className="text-[#4a4a6a]">読み込み中...</p></div>}>
+      <AnnouncementsPage />
+    </Suspense>
+  )
+}
+
+function AnnouncementsPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [items, setItems] = useState<Announcement[]>([])
