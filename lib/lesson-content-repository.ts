@@ -118,6 +118,84 @@ export interface LessonContentRepository {
   lookupByAnswer(englishAnswer: string): SceneLookupResult | null
 }
 
+/**
+ * Async variant of LessonContentRepository for DB-backed implementations.
+ * Use CachedLessonContentRepository to adapt async → sync for current consumers.
+ */
+export interface AsyncLessonContentRepository {
+  getScenePhrase(sceneKey: string, level: CurrentLevel): Promise<ScenePhraseContent | null>
+  getConversationEnrichment(sceneKey: string, region: string, ageGroup: string, level: CurrentLevel): Promise<SceneConversationEnrichment | null>
+  lookupByAnswer(englishAnswer: string): Promise<SceneLookupResult | null>
+}
+
+/**
+ * Caching adapter: wraps an AsyncLessonContentRepository and pre-loads content
+ * for a set of scene keys, then serves reads synchronously via LessonContentRepository.
+ *
+ * Usage:
+ *   const cached = new CachedLessonContentRepository(asyncRepo, syncFallback)
+ *   await cached.preload(['wake_up', 'brush_teeth'], 'beginner', 'en_us_general', '20s')
+ *   setLessonContentRepository(cached)  // now consumers get sync reads from cache
+ */
+export class CachedLessonContentRepository implements LessonContentRepository {
+  private phrases = new Map<string, ScenePhraseContent>()
+  private enrichments = new Map<string, SceneConversationEnrichment>()
+  private lookupIndex = new Map<string, SceneLookupResult>()
+  private fallback: LessonContentRepository
+
+  constructor(
+    private asyncRepo: AsyncLessonContentRepository,
+    fallback?: LessonContentRepository,
+  ) {
+    this.fallback = fallback ?? getLessonContentRepository()
+  }
+
+  /** Pre-load content for a set of scenes. Call once before lesson starts. */
+  async preload(
+    sceneKeys: string[],
+    level: CurrentLevel,
+    region: string,
+    ageGroup: string,
+  ): Promise<void> {
+    const results = await Promise.allSettled(
+      sceneKeys.flatMap((sk) => [
+        this.asyncRepo.getScenePhrase(sk, level).then((p) => {
+          if (p) {
+            this.phrases.set(`${sk}::${level}`, p)
+            // Build lookup index from conversation answers
+            this.lookupIndex.set(p.conversationAnswer.toLowerCase().trim(), { sceneKey: sk, nativeHint: p.nativeHint })
+            for (const v of p.variations) {
+              this.lookupIndex.set(v.conversationAnswer.toLowerCase().trim(), { sceneKey: sk, nativeHint: v.nativeHint })
+            }
+          }
+        }),
+        this.asyncRepo.getConversationEnrichment(sk, region, ageGroup, level).then((e) => {
+          if (e) this.enrichments.set(`${sk}::${region}::${ageGroup}::${level}`, e)
+        }),
+      ]),
+    )
+    // Log any failures but don't throw — fallback will handle missing entries
+    const failures = results.filter((r) => r.status === 'rejected')
+    if (failures.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(`[CachedRepo] ${failures.length} preload failures — fallback will be used`)
+    }
+  }
+
+  getScenePhrase(sceneKey: string, level: CurrentLevel): ScenePhraseContent | null {
+    return this.phrases.get(`${sceneKey}::${level}`) ?? this.fallback.getScenePhrase(sceneKey, level)
+  }
+
+  getConversationEnrichment(sceneKey: string, region: string, ageGroup: string, level: CurrentLevel): SceneConversationEnrichment | null {
+    return this.enrichments.get(`${sceneKey}::${region}::${ageGroup}::${level}`) ?? this.fallback.getConversationEnrichment(sceneKey, region, ageGroup, level)
+  }
+
+  lookupByAnswer(englishAnswer: string): SceneLookupResult | null {
+    if (!englishAnswer) return null
+    return this.lookupIndex.get(englishAnswer.toLowerCase().trim()) ?? this.fallback.lookupByAnswer(englishAnswer)
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Object-catalog implementation — delegates to existing modules
 // ══════════════════════════════════════════════════════════════════════════════

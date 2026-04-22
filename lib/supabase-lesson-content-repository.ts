@@ -14,6 +14,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { CurrentLevel } from './constants'
 import type {
+  AsyncLessonContentRepository,
   LessonContentRepository,
   ScenePhraseContent,
   SceneConversationEnrichment,
@@ -38,7 +39,7 @@ import {
  * Async lesson content repository backed by Supabase.
  * Each method mirrors LessonContentRepository but returns Promise.
  */
-export class SupabaseLessonContentRepository {
+export class SupabaseLessonContentRepository implements AsyncLessonContentRepository {
   private supabase: SupabaseClient
   private fallback: LessonContentRepository
 
