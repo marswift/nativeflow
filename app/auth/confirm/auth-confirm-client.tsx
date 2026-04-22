@@ -96,7 +96,7 @@ export function AuthConfirmClient() {
     }
 
     async function tryHashFallback() {
-      await new Promise((r) => setTimeout(r, 500))
+      await supabase.auth.initialize()
       await handlePostConfirmRedirect()
     }
 
