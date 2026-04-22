@@ -234,6 +234,7 @@ async function seedEnrichments(sceneIdMap: Map<string, string>) {
       age_group: ageGroup,
       level_band: level,
       ai_question_text: variant.aiQuestionText,
+      ai_question_choices: variant.aiQuestionChoices ?? null,
       ai_conversation_opener: variant.aiConversationOpener,
       typing_variations: variant.typingVariations,
       flavor: variant.flavor ?? null,

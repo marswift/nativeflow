@@ -10,8 +10,14 @@ import { applyCorpusToListen } from './corpus/apply-corpus-listen'
 import { applyCorpusToAiConversation } from './corpus/apply-corpus-ai-conversation'
 import type { LessonBlock, LessonBlockItem } from './lesson-engine'
 import { fetchReviewItemsWithContent, injectReviewBlocks } from './review-injection'
+import { CachedLessonContentRepository, setLessonContentRepository } from './lesson-content-repository'
+import { SupabaseLessonContentRepository } from './supabase-lesson-content-repository'
+import type { CurrentLevel } from './constants'
 import pLimit from 'p-limit'
 const limit = pLimit(3)
+
+/** Core scenes with DB-backed enrichments. Preloaded before lesson build. */
+const PRELOAD_SCENES = ['wake_up', 'eat_breakfast', 'leave_home', 'talk_with_friends', 'go_to_bed']
 
 const supabase = getSupabaseBrowserClient()
 type HydratableLessonSession = NonNullable<LessonPageData['lesson']>
@@ -93,6 +99,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
       current_period_end: null,
       cancel_at_period_end: null,
     }
+    await preloadDbContent(supabase, 'beginner', 'en_us_general', '20s')
     let fallbackPageData = buildLessonPageData(fallbackProfile)
     fallbackPageData = await enrichWithCorpusSelection(fallbackPageData)
     fallbackPageData = await applyCorpusToListen(fallbackPageData)
@@ -130,6 +137,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     cancel_at_period_end: null,
   }
   
+  await preloadDbContent(supabase, (profile.current_level as CurrentLevel) ?? 'beginner', profile.target_region_slug ?? 'en_us_general', '20s')
   let pageData = buildLessonPageData(profile)
   pageData = await enrichWithCorpusSelection(pageData)
   pageData = await applyCorpusToListen(pageData)
@@ -261,5 +269,27 @@ export async function hydrateLessonAudio(
   return {
     ...session,
     blocks: newBlocks,
+  }
+}
+
+/**
+ * Preload DB-backed lesson content for core scenes.
+ * Sets the global repository to a CachedLessonContentRepository.
+ * Falls back to ObjectCatalog on any failure — lesson still works.
+ */
+async function preloadDbContent(
+  supabase: ReturnType<typeof getSupabaseBrowserClient>,
+  level: CurrentLevel,
+  region: string,
+  ageGroup: string,
+): Promise<void> {
+  try {
+    const asyncRepo = new SupabaseLessonContentRepository(supabase)
+    const cached = new CachedLessonContentRepository(asyncRepo)
+    await cached.preload(PRELOAD_SCENES, level, region, ageGroup)
+    setLessonContentRepository(cached)
+  } catch (e) {
+    // Non-blocking: object catalog fallback remains active
+    console.warn('[lesson-loader] DB content preload failed, using catalog fallback', e)
   }
 }

@@ -167,6 +167,8 @@ export type LessonConversationEnrichmentRow = {
 
   /** AI comprehension question text (overrides base phrase). */
   ai_question_text: string
+  /** Pre-authored comprehension quiz choices (JSONB). */
+  ai_question_choices: { label: string; isCorrect: boolean }[] | null
   /** AI conversation opener. */
   ai_conversation_opener: string
   /** Typing variation texts (JSON array stored as string[]). */
@@ -291,6 +293,7 @@ export function mapEnrichmentRowToDTO(
     ageGroup: row.age_group,
     level: row.level_band as CurrentLevel,
     aiQuestionText: row.ai_question_text,
+    aiQuestionChoices: row.ai_question_choices ?? null,
     typingVariations: row.typing_variations,
     aiConversationOpener: row.ai_conversation_opener,
     coreChunks: coreChunks
