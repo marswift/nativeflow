@@ -33,6 +33,12 @@ export function AuthConfirmClient() {
     if (didRun.current) return
     didRun.current = true
 
+    // [DEBUG] Log callback URL shape
+    console.log('[auth-confirm] href:', window.location.href)
+    console.log('[auth-confirm] search:', window.location.search)
+    console.log('[auth-confirm] hash:', window.location.hash)
+    console.log('[auth-confirm] searchParams:', searchParams.toString())
+
     const tokenHash = searchParams.get('token_hash')
     const type = searchParams.get('type')
     const nextParam = searchParams.get('next')
