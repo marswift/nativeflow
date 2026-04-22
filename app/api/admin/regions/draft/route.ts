@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '../../../../../lib/supabase-server'
 import { generateChatCompletion } from '../../../../../lib/openai-client'
 import { verifyAdminRequest } from '@/lib/admin-api-guard'
 import {

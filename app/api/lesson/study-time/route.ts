@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     const currentMinutes = existing?.study_minutes ?? 0
-    const currentCompleted = existing?.lesson_runs_completed ?? 0
 
     if (existing) {
       await supabaseServer

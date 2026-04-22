@@ -2,7 +2,6 @@
 
 import type { FormEvent } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import AppHeader from '@/components/header/app-header'
 import AppFooter, { LP_FOOTER_CSS } from '@/components/footer/app-footer'
 import { useEffect, useState } from 'react'

@@ -41,7 +41,6 @@ export async function POST(request: NextRequest) {
 
     // Validate target date
     const today = new Date()
-    const todayStr = today.toISOString().slice(0, 10)
     const tomorrowStr = new Date(today.getTime() + 86400000).toISOString().slice(0, 10)
 
     if (!targetDate || targetDate < tomorrowStr) {
