@@ -69,8 +69,8 @@ export function AuthConfirmClient() {
         await getUserProfileForCompletionCheck(user.id)
       
       if (profileError) {
-        console.error('Auth confirm profile fetch failed', profileError)
-        router.replace(FAILURE_REDIRECT)
+        console.warn('Auth confirm profile fetch failed, routing to onboarding', profileError)
+        router.replace(`/onboarding${planQuery}`)
         return
       }
       
