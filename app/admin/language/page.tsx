@@ -139,12 +139,26 @@ async function apiHealth(bundleId: string): Promise<HealthData> {
   return res.json()
 }
 
-// ── Constants ──
+// ── Constants (fallback when DB is empty) ──
 
 const AGE_GROUPS = ['toddler', 'child', 'teen', 'adult', 'senior']
 const REGIONS: Record<string, string[]> = {
   en: ['en_us_general', 'en_us_ny', 'en_gb_london'],
   ko: ['ko_kr_seoul'],
+}
+const FALLBACK_LANGUAGES = [
+  { code: 'ja', english_name: 'Japanese', enabled_for_ui: true, enabled_for_learning: false, status: 'active' },
+  { code: 'en', english_name: 'English', enabled_for_ui: true, enabled_for_learning: true, status: 'active' },
+  { code: 'ko', english_name: 'Korean', enabled_for_ui: false, enabled_for_learning: true, status: 'beta' },
+]
+
+type LanguageRegistryRow = {
+  code: string
+  english_name: string
+  native_name?: string | null
+  enabled_for_ui: boolean
+  enabled_for_learning: boolean
+  status: string
 }
 
 // ── Main Component ──
@@ -167,6 +181,29 @@ export default function AdminLanguagePage() {
       setAuthChecked(true)
     })
   }, [router])
+
+  // Language registry from DB
+  const [registryLanguages, setRegistryLanguages] = useState<LanguageRegistryRow[]>([])
+
+  useEffect(() => {
+    if (!authorized) return
+    const supabase = getSupabaseBrowserClient()
+    supabase
+      .from('language_registry')
+      .select('code, english_name, native_name, enabled_for_ui, enabled_for_learning, status')
+      .in('status', ['active', 'beta'])
+      .order('sort_order', { ascending: true })
+      .then(({ data }: { data: LanguageRegistryRow[] | null }) => {
+        if (data && data.length > 0) setRegistryLanguages(data)
+      })
+  }, [authorized])
+
+  const uiLanguages = registryLanguages.length > 0
+    ? registryLanguages.filter((l) => l.enabled_for_ui)
+    : FALLBACK_LANGUAGES.filter((l) => l.enabled_for_ui)
+  const learningLanguages = registryLanguages.length > 0
+    ? registryLanguages.filter((l) => l.enabled_for_learning)
+    : FALLBACK_LANGUAGES.filter((l) => l.enabled_for_learning)
 
   // Create form
   const [baseLanguage, setBaseLanguage] = useState('ja')
@@ -351,15 +388,13 @@ export default function AdminLanguagePage() {
             <div>
               <label className="block text-xs font-bold text-gray-500">Base Language</label>
               <select value={baseLanguage} onChange={(e) => setBaseLanguage(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="ja">Japanese (ja)</option>
-                <option value="en">English (en)</option>
+                {uiLanguages.map((l) => <option key={l.code} value={l.code}>{l.english_name} ({l.code})</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500">Target Language</label>
               <select value={targetLanguage} onChange={(e) => { setTargetLanguage(e.target.value); setRegion(REGIONS[e.target.value]?.[0] ?? '') }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-                <option value="en">English (en)</option>
-                <option value="ko">Korean (ko)</option>
+                {learningLanguages.map((l) => <option key={l.code} value={l.code}>{l.english_name} ({l.code}){l.status === 'beta' ? ' [beta]' : ''}</option>)}
               </select>
             </div>
             <div>
