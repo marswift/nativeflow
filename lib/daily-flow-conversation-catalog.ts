@@ -278,8 +278,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     aiQuestionText: 'What did you have for brekkie?',
     aiQuestionChoices: [
       { label: '朝ごはんに何を食べたか聞いている', isCorrect: true },
-      { label: 'どこに行くか聞いている', isCorrect: false },
-      { label: '誰と会ったか聞いている', isCorrect: false },
+      { label: '朝ごはんを食べる時間があったか聞いている', isCorrect: false },
+      { label: '何時に起きたか聞いている', isCorrect: false },
     ],
     typingVariations: [
       'I had some Vegemite toast.',
@@ -629,7 +629,7 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     aiQuestionChoices: [
       { label: 'もうすぐ寝るか聞いている', isCorrect: true },
       { label: '明日の予定を聞いている', isCorrect: false },
-      { label: '何を食べたか聞いている', isCorrect: false },
+      { label: '今日疲れたか聞いている', isCorrect: false },
     ],
     typingVariations: [
       'I have work early tomorrow.',
