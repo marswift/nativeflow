@@ -52,7 +52,7 @@ function LpIcon({emoji,size=32}:{emoji:string;size?:number}) {
 
 // ── Main ──────────────────────────────────────────────────────────────────
 export default function LpB() {
-  const [sticky,setSticky]=useState(false)
+  const [_sticky,setSticky]=useState(false)
   const [fired,setFired]=useState(false)
   const [scrollY,setScrollY]=useState(0)
   const [demoStep,setDemoStep]=useState(0)

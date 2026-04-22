@@ -94,7 +94,7 @@ export default function LpA() {
               <p style={{fontSize:15,lineHeight:1.85,color:gray,marginBottom:10,textAlign:'center',maxWidth:560,margin:'0 auto 10px'}}>毎朝、短時間の会話で、言葉が自然に出てくる。</p>
               <p style={{fontSize:14,color:gray,textAlign:'center',marginBottom:16,opacity:0.9}}>英語・韓国語に対応。今後さらに多言語に拡大予定。</p>
               <div style={{borderLeft:`4px solid ${orange}`,padding:'12px 16px',background:'rgba(249,115,22,0.06)',borderRadius:'0 12px 12px 0',marginBottom:28,fontSize:15,fontWeight:700,color:navy,lineHeight:1.6}}>
-                "話す経験が圧倒的に足りない"だけです。
+                &ldquo;話す経験が圧倒的に足りない&rdquo;だけです。
               </div>
               <p style={{fontSize:13,color:gray,textAlign:'center',fontStyle:'italic',marginBottom:16}}>「何年も話せなかったのに、3日で英語で返せました」</p>
               <CTA loc="hero" large />
@@ -158,7 +158,7 @@ export default function LpA() {
             ))}
           </div>
           <div style={{marginTop:16,background:'rgba(249,115,22,0.08)',border:'1px solid rgba(249,115,22,0.2)',borderRadius:12,padding:'14px 16px',textAlign:'center',fontSize:14,fontWeight:800,color:orange}}>
-            → どれも"話す回数が足りない"
+            → どれも&ldquo;話す回数が足りない&rdquo;
           </div>
         </Sec>
 

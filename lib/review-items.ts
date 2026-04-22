@@ -176,6 +176,7 @@ function getDifficultyAndSchedule(judgement: ReviewJudgement): {
 } | null {
   try {
     // Phase 6.4: use forgetting-curve scheduling for new items
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { computeForgettingCurveSchedule } = require('./review-scheduling') as typeof import('./review-scheduling')
     const outcome = judgement === 'retry' ? 'failure' as const : 'weak' as const
     const result = computeForgettingCurveSchedule({
@@ -185,7 +186,6 @@ function getDifficultyAndSchedule(judgement: ReviewJudgement): {
       outcome,
     })
 
-    // eslint-disable-next-line no-console
     console.log('[Phase6.4][forgetting-curve][create]', {
       judgement,
       outcome,
