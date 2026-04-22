@@ -26,7 +26,7 @@ import { runLessonCompletionEffect } from '../../lib/lesson-run-effects'
 import { getTodayStatDate } from '../../lib/daily-stats-service'
 import { executeNextStep } from '../../lib/lesson-run-next-step'
 import { fetchReviewItemsWithContent, injectReviewBlocks } from '../../lib/review-injection'
-import { canStartLesson } from '../../lib/lesson-access'
+// import { canStartLesson } from '../../lib/lesson-access' // disabled during MVP
 import { type LessonPageData } from '../../lib/lesson-page-data'
 import { DAILY_FLOW_BLOCKS } from '../../lib/daily-flow-config'
 import { buildScenarioLabel } from '../../lib/lesson-blueprint-service'
@@ -1364,12 +1364,12 @@ export default function LessonPage() {
     if (!userId) return
     if (started || isStartingLessonRef.current) return
 
-    // Billing gate
-    const access = canStartLesson(pageData?.profile ?? {})
-    if (!access.allowed) {
-      setStartBlockedReason('A subscription is required to continue lessons')
-      return
-    }
+    // Billing gate — disabled during MVP free trial period
+    // const access = canStartLesson(pageData?.profile ?? {})
+    // if (!access.allowed) {
+    //   setStartBlockedReason('A subscription is required to continue lessons')
+    //   return
+    // }
 
     isStartingLessonRef.current = true
     setStartErrorMessage(null)
@@ -1517,12 +1517,12 @@ export default function LessonPage() {
 
   function handleStartLesson() {
 
-    // Billing gate
-    const access = canStartLesson(pageData?.profile ?? {})
-    if (!access.allowed) {
-      setStartBlockedReason('A subscription is required to continue lessons')
-      return
-    }
+    // Billing gate — disabled during MVP free trial period
+    // const access = canStartLesson(pageData?.profile ?? {})
+    // if (!access.allowed) {
+    //   setStartBlockedReason('A subscription is required to continue lessons')
+    //   return
+    // }
 
     if (lesson == null) {
       setStartBlockedReason('Cannot start: lesson data is missing.')
