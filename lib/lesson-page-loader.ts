@@ -64,7 +64,12 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     .maybeSingle()
 
   if (fetchError) {
-    console.error(fetchError)
+    console.error('user_learning_profiles fetchError', {
+      message: fetchError?.message,
+      code: (fetchError as { code?: string })?.code,
+      details: (fetchError as { details?: string })?.details,
+      hint: (fetchError as { hint?: string })?.hint,
+    })
     return { error: LOAD_ERROR_PROFILE }
   }
 
