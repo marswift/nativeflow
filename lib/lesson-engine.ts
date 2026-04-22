@@ -22,6 +22,8 @@ export type LessonBlockItem = {
   nativeHint?: string | null
   mixHint?: string | null
   aiQuestionText?: string | null
+  /** Pre-authored comprehension choices. When present, bypasses regex-based choice generation. */
+  aiQuestionChoices?: { label: string; isCorrect: boolean }[] | null
   /** Resolved image URL for this item's scene. Populated by image generation layer. */
   image_url?: string | null
   /** Audio generation result. 'ok' = generated, 'fallback' = reused/degraded, 'failed' = unavailable. */

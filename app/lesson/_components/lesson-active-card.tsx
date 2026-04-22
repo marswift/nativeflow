@@ -3098,7 +3098,14 @@ function AiQuestionListenStage({
     ?? item.prompt?.trim()
     ?? ''
 
-  const [choices] = useState(() => generateAiQuestionChoices(questionText, uiText))
+  const authoredChoices = (item as LessonBlockItem & { aiQuestionChoices?: { label: string; isCorrect: boolean }[] | null }).aiQuestionChoices
+  const [choices] = useState(() => {
+    if (authoredChoices && authoredChoices.length >= 2) {
+      const shuffled = [...authoredChoices].sort(() => Math.random() - 0.5)
+      return [...shuffled, { label: uiText.aiQChoiceUnsure, isCorrect: false }]
+    }
+    return generateAiQuestionChoices(questionText, uiText)
+  })
   const sentenceType = useMemo(() => classifySentence(questionText).sentenceType, [questionText])
   const isDeclarative = sentenceType === 'declarative_action' || sentenceType === 'declarative_state'
   const [selected, setSelected] = useState<number | null>(null)
