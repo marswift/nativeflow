@@ -107,7 +107,7 @@ type DiamondPanelProps = {
   onStartChallengeSession?: () => void
 }
 
-function DiamondPanel({ totalDiamonds, canRestore, boostActive, restoreHint, diamondsNeeded, streakDays, restoreExpiresInHours, freezeActive, freezeDate, challengeState, onStartChallengeSession }: DiamondPanelProps) {
+function DiamondPanel({ totalDiamonds, canRestore, boostActive, restoreHint, diamondsNeeded, streakDays, restoreExpiresInHours, freezeActive, freezeDate: _freezeDate, challengeState, onStartChallengeSession }: DiamondPanelProps) {
   const [diamonds, setDiamonds] = useState(totalDiamonds)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -397,7 +397,7 @@ function buildTitle(
 export function LessonOverviewCard({
   lesson, copy, getLevelLabel, onStart,
   rankCode, totalFlowPoints, flowPointsToNextRank, targetLanguageLabel,
-  currentStageIndex, currentBlockIndex = 0, selectedDailyActions, targetRegionSlug,
+  currentStageIndex: _currentStageIndex, currentBlockIndex: _currentBlockIndex = 0, selectedDailyActions: _selectedDailyActions, targetRegionSlug,
   speakByDeadlineText, ageGroup, dueReviewCount, onStartReview, completedDates, trialEndsAt, totalDiamonds, currentStreakDays, lastStreakDate, lastStreakRestoreDate, diamondBoostUntil, streakFrozenDate, streakFreezeExpiry, weeklyChallengeUnlockedAt, weeklyChallengeCompletedAt, onStartWeeklyChallenge,
 }: LessonOverviewCardProps) {
   const uiText = copy.overviewCard

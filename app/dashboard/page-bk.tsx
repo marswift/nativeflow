@@ -1,13 +1,9 @@
 'use client'
 
-import Image from 'next/image'
-'use client'
-
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
-import { DASHBOARD_COPY_JA } from '../../lib/dashboard-copy'
 import { getTodayStatDate } from '../../lib/daily-stats-service'
 import type { DailyStatRow } from '../../lib/lesson-run-types'
 import type { UserProfileRow } from '../../lib/types'
@@ -368,8 +364,6 @@ export default function DashboardPage() {
     }
   }
 
-  const copy = DASHBOARD_COPY_JA
-
   useEffect(() => {
     const msUntilNextMinute = 60000 - (Date.now() % 60000)
     let intervalId: ReturnType<typeof setInterval> | null = null
@@ -539,7 +533,6 @@ export default function DashboardPage() {
   const pointsToNextRank = getFlowPointsToNextRank(displayedTotalFlowPoints)
 
   const trialDisplay = getTrialDisplay(profile, nowMs)
-  const displayName = profile.username?.trim() || 'あなた'
 
   return (
     <div

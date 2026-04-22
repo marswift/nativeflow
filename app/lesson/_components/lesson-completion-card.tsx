@@ -132,13 +132,6 @@ export function LessonCompletionCard({
 }: LessonCompletionCardProps) {
   const [showExtraConfirm, setShowExtraConfirm] = useState(false)
 
-  const hasTypingStats = summary.totalTypingItems > 0
-  const completionLine =
-    `${copy.completion.completed} ${summary.completedItems} / ${summary.totalItems} · ` +
-    `${copy.completion.progressPercent} ${summary.progressPercent}%`
-  const typingLine =
-    `${copy.completion.typing} ${summary.correctTypingItems} / ${summary.totalTypingItems}`
-
   const safeEarnedFlowPoints = Math.max(0, earnedFlowPoints)
   const flowPointMessage = getFlowPointMessage(safeEarnedFlowPoints)
   const cc = copy.completion

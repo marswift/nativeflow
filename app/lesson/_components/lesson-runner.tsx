@@ -85,8 +85,6 @@ export default function LessonRunner({
   const supabase = useMemo(() => getSupabaseBrowserClient(), [])
   const lessonRunIdRef = useRef<string | null>(null)
   const userIdRef = useRef<string | null>(null)
-  const lessonStartedAtRef = useRef<string>(new Date().toISOString())
-
   // SRS review queue
   type DueReviewItem = { id: string; phrase: string; difficulty: 'medium' | 'hard'; next_review_at: string; review_count: number }
   const [reviewQueue, setReviewQueue] = useState<DueReviewItem[]>([])
@@ -158,7 +156,6 @@ export default function LessonRunner({
           outcome,
         })
 
-        // eslint-disable-next-line no-console
         console.log('[Phase6.6][lesson-runner-schedule]', {
           reviewItemId: params.reviewItemId.slice(0, 8),
           result: params.result,
@@ -199,7 +196,6 @@ export default function LessonRunner({
         nextReviewAt = new Date(now.getTime() + msPerHour * 6).toISOString()
       }
 
-      // eslint-disable-next-line no-console
       console.log('[Phase6.6][lesson-runner-schedule]', {
         reviewItemId: params.reviewItemId.slice(0, 8),
         result: params.result,
