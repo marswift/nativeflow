@@ -111,7 +111,7 @@ export async function selectCorpusForLesson(
     const weaknessBias = (weakListening > 0.5 ? 2 : 0) + (weakTyping > 0.5 ? 2 : 0)
 
     let sceneBiasCount = 0
-    let weaknessBiasCount = 0
+    let _weaknessBiasCount = 0
 
     const biasedCandidates = candidates.map((c) => {
       let totalBias = 0
@@ -125,7 +125,7 @@ export async function selectCorpusForLesson(
       // Weakness bias (max 4, but total capped at 5)
       if (weaknessBias > 0) {
         totalBias += weaknessBias
-        weaknessBiasCount++
+        _weaknessBiasCount++
       }
 
       // Cap total bias at 5
@@ -139,7 +139,6 @@ export async function selectCorpusForLesson(
     })
 
     if (sceneBiasCount > 0 || weaknessBias > 0) {
-      // eslint-disable-next-line no-console
       console.log('[personalization-applied]', {
         dominantScene: preferredScene,
         sceneBiased: sceneBiasCount,

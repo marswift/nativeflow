@@ -55,7 +55,7 @@ export async function incrementDailyStats(
   userId: string,
   increments: DailyStatIncrements,
   statDate?: string,
-  idempotencyKey?: string
+  _idempotencyKey?: string
 ): Promise<DailyStatsRepositoryResult<DailyStatRow>> {
 
   if (!userId || typeof userId !== 'string') {

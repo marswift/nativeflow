@@ -102,7 +102,6 @@ export function createLanguageBundle(input: LanguageExpansionInput): LanguageExp
     }
 
     // Create draft via lifecycle
-    const bundleId = `${targetLanguage}-${region}-${ageGroup}`
     const bundle = createDraft(targetLanguage, region, payload)
 
     // Override bundleId to include ageGroup for multi-age support

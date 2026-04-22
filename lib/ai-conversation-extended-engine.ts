@@ -118,7 +118,7 @@ export function generateExtendedConversation(
   personSlot: string,
   personAlt: string,
   timeSlot: string,
-  timeAlt: string,
+  _timeAlt: string,
 ): ExtendedConversationState {
   const scene = detectScene(currentAnswer)
   const topic = detectTopic(currentAnswer, personSlot, timeSlot)

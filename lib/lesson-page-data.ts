@@ -125,45 +125,6 @@ function getLevelWeight(level: unknown): number {
   return 1
 }
 
-function getDeadlineUrgencyMultiplier(deadlineText: unknown): number {
-  if (typeof deadlineText !== 'string') return 1
-
-  const text = deadlineText.trim()
-  if (!text) return 1
-
-  const numberMatch = text.match(/(\d+)/)
-  const amount = numberMatch ? Number(numberMatch[1]) : null
-
-  if (amount == null || Number.isNaN(amount)) {
-    return 1
-  }
-
-  if (text.includes('日') || /day/i.test(text)) {
-    if (amount <= 30) return 1.2
-    if (amount <= 90) return 1.1
-    return 1.05
-  }
-
-  if (text.includes('週') || /week/i.test(text)) {
-    if (amount <= 4) return 1.2
-    if (amount <= 12) return 1.1
-    return 1.05
-  }
-
-  if (text.includes('ヶ月') || text.includes('か月') || /month/i.test(text)) {
-    if (amount <= 3) return 1.15
-    if (amount <= 6) return 1.08
-    return 1.03
-  }
-
-  if (text.includes('年') || /year/i.test(text)) {
-    if (amount <= 1) return 1.08
-    return 1.02
-  }
-
-  return 1
-}
-
 function getDraftBlockCount(draft: LessonDraftSession | null): number {
   const blocks = (draft as { blocks?: unknown } | null)?.blocks
   return Array.isArray(blocks) && blocks.length > 0 ? blocks.length : 4
@@ -171,7 +132,7 @@ function getDraftBlockCount(draft: LessonDraftSession | null): number {
 
 function resolveOverviewEstimatedMinutes(
   profile: UserProfileRow,
-  draft: LessonDraftSession | null
+  _draft: LessonDraftSession | null
 ): number {
   const dailyGoal =
     typeof profile.daily_study_minutes_goal === 'number'
@@ -873,101 +834,6 @@ export function rebuildLessonPageDataWithScenes(
     lessonAIPromptPayload,
     lessonAIMessages,
     lesson,
-  }
-}
-
-type AudioHydrateResult = {
-  audioUrl: string | null
-  audioStatus: 'ok' | 'fallback' | 'failed'
-}
-
-async function fetchAudioOnce(text: string): Promise<string | null> {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/audio/generate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
-    cache: 'no-store',
-  })
-  if (!res.ok) return null
-  const data = await res.json()
-  return data.audio_url ?? null
-}
-
-/** Last successfully generated audio URL — used as emergency fallback. */
-let lastSuccessfulAudioUrl: string | null = null
-
-async function hydrateAudioForText(text: string): Promise<AudioHydrateResult> {
-  if (!text || text.trim() === '') return { audioUrl: null, audioStatus: 'failed' }
-
-  try {
-    // Attempt 1
-    let url = await fetchAudioOnce(text)
-    if (url) {
-      lastSuccessfulAudioUrl = url
-      return { audioUrl: url, audioStatus: 'ok' }
-    }
-
-    // Attempt 2 — retry once
-    url = await fetchAudioOnce(text)
-    if (url) {
-      lastSuccessfulAudioUrl = url
-      return { audioUrl: url, audioStatus: 'ok' }
-    }
-
-    // Fallback — reuse last successful audio if available
-    if (lastSuccessfulAudioUrl) {
-      return { audioUrl: lastSuccessfulAudioUrl, audioStatus: 'fallback' }
-    }
-
-    return { audioUrl: null, audioStatus: 'failed' }
-  } catch (e) {
-    console.error('audio hydrate error', e)
-    if (lastSuccessfulAudioUrl) {
-      return { audioUrl: lastSuccessfulAudioUrl, audioStatus: 'fallback' }
-    }
-    return { audioUrl: null, audioStatus: 'failed' }
-  }
-}
-
-async function hydrateLessonAudio(session: LessonSession): Promise<LessonSession> {
-  // Reset fallback for each lesson
-  lastSuccessfulAudioUrl = null
-
-  const newBlocks = await Promise.all(
-    session.blocks.map(async (block) => {
-      const newItems = await Promise.all(
-        block.items.map(async (item) => {
-          // Scaffold steps carry text in a `text` field (not answer/prompt)
-          const itemWithText = item as typeof item & { text?: string }
-          const sourceText =
-          itemWithText.text && itemWithText.text.trim() !== ''
-            ? itemWithText.text.trim()
-            : item.answer && item.answer.trim() !== ''
-            ? item.answer.trim()
-            : item.prompt && item.prompt.trim() !== ''
-            ? item.prompt.trim()
-            : ''
-
-          const result = await hydrateAudioForText(sourceText)
-
-          return {
-            ...item,
-            audio_url: result.audioUrl, // ← UI互換
-            audio_status: result.audioStatus,
-          }
-        })
-      )
-
-      return {
-        ...block,
-        items: newItems,
-      }
-    })
-  )
-
-  return {
-    ...session,
-    blocks: newBlocks,
   }
 }
 
