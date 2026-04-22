@@ -136,6 +136,7 @@ function adapter() {
   return _adapterModule as {
     selectScenePhraseVariant: (sceneKey: string, level: CurrentLevel, mode: 'base' | 'variation', exposureCount: number) => { conversationAnswer: string; typingAnswer: string; reviewPrompt: string; aiConversationPrompt: string; nativeHint: string; mixHint: string; aiQuestionText: string }
     lookupSceneByAnswer: (englishAnswer: string) => { sceneKey: string; nativeHint: string } | null
+    getSemanticChunks: (sceneKey: string, level: CurrentLevel) => SemanticChunk[] | null
   }
 }
 
@@ -150,7 +151,7 @@ function toLevelForCatalog(level: CurrentLevel): CurrentLevel {
 class ObjectCatalogRepository implements LessonContentRepository {
   getScenePhrase(sceneKey: string, level: CurrentLevel): ScenePhraseContent | null {
     try {
-      const { selectScenePhraseVariant } = adapter()
+      const { selectScenePhraseVariant, getSemanticChunks } = adapter()
       const base = selectScenePhraseVariant(sceneKey, toLevelForCatalog(level), 'base', 0)
 
       // Collect variations
@@ -181,7 +182,7 @@ class ObjectCatalogRepository implements LessonContentRepository {
         mixHint: base.mixHint,
         aiQuestionText: base.aiQuestionText,
         variations,
-        semanticChunks: [], // Populated by mapBlockToDraft — not duplicated here
+        semanticChunks: getSemanticChunks(sceneKey, toLevelForCatalog(level)) ?? [],
         contentVersion: null,
         source: 'object-catalog',
       }

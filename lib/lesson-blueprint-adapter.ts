@@ -3130,7 +3130,7 @@ function getChunkPriority(text: string): number {
   return 4
 }
 
-function getSemanticChunks(sceneKey: string, level: CurrentLevel): SemanticChunk[] | null {
+export function getSemanticChunks(sceneKey: string, level: CurrentLevel): SemanticChunk[] | null {
   const bucket = getLevelBucket(level)
   const sceneChunks = SCENE_SEMANTIC_CHUNKS[sceneKey]
   if (!sceneChunks) return null
@@ -3191,18 +3191,33 @@ function buildEnglishPrompt(input: {
   sceneKey: string
   level: CurrentLevel
 }): { prompt: string; answer: string | null; nativeHint: string | null; mixHint: string | null; aiQuestionText: string | null; semanticChunks: SemanticChunk[] | null; typingVariations: string[] | null } {
-  const scene = getSceneContent(input.sceneKey, input.level)
-  const chunks = getSemanticChunks(input.sceneKey, input.level)
+  const repo = getLessonContentRepository()
+  const phrase = repo.getScenePhrase(input.sceneKey, input.level)
 
-  const hint = scene.nativeHint || null
-  const mix = scene.mixHint || null
-  const question = scene.aiQuestionText || null
+  // Fallback to direct catalog read if repository returns null (should not happen for known scenes)
+  if (!phrase) {
+    const scene = getSceneContent(input.sceneKey, input.level)
+    return {
+      prompt: scene.conversationAnswer,
+      answer: scene.conversationAnswer,
+      nativeHint: scene.nativeHint || null,
+      mixHint: scene.mixHint || null,
+      aiQuestionText: scene.aiQuestionText || null,
+      semanticChunks: getSemanticChunks(input.sceneKey, input.level),
+      typingVariations: null,
+    }
+  }
+
+  const hint = phrase.nativeHint || null
+  const mix = phrase.mixHint || null
+  const question = phrase.aiQuestionText || null
+  const chunks = phrase.semanticChunks.length > 0 ? phrase.semanticChunks : null
 
   switch (input.blockType) {
     case 'conversation':
       return {
         prompt: 'Listen to the English audio carefully and repeat the sentence naturally.',
-        answer: scene.conversationAnswer,
+        answer: phrase.conversationAnswer,
         nativeHint: hint,
         mixHint: mix,
         aiQuestionText: question,
@@ -3211,27 +3226,24 @@ function buildEnglishPrompt(input: {
       }
 
     case 'typing': {
-      // Collect typing variations from scene variations (if available)
-      const variations = 'variations' in scene && Array.isArray(scene.variations)
-        ? (scene as SceneLevelWithVariations).variations
-            ?.map((v) => v.typingAnswer)
-            .filter((t): t is string => Boolean(t?.trim())) ?? null
-        : null
+      const variations = phrase.variations
+        .map((v) => v.typingAnswer)
+        .filter((t): t is string => Boolean(t?.trim()))
       return {
-        prompt: scene.typingAnswer || scene.conversationAnswer || '',
-        answer: scene.typingAnswer,
+        prompt: phrase.typingAnswer || phrase.conversationAnswer || '',
+        answer: phrase.typingAnswer,
         nativeHint: hint,
         mixHint: mix,
         aiQuestionText: question,
         semanticChunks: chunks,
-        typingVariations: variations && variations.length > 0 ? variations : null,
+        typingVariations: variations.length > 0 ? variations : null,
       }
     }
 
     case 'review':
       return {
-        prompt: scene.reviewPrompt,
-        answer: scene.conversationAnswer,
+        prompt: phrase.reviewPrompt,
+        answer: phrase.conversationAnswer,
         nativeHint: hint,
         mixHint: mix,
         aiQuestionText: question,
@@ -3241,8 +3253,8 @@ function buildEnglishPrompt(input: {
 
     case 'ai_conversation':
       return {
-        prompt: scene.aiConversationPrompt,
-        answer: scene.conversationAnswer,
+        prompt: phrase.aiConversationPrompt,
+        answer: phrase.conversationAnswer,
         nativeHint: hint,
         mixHint: mix,
         aiQuestionText: question,
@@ -3253,7 +3265,7 @@ function buildEnglishPrompt(input: {
     default:
       return {
         prompt: `Practice English for this scene: ${input.sceneKey}`,
-        answer: scene.conversationAnswer,
+        answer: phrase.conversationAnswer,
         nativeHint: hint,
         mixHint: mix,
         aiQuestionText: question,
