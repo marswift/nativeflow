@@ -207,7 +207,7 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
   [makeKey('eat_breakfast', 'en_us_general', '50plus', 'beginner')]: {
     aiQuestionText: 'What did you have for breakfast this morning?',
     aiQuestionChoices: [
-      { label: '今朝の朝ごはんに何を食べたか聞いている', isCorrect: true },
+      { label: '今朝何を食べたか聞いている', isCorrect: true },
       { label: '今朝何時に起きたか聞いている', isCorrect: false },
       { label: '昼ごはんの予定を聞いている', isCorrect: false },
     ],
@@ -236,7 +236,7 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     aiQuestionText: 'Did you have time for breakfast?',
     aiQuestionChoices: [
       { label: '朝ごはんを食べる時間があったか聞いている', isCorrect: true },
-      { label: '何を食べたか聞いている', isCorrect: false },
+      { label: '朝ごはんを作ったか聞いている', isCorrect: false },
       { label: '今日の予定を聞いている', isCorrect: false },
     ],
     typingVariations: [
@@ -516,7 +516,7 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     aiQuestionText: 'Have you talked with any friends recently?',
     aiQuestionChoices: [
       { label: '最近友だちと話したか聞いている', isCorrect: true },
-      { label: '友だちの名前を聞いている', isCorrect: false },
+      { label: '友だちと何をしたか聞いている', isCorrect: false },
       { label: '週末の予定を聞いている', isCorrect: false },
     ],
     typingVariations: [
@@ -544,8 +544,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     aiQuestionText: 'Have you been in touch with anyone lately?',
     aiQuestionChoices: [
       { label: '最近誰かと連絡を取ったか聞いている', isCorrect: true },
-      { label: '今日の体調を聞いている', isCorrect: false },
-      { label: '買い物に行ったか聞いている', isCorrect: false },
+      { label: '家族と話したか聞いている', isCorrect: false },
+      { label: '最近どこかに出かけたか聞いている', isCorrect: false },
     ],
     typingVariations: [
       'I met a friend for coffee.',
@@ -658,7 +658,7 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     aiQuestionChoices: [
       { label: 'みんなもう寝たか聞いている', isCorrect: true },
       { label: '今日楽しかったか聞いている', isCorrect: false },
-      { label: '明日の朝ごはんを聞いている', isCorrect: false },
+      { label: '明日の朝ごはんについて聞いている', isCorrect: false },
     ],
     typingVariations: [
       'The kids are finally asleep.',
