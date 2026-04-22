@@ -1,20 +1,11 @@
 'use client'
 
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
 import { isFinalItem, type LessonProgressState } from '../../lib/lesson-progress'
 import {
   getInitialRunState,
-  checkTypingAnswer,
   getStats,
   getCompletionSummary,
   createLessonRuntimeStateFromSession,
@@ -41,7 +32,6 @@ import { DAILY_FLOW_BLOCKS } from '../../lib/daily-flow-config'
 import { buildScenarioLabel } from '../../lib/lesson-blueprint-service'
 import {
   CURRENT_LEVEL_OPTIONS,
-  TARGET_LANGUAGE_FIXED,
   TARGET_LANGUAGE_OPTIONS,
   type CurrentLevel,
 } from '../../lib/constants'
@@ -318,64 +308,10 @@ function getRuntimeStageAwardKey(
   return `${blockId}:${stageId}`
 }
 
-function formatScoreChartDate(value: string): string {
-  const date = new Date(value)
-  const month = date.getMonth() + 1
-  const day = date.getDate()
-  return `${month}/${day}`
-}
-
 type ScoreHistoryItem = {
   id: string
   total_score: number
   created_at: string
-}
-
-function LessonScoreChart({ items }: { items: ScoreHistoryItem[] }) {
-  const chartData = items
-    .slice()
-    .reverse()
-    .map((item) => ({
-      date: formatScoreChartDate(item.created_at),
-      score: item.total_score,
-    }))
-
-  return (
-    <div className="mt-4 h-[220px] w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={chartData}
-          margin={{ top: 8, right: 12, left: -20, bottom: 0 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis
-            dataKey="date"
-            tickLine={false}
-            axisLine={false}
-            fontSize={12}
-          />
-          <YAxis
-            domain={[0, 100]}
-            tickCount={6}
-            tickLine={false}
-            axisLine={false}
-            fontSize={12}
-          />
-          <Tooltip
-            formatter={(value: number) => [`${value}点`, 'スコア']}
-            labelFormatter={(label) => `日付: ${label}`}
-          />
-          <Line
-            type="monotone"
-            dataKey="score"
-            strokeWidth={3}
-            dot={{ r: 4 }}
-            activeDot={{ r: 6 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-  )
 }
 
 import { computeForgettingCurveSchedule } from '../../lib/review-scheduling'
@@ -429,7 +365,7 @@ async function handleBlockCompleted(params: {
         outcome,
       })
 
-      // eslint-disable-next-line no-console
+
       console.log('[Phase6.4][forgetting-curve][review]', {
         reviewItemId: reviewItemId.slice(0, 8),
         outcome,
@@ -554,10 +490,10 @@ function OnboardingExplanation({ onNext }: { onNext: () => void }) {
           <span>Imitate the sounds directly</span>
         </p>
         <p className="pl-7 text-sm text-[#7b7b94]">
-          It's OK not to understand at first
+          It&apos;s OK not to understand at first
         </p>
         <p className="pl-7 text-sm text-[#7b7b94]">
-          You'll get it after 3 tries
+          You&apos;ll get it after 3 tries
         </p>
       </div>
 
@@ -574,7 +510,6 @@ function OnboardingExplanation({ onNext }: { onNext: () => void }) {
 
 function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
   const [phase, setPhase] = useState<'idle' | 'playing' | 'played' | 'recording' | 'recorded' | 'feedback'>('idle')
-  const audioRef = useRef<HTMLAudioElement | null>(null)
   const synthRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   function handlePlay() {
@@ -611,7 +546,7 @@ function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
   return (
     <div className="mx-auto max-w-md px-6 py-16 text-center">
       <p className="text-sm font-bold tracking-[0.08em] text-[#7b7b94]">
-        Let's try it
+        Let&apos;s try it
       </p>
 
       <h2 className="mt-4 text-3xl font-black text-[#1a1a2e]">
@@ -628,7 +563,7 @@ function OnboardingMiniExperience({ onComplete }: { onComplete: () => void }) {
             Nice!
           </p>
           <p className="mt-3 text-sm text-[#7b7b94]">
-            Let's start the lesson
+            Let&apos;s start the lesson
           </p>
         </div>
       ) : (
@@ -687,7 +622,7 @@ export default function LessonPage() {
   const [pageError, setPageError] = useState<string | null>(null)
   const [needsLanguagePick, setNeedsLanguagePick] = useState(false)
   const [selectedLanguages, setSelectedLanguages] = useState<SelectedLanguage[]>([])
-  const [audioReady, setAudioReady] = useState(false)
+  const [_audioReady, setAudioReady] = useState(false)
   const [started, setStarted] = useState(false)
   const [progress, setProgress] = useState<LessonProgressState>(() => getInitialRunState().progress)
   const [inputValue, setInputValue] = useState(() => getInitialRunState().inputValue)
@@ -767,7 +702,7 @@ export default function LessonPage() {
   ? stageMap[runtimeState.currentStageId] ?? 0
   : 0
   
-  const scoreSummary = useMemo(() => {
+  const _scoreSummary = useMemo(() => {
     if (scoreHistory.length === 0) {
       return null
     }
@@ -916,7 +851,7 @@ export default function LessonPage() {
           // Playtest: lesson start observation
           try {
             const lockedLang = getDailyLockedLanguage()
-            // eslint-disable-next-line no-console
+      
             console.log('[Playtest][lesson-start]', {
               lessonId: (nextPageData.lesson?.sessionId ?? 'unknown').slice(0, 12),
               targetLanguageCode: nextPageData.profile?.target_language_code ?? null,
@@ -1165,7 +1100,7 @@ export default function LessonPage() {
 
     // Playtest: lesson complete observation
     try {
-      // eslint-disable-next-line no-console
+
       console.log('[Playtest][lesson-complete]', {
         lessonId: (pageData?.lesson?.sessionId ?? 'unknown').slice(0, 12),
         completed: true,
@@ -1396,7 +1331,7 @@ export default function LessonPage() {
     await refreshRankProgress(userId)
   }
 
-  function applyTypingCheckResult(isCorrect: boolean, correctTypingDelta: 0 | 1) {
+  function _applyTypingCheckResult(isCorrect: boolean, correctTypingDelta: 0 | 1) {
     setCorrectTypingCount((count) => count + correctTypingDelta)
     setProgress((prev) => ({
       ...prev,
@@ -1405,7 +1340,7 @@ export default function LessonPage() {
     }))
   }
 
-  function handleBackToOverview() {
+  function _handleBackToOverview() {
     setStarted(false)
     setShowListenRepeatComplete(false)
     setStartErrorMessage(null)
@@ -2161,7 +2096,7 @@ export default function LessonPage() {
                   <p className="mt-4 text-sm leading-7 text-[#5a5a7a]">
                     You practiced listening and repeating what you heard.
                     <br />
-                    Next, let's practice answering AI questions in English.
+                    Next, let&apos;s practice answering AI questions in English.
                   </p>
 
                   <div className="mt-6 flex justify-center">
@@ -2290,9 +2225,9 @@ export default function LessonPage() {
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
               {startBlockedReason}
               {startBlockedReason.includes('subscription') && (
-                <a href="/settings/billing" className="mt-2 block text-center text-sm font-bold text-amber-800 underline underline-offset-2">
+                <Link href="/settings/billing" className="mt-2 block text-center text-sm font-bold text-amber-800 underline underline-offset-2">
                   View plans
-                </a>
+                </Link>
               )}
             </div>
           )}
