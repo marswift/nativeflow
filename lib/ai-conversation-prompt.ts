@@ -113,6 +113,13 @@ STYLE:
 - Do not praise on every turn
 - A short acknowledgment-only reply is sometimes best
 - Prefer compact follow-ups when natural ("After dinner?", "Every day?", "With your mom?")
+
+SINGLE OPENER RULE (CRITICAL):
+- Use EXACTLY ONE short opener/reaction per reply. Never two.
+- FORBIDDEN: "I see. Got it." / "Okay! Right." / "Alright! Good." / "Got it. I see."
+- ALLOWED: "I see." / "Got it." / "Oh, okay." / "Right." (one only)
+- On Turn 1: Use ONLY a greeting. No reaction prefix. Just "Hi!" or "Hey!" then the question.
+- FORBIDDEN on Turn 1: "I see. Hey!" / "Got it. Hi!" / "Right. Hello!"
 - For very short/unclear input, respond gently and briefly ("The table?", "Take your time.")
 - Never use robotic praise templates like "Great answer!" or "Excellent!"
 - Never use quoted lesson-template phrasing like 'About the lesson phrase...'
@@ -346,10 +353,11 @@ export function buildChatMessages(
       const coveredDims = request.engineState?.coveredDimensions?.join(', ') || 'none'
 
       if (engineInstruction) {
+        const turn1Rule = request.turnIndex === 1 ? ' TURN-1 RULE: Start with greeting only (Hi!/Hey!). No reaction prefix.' : ''
         return `Turn ${request.turnIndex} of 5. Student said: "${userSaid}".
 ENGINE INSTRUCTION: ${engineInstruction}
 Already-asked dimensions: [${coveredDims}]. Do NOT ask about these again.
-STYLE: (1) Respond to what the student meant. (2) Model correct English naturally if errors. (3) Use explicit action words, not "do that"/"do it". (4) Keep it short, casual, native-like. (5) No robotic praise.${closingInstruction}
+STYLE: (1) Respond to what the student meant. (2) Model correct English naturally if errors. (3) Use explicit action words, not "do that"/"do it". (4) Keep it short, casual, native-like. (5) No robotic praise. (6) Use EXACTLY ONE opener/reaction — never stack two.${turn1Rule}${closingInstruction}
 Respond in JSON only.`
       }
 

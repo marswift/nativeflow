@@ -46,13 +46,13 @@ export type ConversationState = {
 const MAX_TURNS = 5
 
 const DIMENSION_QUESTIONS: Record<Dimension, (action: string) => string> = {
-  when: (a) => `When do you ${a}?`,
-  who: (a) => `Who do you ${a} with?`,
+  when: (a) => `When do you usually ${a}?`,
+  who: (a) => `Do you ${a} alone or with someone?`,
   where: (a) => `Where do you usually ${a}?`,
-  how_often: (a) => `How often do you ${a}?`,
-  what_detail: (a) => `What exactly do you ${a}?`,
-  feeling: (a) => `Do you like to ${a}?`,
-  alternative: (a) => `What else do you do besides ${a}?`,
+  how_often: (a) => `Do you ${a} every day?`,
+  what_detail: (a) => `What's the first thing you do when you ${a}?`,
+  feeling: (a) => `Do you enjoy it?`,
+  alternative: (a) => `Do you do anything else after that?`,
 }
 
 // ── Lesson phrase → conversation plan ──

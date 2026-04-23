@@ -170,11 +170,12 @@ export function buildFallbackEvaluation(
 
 // ——— Engine-aware fallback ———
 
-const REACTIONS = ['Got it.', 'Right.', 'Oh, okay.', 'Ah, I see.', 'Sure.', 'Yeah.']
+// Single reaction per turn — never stack multiple
+const REACTIONS = ['Oh, okay.', 'Right.', 'I see.', 'Got it.', 'Sure.', 'Yeah.']
 
 /**
  * Build a fallback reply using engine intent (single source of truth).
- * This ensures fallback follows the same progression as the API path.
+ * Rules: exactly ONE opener/reaction, never stacked, turn-1 = greeting only.
  */
 export function buildEngineFallbackReply(
   intent: NextIntent,
@@ -186,18 +187,24 @@ export function buildEngineFallbackReply(
 
   switch (intent.action) {
     case 'greet':
-      return `Hi! Nice to talk with you.${intent.suggestedQuestion ? ` ${intent.suggestedQuestion}` : ''}`
+      // Turn-1: clean greeting only, no reaction prefix
+      return intent.suggestedQuestion
+        ? `Hi! ${intent.suggestedQuestion}`
+        : 'Hi! How are you today?'
     case 'ask_anchor':
-      return `${reaction} ${intent.suggestedQuestion ?? 'Tell me more.'}`
+      return `${reaction} ${intent.suggestedQuestion ?? 'Tell me about your day.'}`
     case 'ask_dimension':
-      return `${reaction} ${intent.suggestedQuestion ?? 'What about you?'}`
-    case 'clarify':
-      if (trimmed.split(/\s+/).length <= 2) {
+      return `${reaction} ${intent.suggestedQuestion ?? 'Tell me more.'}`
+    case 'clarify': {
+      const words = trimmed.split(/\s+/)
+      if (words.length <= 2 && trimmed.length > 0) {
+        // Natural echo-question for short input
         return `${trimmed}?`
       }
       return 'Could you say a bit more?'
+    }
     case 'simplify':
-      return `No worries. ${intent.suggestedQuestion ?? "Let's try something simpler."}`
+      return `No worries. ${intent.suggestedQuestion ?? "Let's keep it simple."}`
     case 'redirect':
       return `${reaction} Let's get back to the topic. ${intent.suggestedQuestion ?? ''}`
     case 'wrap':
