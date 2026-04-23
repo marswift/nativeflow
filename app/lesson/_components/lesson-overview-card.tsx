@@ -496,19 +496,33 @@ export function LessonOverviewCard({
                 {copy.dailyFlow.pickProgress}
               </p>
 
-              <div className="space-y-1">
-                {lesson.blocks
-                  .filter((b: { type: string }) => b.type !== 'review')
-                  .map((block: { id: string; description: string; title: string; type: string }) => (
-                    <div
-                      key={block.id}
-                      className="rounded-lg border border-[#E5E7EB] bg-white px-3 py-1.5"
-                    >
-                      <p className="text-sm font-medium text-[#4a4a6a]">
-                        {block.description?.trim() || block.title}
-                      </p>
+              <div className="flex flex-col items-stretch">
+                {(() => {
+                  const CARD_COLORS = [
+                    'border-amber-200 bg-amber-50/70',
+                    'border-sky-200 bg-sky-50/70',
+                    'border-violet-200 bg-violet-50/70',
+                    'border-emerald-200 bg-emerald-50/70',
+                    'border-rose-200 bg-rose-50/70',
+                  ]
+                  const filtered = lesson.blocks.filter((b: { type: string }) => b.type !== 'review')
+                  return filtered.map((block: { id: string; description: string; title: string; type: string }, i: number) => (
+                    <div key={block.id}>
+                      {i > 0 && (
+                        <div className="flex justify-center py-0.5">
+                          <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true">
+                            <path d="M8 1v8M4 7l4 4 4-4" stroke="#c4b5a0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </div>
+                      )}
+                      <div className={`rounded-lg border px-3 py-1.5 ${CARD_COLORS[i % CARD_COLORS.length]}`}>
+                        <p className="text-sm font-medium text-[#4a4a6a]">
+                          {block.description?.trim() || block.title}
+                        </p>
+                      </div>
                     </div>
-                  ))}
+                  ))
+                })()}
               </div>
             </div>
 
