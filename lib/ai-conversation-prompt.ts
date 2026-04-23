@@ -24,6 +24,8 @@ export type AiConversationRequest = {
   flavorContext?: AiConversationFlavorContext | null
   /** Numeric rank for difficulty scaling. 0 = brand new, 100+ = advanced. */
   rank?: number | null
+  /** Optional explicit closing-turn signal from UI orchestrator. */
+  isClosingTurn?: boolean
 }
 
 export type AiConversationEvaluation = {
@@ -69,6 +71,13 @@ CORE RULES:
 4. NEVER switch topic randomly
 5. NEVER ask unrelated questions
 
+GUIDED PRACTICE ANCHOR (STRICT):
+- This stage is guided practice, NOT free chat.
+- Keep the conversation close to the lesson phrase and current scene context.
+- Do not introduce new unrelated topics.
+- Follow-up questions must stay near the target expression (same action/object/time/place/person/frequency).
+- If the learner response drifts, briefly acknowledge it and gently bring the conversation back to the lesson phrase.
+
 STYLE:
 - Use short, natural spoken English
 - One idea per message
@@ -76,26 +85,41 @@ STYLE:
 - Avoid long explanations
 - Avoid textbook grammar tone
 
-RESPONSE PATTERNS (pick ONE per turn):
+RESPONSE PATTERNS (pick ONE per turn, vary across turns):
 A. React + follow-up: "Oh, nice. What did you talk about?"
 B. Acknowledge + expand: "That sounds good. I like simple meals like that."
 C. Empathy + question: "I see. Was it difficult?"
 D. Light reaction only: "Nice, that sounds fun."
+E. Echo + rephrase: "So you went for a walk. Was it nice outside?"
+
+ANTI-REPETITION RULES:
+- NEVER start two consecutive replies with the same word or phrase
+- NEVER reuse the same reaction (e.g., "Nice!" or "I see!") within 3 turns
+- NEVER ask the same question again — read the full history and avoid repeating any question pattern already used
+- Vary your opening reactions: instead of always "Nice!", use "Oh", "Right", "Yeah", "Hmm", "Ah", "Sure", "Cool" etc.
 
 QUESTION RULE:
 - Ask at most ONE question per turn
 - Do NOT ask multiple questions
-- Do NOT repeat the same question pattern
+- Do NOT repeat any question pattern already used in this conversation
 
 RESCUE MODE (if user response is very short, unclear, or empty):
 - Gently help them continue
 - Suggest simple options
 - Example: "That's okay. Maybe you talked with a friend or a teacher?"
 
+GENTLE CORRECTION RULE:
+If the user's English has grammar mistakes but is understandable:
+- Do NOT lecture or point out the error explicitly
+- Instead, naturally MODEL the correct form in your reply
+- Example: User says "Are you drink coffee?" → Reply: "Do I drink coffee? Yeah, I usually have one in the morning."
+- This teaches through natural conversation, not correction
+
 CONVERSATION STRUCTURE:
 This conversation has 5 turns:
 - Turn 0: Greeting (you already greeted, user is replying)
-- Turn 1-3: Main conversation about the lesson phrase
+- Turn 1: Respond naturally to the greeting. You may smoothly connect to the lesson topic, but do NOT jump straight to a question about the lesson phrase. A short social response is fine.
+- Turn 2-3: Main conversation about the lesson phrase
 - Turn 4: Closing (react to user's last answer, then say goodbye naturally)
 
 CLOSING RULE:
@@ -255,13 +279,15 @@ export function buildChatMessages(
 
   // Instruction for current turn — reinforce continuity
   const userSaid = request.userMessage.trim()
-  const isClosing = (request as Record<string, unknown>).isClosingTurn === true
+  const userLower = userSaid.toLowerCase()
+  const userIsFarewell = /\b(see you|next time|goodbye|bye|take care)\b/.test(userLower)
+  const isClosing = request.isClosingTurn === true || userIsFarewell
   const closingInstruction = isClosing
-    ? ' This is the closing turn. React to what they said, then include a short natural goodbye (e.g. "See you later!" or "Have a good day!"). The student will reply with a short goodbye after this.'
+    ? ' This is a closing turn. FIRST acknowledge exactly what the student just said, THEN include one short goodbye (e.g. "See you later!"). Do not continue the conversation after this.'
     : ''
   messages.push({
     role: 'system',
-    content: `This is turn ${request.turnIndex} of 5. The student just said: "${userSaid}". React to what they said, evaluate it, and continue the conversation naturally. Your aiReply must connect to their answer — don't ignore what they told you.${closingInstruction} Respond in JSON only.`,
+    content: `This is turn ${request.turnIndex} of 5. Lesson anchor phrase: "${request.lessonPhrase}". The student just said: "${userSaid}". PRIORITY ORDER: (1) respond directly to this latest utterance, (2) if the student's English has errors, naturally model the correct form in your reply without pointing it out, (3) keep the reply tied to the lesson anchor phrase and scene continuity, (4) add at most one short follow-up only when not closing and only if it is clearly related to the anchor phrase. DEDUP: check all previous assistant messages — do NOT repeat any question or reaction pattern already used. Never jump to a generic scripted next question. Never ignore the latest utterance. Never drift into free chat.${closingInstruction} Respond in JSON only.`,
   })
 
   return messages
