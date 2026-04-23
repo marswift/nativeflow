@@ -2,9 +2,12 @@
  * Predefined conversation templates for AI-free fallback mode.
  *
  * When the OpenAI API is unavailable or usage limits are reached,
- * the conversation uses these templates instead. Templates are
- * dynamically built from the lesson phrase so they stay relevant.
+ * the conversation uses these templates instead.
+ *
+ * When engine state is provided, fallback follows the same progression
+ * logic as the API path (single source of truth).
  */
+import type { NextIntent } from './ai-conversation-state'
 
 export type FallbackTurn = {
   aiMessage: string
@@ -162,6 +165,43 @@ export function buildFallbackEvaluation(
     },
     hint: null,
     nextPrompt: null,
+  }
+}
+
+// ——— Engine-aware fallback ———
+
+const REACTIONS = ['Got it.', 'Right.', 'Oh, okay.', 'Ah, I see.', 'Sure.', 'Yeah.']
+
+/**
+ * Build a fallback reply using engine intent (single source of truth).
+ * This ensures fallback follows the same progression as the API path.
+ */
+export function buildEngineFallbackReply(
+  intent: NextIntent,
+  userMessage: string,
+  turnIndex: number,
+): string {
+  const trimmed = userMessage.trim()
+  const reaction = REACTIONS[turnIndex % REACTIONS.length]
+
+  switch (intent.action) {
+    case 'greet':
+      return `Hi! Nice to talk with you.${intent.suggestedQuestion ? ` ${intent.suggestedQuestion}` : ''}`
+    case 'ask_anchor':
+      return `${reaction} ${intent.suggestedQuestion ?? 'Tell me more.'}`
+    case 'ask_dimension':
+      return `${reaction} ${intent.suggestedQuestion ?? 'What about you?'}`
+    case 'clarify':
+      if (trimmed.split(/\s+/).length <= 2) {
+        return `${trimmed}?`
+      }
+      return 'Could you say a bit more?'
+    case 'simplify':
+      return `No worries. ${intent.suggestedQuestion ?? "Let's try something simpler."}`
+    case 'redirect':
+      return `${reaction} Let's get back to the topic. ${intent.suggestedQuestion ?? ''}`
+    case 'wrap':
+      return 'Nice talking with you. See you next time!'
   }
 }
 

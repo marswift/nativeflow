@@ -1,6 +1,7 @@
 import 'server-only'
 import type { ChatMessage } from './openai-client'
 import { buildRegionPromptContext } from './lesson-run-service'
+import type { SerializedConversationState } from './ai-conversation-state'
 
 // ——— API contract ———
 
@@ -26,6 +27,10 @@ export type AiConversationRequest = {
   rank?: number | null
   /** Optional explicit closing-turn signal from UI orchestrator. */
   isClosingTurn?: boolean
+  /** Engine-determined next instruction (single source of truth for progression). */
+  nextInstruction?: string | null
+  /** Engine conversation state snapshot. */
+  engineState?: SerializedConversationState | null
 }
 
 export type AiConversationEvaluation = {
@@ -336,17 +341,23 @@ export function buildChatMessages(
     : ''
   messages.push({
     role: 'system',
-    content: `Turn ${request.turnIndex} of 5. Scene topic: "${request.lessonPhrase}". Student said: "${userSaid}".
-HARD RULES FOR THIS TURN:
-(1) Respond to what the student MEANT, not by quoting them.
-(2) If their English has errors, model the correct form naturally.
-(3) NEVER re-ask any question from the conversation history. Read ALL previous assistant messages. If you asked "Do you do X after breakfast?" before, do NOT ask it again in any form.
-(4) If the student answered YES or NO, you MUST ask a NEW detail question (who/what/when/where/how often) — not the same yes/no question.
-(5) Do NOT use vague pronouns like "do that" or "do it" — use the actual action word (e.g. "clean up", "eat breakfast").
-(6) Stay within the scene topic but follow the student's direction.
-(7) Keep tone native-casual: short, smooth, no over-praising.
-(8) If input is fragment/unclear, clarify briefly.${request.turnIndex === 1 ? ' (9) This is Turn 1 — start with a direct greeting only. No reaction words before greeting.' : ''}${closingInstruction}
-Respond in JSON only.`,
+    content: (() => {
+      const engineInstruction = request.nextInstruction?.trim()
+      const coveredDims = request.engineState?.coveredDimensions?.join(', ') || 'none'
+
+      if (engineInstruction) {
+        return `Turn ${request.turnIndex} of 5. Student said: "${userSaid}".
+ENGINE INSTRUCTION: ${engineInstruction}
+Already-asked dimensions: [${coveredDims}]. Do NOT ask about these again.
+STYLE: (1) Respond to what the student meant. (2) Model correct English naturally if errors. (3) Use explicit action words, not "do that"/"do it". (4) Keep it short, casual, native-like. (5) No robotic praise.${closingInstruction}
+Respond in JSON only.`
+      }
+
+      // Legacy fallback if engine state is not provided
+      return `Turn ${request.turnIndex} of 5. Scene topic: "${request.lessonPhrase}". Student said: "${userSaid}".
+RULES: (1) Respond to what the student meant. (2) Model correct English naturally. (3) Progress forward — do NOT re-ask. (4) Use explicit action words. (5) Keep it short and casual.${closingInstruction}
+Respond in JSON only.`
+    })(),
   })
 
   return messages
