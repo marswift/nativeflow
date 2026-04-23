@@ -27,6 +27,22 @@ type SceneSummary = SceneRow & {
   enrichment_count: number
 }
 
+type ContentStatus = 'published' | 'content-only' | 'empty' | 'inactive'
+
+function getContentStatus(s: SceneSummary): ContentStatus {
+  if (!s.is_active) return 'inactive'
+  if (s.phrase_count === 0) return 'empty'
+  if (s.enrichment_count === 0) return 'content-only'
+  return 'published'
+}
+
+const STATUS_STYLE: Record<ContentStatus, { label: string; className: string }> = {
+  published: { label: 'Published', className: 'bg-green-100 text-green-700' },
+  'content-only': { label: 'Content Only', className: 'bg-blue-100 text-blue-700' },
+  empty: { label: 'Empty', className: 'bg-gray-100 text-gray-400' },
+  inactive: { label: 'Inactive', className: 'bg-red-100 text-red-600' },
+}
+
 export default function AdminLessonContentPage() {
   const router = useRouter()
   const [authChecked, setAuthChecked] = useState(false)
@@ -153,7 +169,8 @@ export default function AdminLessonContentPage() {
                   <th className="px-4 py-3 font-bold text-gray-600">Label (EN)</th>
                   <th className="px-4 py-3 font-bold text-gray-600 text-center">Phrases</th>
                   <th className="px-4 py-3 font-bold text-gray-600 text-center">Enrichments</th>
-                  <th className="px-4 py-3 font-bold text-gray-600">Category</th>
+                  <th className="px-4 py-3 font-bold text-gray-600">Status</th>
+                  <th className="px-4 py-3 font-bold text-gray-600">Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -176,12 +193,17 @@ export default function AdminLessonContentPage() {
                         {s.enrichment_count}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{s.scene_category}</td>
+                    <td className="px-4 py-3">
+                      {(() => { const st = STATUS_STYLE[getContentStatus(s)]; return (
+                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${st.className}`}>{st.label}</span>
+                      ) })()}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{new Date(s.updated_at).toLocaleDateString('ja-JP')}</td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
                       No scenes found.
                     </td>
                   </tr>

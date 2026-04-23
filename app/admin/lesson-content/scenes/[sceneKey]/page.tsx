@@ -156,8 +156,24 @@ export default function AdminSceneDetailPage() {
 
         {/* Scene Meta */}
         <section className="rounded-xl border border-gray-200 bg-white p-5">
-          <h2 className="text-lg font-bold text-gray-800">Scene</h2>
-          <div className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-800">Scene</h2>
+            {(() => {
+              const status = !scene.is_active ? 'inactive'
+                : phrases.length === 0 ? 'empty'
+                : enrichments.length === 0 ? 'content-only'
+                : 'published'
+              const styles: Record<string, { label: string; cls: string }> = {
+                published: { label: 'Published', cls: 'bg-green-100 text-green-700' },
+                'content-only': { label: 'Content Only', cls: 'bg-blue-100 text-blue-700' },
+                empty: { label: 'Empty', cls: 'bg-gray-100 text-gray-400' },
+                inactive: { label: 'Inactive', cls: 'bg-red-100 text-red-600' },
+              }
+              const s = styles[status]
+              return <span className={`rounded-full px-3 py-1 text-xs font-bold ${s.cls}`}>{s.label}</span>
+            })()}
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-4 text-sm sm:grid-cols-5">
             <div>
               <p className="text-xs font-bold text-gray-500">scene_key</p>
               <p className="mt-1 font-mono text-gray-800">{scene.scene_key}</p>
@@ -173,6 +189,10 @@ export default function AdminSceneDetailPage() {
             <div>
               <p className="text-xs font-bold text-gray-500">Category</p>
               <p className="mt-1 text-gray-800">{scene.scene_category}</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-500">Content</p>
+              <p className="mt-1 text-gray-600">{phrases.length} phrases / {enrichments.length} enrichments</p>
             </div>
           </div>
         </section>
