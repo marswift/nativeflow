@@ -672,8 +672,8 @@ export function LessonOverviewCard({
       {dueReviewCount != null && dueReviewCount > 0 ? (
         <div className="flex gap-3">
           <button type="button" onClick={() => onStartReview?.()} className="relative flex-1 cursor-pointer overflow-hidden rounded-[14px] border-2 border-amber-400 bg-white py-3 text-center font-black tracking-wide text-amber-700 transition hover:-translate-y-px hover:bg-amber-50 active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2">
-            <span className="text-base">復習する（{Math.min(dueReviewCount ?? 0, 3)}問）</span>
-            <span className="mt-0.5 block text-[10px] font-medium tracking-normal text-amber-500">残り{dueReviewCount}件</span>
+            <span className="text-base">復習する</span>
+            <span className="mt-0.5 block text-[10px] font-medium tracking-normal text-amber-500">{dueReviewCount}問の復習があります</span>
           </button>
           <button type="button" onClick={onStart} aria-label={uiText.startButton} className="relative flex-1 cursor-pointer overflow-hidden rounded-[14px] bg-[#F5A623] py-3 text-center font-black tracking-wide text-white shadow-[0_4px_16px_rgba(245,166,35,0.35)] transition hover:-translate-y-px hover:bg-[#D4881A] hover:shadow-[0_6px_20px_rgba(245,166,35,0.4)] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2">
             <span className="text-base">{uiText.startButton}</span>
