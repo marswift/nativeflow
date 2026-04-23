@@ -1351,9 +1351,11 @@ export default function LessonPage() {
 
   function _handleBackToOverview() {
     setStarted(false)
+    setRuntimeState(null)
     setShowListenRepeatComplete(false)
     setStartErrorMessage(null)
     setStartBlockedReason(null)
+    clearPersistedLessonState()
   
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
