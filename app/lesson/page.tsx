@@ -1407,6 +1407,13 @@ export default function LessonPage() {
       }
       const reviewSession = injectReviewBlocks(baseSession, sources)
 
+      console.log('[click-review] reviewSession', {
+        sessionId: (reviewSession as Record<string, unknown>).sessionId,
+        theme: reviewSession.theme,
+        blockCount: reviewSession.blocks.length,
+        blocks: reviewSession.blocks.map((b) => ({ type: b.type, title: b.title, itemCount: b.items.length })),
+      })
+
       const initial = getInitialRunState()
       setProgress(initial.progress)
       setInputValue('')
@@ -1419,6 +1426,12 @@ export default function LessonPage() {
       const nextRuntimeState = createLessonRuntimeStateFromSession({
         session: reviewSession,
         userId,
+      })
+
+      console.log('[click-review] runtimeState created', {
+        blockCount: nextRuntimeState.blocks.length,
+        currentStageId: nextRuntimeState.currentStageId,
+        firstBlocks: nextRuntimeState.blocks.slice(0, 3).map((b) => ({ id: b.id, phraseText: b.phraseText?.slice(0, 40) })),
       })
 
       // Swap lesson content to review session so the renderer uses review blocks
@@ -1536,6 +1549,14 @@ export default function LessonPage() {
   }
 
   function handleStartLesson() {
+    console.log('[click-start-lesson] entry', {
+      lessonSessionId: (lesson as Record<string, unknown> | null)?.sessionId,
+      lessonBlockCount: lesson?.blocks?.length,
+      lessonBlocks: lesson?.blocks?.map((b) => ({ type: b.type, title: b.title, itemCount: b.items.length })),
+      runtimeStateExists: runtimeState != null,
+      started,
+      showCompleted,
+    })
 
     // Billing gate — disabled during MVP free trial period
     // const access = canStartLesson(pageData?.profile ?? {})
