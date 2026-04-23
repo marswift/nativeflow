@@ -77,39 +77,38 @@ export default function AdminSceneDetailPage() {
     })
   }, [router])
 
+  const loadDetail = useCallback(async () => {
+    setLoading(true)
+    const supabase = getSupabaseBrowserClient()
+
+    const [sceneResult, phraseResult, enrichmentResult] = await Promise.all([
+      supabase
+        .from('lesson_scenes')
+        .select('scene_key, label_ja, label_en, scene_category, is_active')
+        .eq('scene_key', sceneKey)
+        .maybeSingle(),
+      supabase
+        .from('lesson_phrases')
+        .select('id, scene_key, level_band, language_code, conversation_answer, typing_answer, native_hint, mix_hint, ai_question_text')
+        .eq('scene_key', sceneKey)
+        .eq('is_active', true)
+        .order('level_band', { ascending: true }),
+      supabase
+        .from('lesson_conversation_enrichments')
+        .select('id, scene_key, region_slug, age_group, level_band, ai_question_text, ai_question_choices, ai_conversation_opener, typing_variations, flavor')
+        .eq('scene_key', sceneKey)
+        .eq('is_active', true)
+        .order('region_slug', { ascending: true }),
+    ])
+
+    setScene((sceneResult.data as SceneMeta | null) ?? null)
+    setPhrases((phraseResult.data as PhraseRow[] | null) ?? [])
+    setEnrichments((enrichmentResult.data as EnrichmentRow[] | null) ?? [])
+    setLoading(false)
+  }, [sceneKey])
+
   useEffect(() => {
     if (!authorized || !sceneKey) return
-
-    async function loadDetail() {
-      setLoading(true)
-      const supabase = getSupabaseBrowserClient()
-
-      const [sceneResult, phraseResult, enrichmentResult] = await Promise.all([
-        supabase
-          .from('lesson_scenes')
-          .select('scene_key, label_ja, label_en, scene_category, is_active')
-          .eq('scene_key', sceneKey)
-          .maybeSingle(),
-        supabase
-          .from('lesson_phrases')
-          .select('id, scene_key, level_band, language_code, conversation_answer, typing_answer, native_hint, mix_hint, ai_question_text')
-          .eq('scene_key', sceneKey)
-          .eq('is_active', true)
-          .order('level_band', { ascending: true }),
-        supabase
-          .from('lesson_conversation_enrichments')
-          .select('id, scene_key, region_slug, age_group, level_band, ai_question_text, ai_question_choices, ai_conversation_opener, typing_variations, flavor')
-          .eq('scene_key', sceneKey)
-          .eq('is_active', true)
-          .order('region_slug', { ascending: true }),
-      ])
-
-      setScene((sceneResult.data as SceneMeta | null) ?? null)
-      setPhrases((phraseResult.data as PhraseRow[] | null) ?? [])
-      setEnrichments((enrichmentResult.data as EnrichmentRow[] | null) ?? [])
-      setLoading(false)
-    }
-
     loadDetail()
   }, [authorized, sceneKey])
 
@@ -213,6 +212,7 @@ export default function AdminSceneDetailPage() {
               )
             })}
           </div>
+          <AddPhraseForm sceneKey={sceneKey} existingLevels={phrases.map((p) => p.level_band)} onCreated={loadDetail} />
         </section>
 
         {/* Enrichments — Editable */}
@@ -533,6 +533,154 @@ function EnrichmentEditor({ enrichment }: { enrichment: EnrichmentRow }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Add Phrase Form ──
+
+const ADD_PHRASE_LEVELS = [
+  { value: 'beginner', label: 'Beginner' },
+  { value: 'intermediate', label: 'Intermediate' },
+  { value: 'advanced', label: 'Advanced' },
+] as const
+
+function AddPhraseForm({ sceneKey, existingLevels, onCreated }: {
+  sceneKey: string
+  existingLevels: string[]
+  onCreated: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const availableLevels = ADD_PHRASE_LEVELS.filter((l) => !existingLevels.includes(l.value))
+  const [level, setLevel] = useState<string>(availableLevels[0]?.value ?? '')
+  const [conversationAnswer, setConversationAnswer] = useState('')
+  const [typingAnswer, setTypingAnswer] = useState('')
+  const [nativeHint, setNativeHint] = useState('')
+  const [mixHint, setMixHint] = useState('')
+  const [aiQuestionText, setAiQuestionText] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  if (availableLevels.length === 0 && !open) return null
+
+  async function handleCreate() {
+    if (!conversationAnswer.trim()) {
+      setFeedback({ type: 'error', message: 'conversation_answer is required' })
+      return
+    }
+    if (!level) {
+      setFeedback({ type: 'error', message: 'Select a level' })
+      return
+    }
+
+    setCreating(true)
+    setFeedback(null)
+
+    try {
+      const res = await fetch('/api/admin/lesson-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_phrase',
+          scene_key: sceneKey,
+          level_band: level,
+          conversation_answer: conversationAnswer.trim(),
+          typing_answer: typingAnswer.trim() || conversationAnswer.trim(),
+          native_hint: nativeHint.trim(),
+          mix_hint: mixHint.trim(),
+          ai_question_text: aiQuestionText.trim(),
+        }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setFeedback({ type: 'error', message: data.error ?? 'Create failed' })
+      } else {
+        setFeedback({ type: 'success', message: 'Phrase created' })
+        setOpen(false)
+        setConversationAnswer('')
+        setTypingAnswer('')
+        setNativeHint('')
+        setMixHint('')
+        setAiQuestionText('')
+        onCreated()
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Unknown error' })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+        >
+          + Add Phrase ({availableLevels.length} level{availableLevels.length !== 1 ? 's' : ''} available)
+        </button>
+      ) : (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-blue-800">New Phrase</h3>
+            <button type="button" onClick={() => setOpen(false)} className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700">Cancel</button>
+          </div>
+          <div className="mt-3 grid gap-3 text-sm">
+            <div>
+              <label className="block text-xs font-bold text-gray-500">level_band</label>
+              <select
+                value={level}
+                onChange={(e) => setLevel(e.target.value)}
+                className="mt-1 w-full max-w-xs rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+              >
+                {availableLevels.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </div>
+            {(['conversation_answer', 'typing_answer', 'native_hint', 'mix_hint', 'ai_question_text'] as const).map((field) => {
+              const value = field === 'conversation_answer' ? conversationAnswer
+                : field === 'typing_answer' ? typingAnswer
+                : field === 'native_hint' ? nativeHint
+                : field === 'mix_hint' ? mixHint
+                : aiQuestionText
+              const setter = field === 'conversation_answer' ? setConversationAnswer
+                : field === 'typing_answer' ? setTypingAnswer
+                : field === 'native_hint' ? setNativeHint
+                : field === 'mix_hint' ? setMixHint
+                : setAiQuestionText
+              return (
+                <div key={field}>
+                  <label className="block text-xs font-bold text-gray-500">{field}{field === 'conversation_answer' ? ' *' : ''}</label>
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => setter(e.target.value)}
+                    placeholder={field === 'typing_answer' ? '(defaults to conversation_answer)' : ''}
+                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                  />
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={creating}
+              className="cursor-pointer rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {creating ? 'Creating...' : 'Create Phrase'}
+            </button>
+            {feedback && (
+              <span className={`text-xs font-bold ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                {feedback.message}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

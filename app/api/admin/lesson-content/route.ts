@@ -24,16 +24,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   }
 
-  let body: { scene_key?: string; label_ja?: string; label_en?: string; scene_category?: string; is_active?: boolean }
+  let body: Record<string, unknown>
   try {
     body = await req.json()
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const sceneKey = body.scene_key?.trim()
-  const labelJa = body.label_ja?.trim()
-  const labelEn = body.label_en?.trim()
+  // Route by action
+  if (body.action === 'create_phrase') {
+    return handleCreatePhrase(body)
+  }
+
+  // Default: create scene
+  const sceneKey = (body.scene_key as string | undefined)?.trim()
+  const labelJa = (body.label_ja as string | undefined)?.trim()
+  const labelEn = (body.label_en as string | undefined)?.trim()
 
   if (!sceneKey || !labelJa || !labelEn) {
     return NextResponse.json({ error: 'scene_key, label_ja, and label_en are required' }, { status: 400 })
@@ -61,7 +67,7 @@ export async function POST(req: NextRequest) {
       scene_key: sceneKey,
       label_ja: labelJa,
       label_en: labelEn,
-      scene_category: body.scene_category?.trim() || 'daily-flow',
+      scene_category: (body.scene_category as string | undefined)?.trim() || 'daily-flow',
       is_active: body.is_active !== false,
     })
 
@@ -70,6 +76,76 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ ok: true, scene_key: sceneKey })
+}
+
+const VALID_LEVELS = new Set(['beginner', 'intermediate', 'advanced'])
+
+async function handleCreatePhrase(body: Record<string, unknown>) {
+  const sceneKey = (body.scene_key as string | undefined)?.trim()
+  const levelBand = (body.level_band as string | undefined)?.trim()
+  const conversationAnswer = (body.conversation_answer as string | undefined)?.trim()
+  const typingAnswer = (body.typing_answer as string | undefined)?.trim() || conversationAnswer
+  const nativeHint = (body.native_hint as string | undefined)?.trim() || ''
+  const mixHint = (body.mix_hint as string | undefined)?.trim() || ''
+  const aiQuestionText = (body.ai_question_text as string | undefined)?.trim() || ''
+
+  if (!sceneKey || !levelBand || !conversationAnswer) {
+    return NextResponse.json({ error: 'scene_key, level_band, and conversation_answer are required' }, { status: 400 })
+  }
+
+  if (!VALID_LEVELS.has(levelBand)) {
+    return NextResponse.json({ error: 'level_band must be beginner, intermediate, or advanced' }, { status: 400 })
+  }
+
+  // Verify scene exists
+  const { data: scene } = await supabaseServer
+    .from('lesson_scenes')
+    .select('id')
+    .eq('scene_key', sceneKey)
+    .maybeSingle()
+
+  if (!scene) {
+    return NextResponse.json({ error: `Scene "${sceneKey}" not found` }, { status: 404 })
+  }
+
+  // Check uniqueness: (scene_key, level_band, language_code)
+  const { data: existing } = await supabaseServer
+    .from('lesson_phrases')
+    .select('id')
+    .eq('scene_key', sceneKey)
+    .eq('level_band', levelBand)
+    .eq('language_code', 'en')
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json({ error: `Phrase already exists for ${sceneKey} / ${levelBand} / en` }, { status: 409 })
+  }
+
+  const { data: inserted, error } = await supabaseServer
+    .from('lesson_phrases')
+    .insert({
+      scene_id: scene.id,
+      scene_key: sceneKey,
+      level_band: levelBand,
+      language_code: 'en',
+      conversation_answer: conversationAnswer,
+      typing_answer: typingAnswer,
+      review_prompt: conversationAnswer,
+      ai_conversation_prompt: `Talk about: ${conversationAnswer}`,
+      native_hint: nativeHint,
+      mix_hint: mixHint,
+      ai_question_text: aiQuestionText,
+      content_version: '1',
+      is_active: true,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, phraseId: inserted.id })
 }
 
 export async function PATCH(req: NextRequest) {
