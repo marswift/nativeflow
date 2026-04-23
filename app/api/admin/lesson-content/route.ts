@@ -44,6 +44,18 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'conversation_answer cannot be blank' }, { status: 400 })
   }
 
+  // Validate: ai_question_text should not be blanked if phrase already has one
+  if ('ai_question_text' in update && !update.ai_question_text.trim()) {
+    const { data: existing } = await supabaseServer
+      .from('lesson_phrases')
+      .select('ai_question_text')
+      .eq('id', phraseId)
+      .maybeSingle()
+    if (existing?.ai_question_text?.trim()) {
+      return NextResponse.json({ error: 'ai_question_text cannot be cleared (phrase already uses AI Question)' }, { status: 400 })
+    }
+  }
+
   const { error } = await supabaseServer
     .from('lesson_phrases')
     .update({ ...update, updated_at: new Date().toISOString() })
