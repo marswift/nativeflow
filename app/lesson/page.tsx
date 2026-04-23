@@ -1360,9 +1360,10 @@ export default function LessonPage() {
     clearPersistedLessonState()
     // Restore original lesson if it was swapped for review
     isReviewActiveRef.current = false
-    if (originalLessonRef.current) {
-      setPageData((prev) => prev ? { ...prev, lesson: originalLessonRef.current! } : prev)
-      originalLessonRef.current = null
+    const savedLesson = originalLessonRef.current
+    originalLessonRef.current = null
+    if (savedLesson) {
+      setPageData((prev) => prev ? { ...prev, lesson: savedLesson } : prev)
     }
   
     if (typeof window !== 'undefined') {
@@ -2041,23 +2042,6 @@ export default function LessonPage() {
   }
 
   if (lesson == null) {
-    // If lesson is null after returning from review, the async restore may not have completed yet.
-    // Show loading instead of error to allow the state update to settle.
-    if (!started && !pageError) {
-      return (
-        <div
-          className={PAGE_SHELL_CLASS}
-          style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
-        >
-          <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
-          <main className="flex-1 flex items-center justify-center px-6 py-12">
-            <p className="text-[#4a4a6a]">読み込み中...</p>
-          </main>
-          <AppFooter />
-        </div>
-      )
-    }
-
     const errorMessage = getPageErrorMessage(pageError, copy)
 
     return (
