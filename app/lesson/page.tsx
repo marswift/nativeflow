@@ -865,7 +865,7 @@ export default function LessonPage() {
           // Hydrate audio — mark ready when done so lesson start can proceed
           setAudioReady(false)
           hydrateLessonAudio(nextPageData.lesson).then((hydratedLesson) => {
-            if (isActive) {
+            if (isActive && !isReviewActiveRef.current) {
               setPageData((prev) => prev ? { ...prev, lesson: hydratedLesson } : prev)
               setAudioReady(true)
             }
