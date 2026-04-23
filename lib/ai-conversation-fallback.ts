@@ -35,14 +35,14 @@ export function buildFallbackTurns(lessonPhrase: string): FallbackTurn[] {
       followUp: 'Do you use that phrase often?',
     },
     {
-      aiMessage: "That's great! Tell me a bit more about your day.",
+      aiMessage: "Oh, nice. Tell me more about your day.",
       evaluation: 'good',
       score: 75,
       feedback: '自然な会話ができていますね。',
       followUp: 'How was it?',
     },
     {
-      aiMessage: "Awesome job today! Keep it up — see you next time!",
+      aiMessage: "Nice talking with you. See you next time!",
       evaluation: 'good',
       score: 85,
       feedback: 'よく頑張りました！',
@@ -76,16 +76,79 @@ export function buildFallbackEvaluation(
   nextPrompt: null
 } {
   const turns = buildFallbackTurns(lessonPhrase)
-  // Use the NEXT turn's message as aiReply (or last if at the end)
-  const nextIndex = Math.min(turnIndex + 1, turns.length - 1)
   const currentTurn = turns[turnIndex] ?? turns[0]
-  const nextTurn = turns[nextIndex]
+  const phraseLower = lessonPhrase.trim().toLowerCase()
 
-  const words = userMessage.trim().split(/\s+/).filter(Boolean)
+  const normalizedUser = userMessage.trim().replace(/\s+/g, ' ')
+  const words = normalizedUser.split(/\s+/).filter(Boolean)
   const isComplete = words.length >= 2
+  const isClosingUser = /\b(see you|next time|goodbye|bye|take care)\b/i.test(normalizedUser.toLowerCase())
+  const isConfusedUser = /\b(i don'?t understand|sorry\??|what\??|huh\??)\b/i.test(normalizedUser.toLowerCase())
+  const isFragmentUser = !isConfusedUser && !isClosingUser && words.length > 0 && words.length <= 2
+  const closingVariants = [
+    'Nice talking with you. See you later!',
+    'Sounds good. Have a good day!',
+    'Alright, see you next time!',
+  ] as const
+  const closingReply = closingVariants[(normalizedUser.length + turnIndex) % closingVariants.length]
+  const actionAnchor = (() => {
+    if (!phraseLower) return 'clean up'
+    const cleaned = phraseLower.replace(/[.?!]/g, '')
+    const direct = cleaned.match(/\b(i|we|you)\s+([a-z]+(?:\s+[a-z]+){0,3})/)
+    if (direct?.[2]) return direct[2]
+    if (/\bclean( up)?\b/.test(cleaned)) return 'clean up'
+    return 'clean up'
+  })()
+
+  const anchorFollowUp = (() => {
+    if (!phraseLower) return `When do you usually ${actionAnchor}?`
+    if (phraseLower.includes('after breakfast')) return `Do you usually ${actionAnchor} after breakfast?`
+    if (/\bclean( up)?\b/.test(phraseLower)) return `When do you ${actionAnchor}?`
+    if (/\bevery day\b|\busually\b/.test(phraseLower)) return `Do you ${actionAnchor} every day?`
+    return `When do you usually ${actionAnchor}?`
+  })()
+
+  // Yes/No progression: after user answers yes/no, ask a NEW detail question
+  const yesDetailQuestions = [
+    `How long does it take to ${actionAnchor}?`,
+    `Do you ${actionAnchor} alone?`,
+    `What do you do after that?`,
+    `Do you ${actionAnchor} every day?`,
+  ]
+  const noDetailQuestions = [
+    `Who ${actionAnchor}s at your home?`,
+    `When do you usually ${actionAnchor}?`,
+    `Do you do it after dinner instead?`,
+  ]
+
+  const yesNoProgression = (() => {
+    const lower = normalizedUser.toLowerCase()
+    const saysYes = /^(yes|yeah|yep|i do|i did|sure)\b/.test(lower)
+    const saysNo = /^(no|nope|not really|i don't|i do not)\b/.test(lower)
+    if (saysYes) return yesDetailQuestions[turnIndex % yesDetailQuestions.length]
+    if (saysNo) return noDetailQuestions[turnIndex % noDetailQuestions.length]
+    return anchorFollowUp
+  })()
+
+  const clippedUser =
+    normalizedUser.length > 24
+      ? `${normalizedUser.slice(0, 24).trimEnd()}...`
+      : normalizedUser
+
+  const acknowledgedReply = !normalizedUser
+    ? 'Take your time.'
+    : isClosingUser
+      ? closingReply
+      : isConfusedUser
+        ? `No worries. Let's keep it simple. ${yesNoProgression}`
+      : isFragmentUser && words.length === 1
+        ? `${clippedUser}?`
+        : isFragmentUser && words.length === 2
+          ? `Do you mean ${clippedUser}?`
+          : (turnIndex === 0 ? `Hi! Nice to talk with you. ${yesNoProgression}` : `${['Got it.', 'Right.', 'Oh, okay.', 'Ah, I see.'][turnIndex % 4]} ${yesNoProgression}`)
 
   return {
-    aiReply: nextTurn.aiMessage,
+    aiReply: acknowledgedReply,
     evaluation: 'good',
     evaluationDetail: {
       isRelevant: true,
@@ -95,7 +158,7 @@ export function buildFallbackEvaluation(
       feedback: currentTurn.feedback,
       correction: null,
       naturalAlternative: null,
-      followUp: currentTurn.followUp || null,
+      followUp: isClosingUser ? null : yesNoProgression,
     },
     hint: null,
     nextPrompt: null,
