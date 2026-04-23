@@ -2046,6 +2046,14 @@ export default function LessonPage() {
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
         <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <div className="mx-auto w-full max-w-6xl px-6 pt-2 sm:px-8">
+          <Link
+            href="/lesson"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#E8E4DF] bg-white/80 px-3 py-1 text-xs font-semibold text-[#5a5a7a] transition hover:bg-white hover:text-[#1a1a2e]"
+          >
+            ← レッスン一覧へ
+          </Link>
+        </div>
         <main className="flex-1">
           <div className={`${CONTAINER_CLASS} !pt-0 !pb-4 sm:!pt-0 sm:!pb-5`}>
             {!showCompleted && !showListenRepeatComplete && block != null && item != null && (
@@ -2189,6 +2197,14 @@ export default function LessonPage() {
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
       <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+      <div className="mx-auto w-full max-w-6xl px-6 pt-2 sm:px-8">
+        <Link
+          href="/dashboard"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-[#E8E4DF] bg-white/80 px-3 py-1 text-xs font-semibold text-[#5a5a7a] transition hover:bg-white hover:text-[#1a1a2e]"
+        >
+          ← レッスン一覧へ
+        </Link>
+      </div>
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
 
