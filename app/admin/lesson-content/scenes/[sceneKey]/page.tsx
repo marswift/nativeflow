@@ -1,19 +1,22 @@
 'use client'
 
 /**
- * Admin Lesson Content — Scene Detail (Read-Only)
+ * Admin Lesson Content — Scene Detail
  *
  * Shows all DB-backed content for a single scene:
  * - Scene metadata
- * - Base phrases (per level)
+ * - Base phrases (per level) — editable with save
  * - Enrichments (per region/age/level)
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseBrowserClient } from '../../../../../lib/supabase/browser-client'
 import { checkIsAdmin } from '../../../../../lib/admin-guard'
+
+const PHRASE_FIELDS = ['conversation_answer', 'typing_answer', 'native_hint', 'mix_hint', 'ai_question_text'] as const
+type PhraseFieldKey = (typeof PHRASE_FIELDS)[number]
 
 type SceneMeta = {
   scene_key: string
@@ -174,7 +177,7 @@ export default function AdminSceneDetailPage() {
           </div>
         </section>
 
-        {/* Base Phrases */}
+        {/* Base Phrases — Editable */}
         <section className="rounded-xl border border-gray-200 bg-white p-5">
           <h2 className="text-lg font-bold text-gray-800">Base Phrases ({phrases.length})</h2>
           <div className="mt-4 space-y-4">
@@ -182,38 +185,11 @@ export default function AdminSceneDetailPage() {
               const phrase = phrases.find((p) => p.level_band === level)
               if (!phrase) return null
               return (
-                <div key={phrase.id} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                      level === 'beginner' ? 'bg-green-100 text-green-700'
-                      : level === 'intermediate' ? 'bg-blue-100 text-blue-700'
-                      : 'bg-purple-100 text-purple-700'
-                    }`}>{level}</span>
-                    <span className="text-xs text-gray-400">{phrase.language_code}</span>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-sm">
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">conversation_answer</span>
-                      <p className="text-gray-800">{phrase.conversation_answer}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">typing_answer</span>
-                      <p className="text-gray-800">{phrase.typing_answer}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">native_hint</span>
-                      <p className="text-gray-800">{phrase.native_hint}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">mix_hint</span>
-                      <p className="text-gray-800">{phrase.mix_hint}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">ai_question_text</span>
-                      <p className="text-gray-800">{phrase.ai_question_text}</p>
-                    </div>
-                  </div>
-                </div>
+                <PhraseEditor
+                  key={phrase.id}
+                  phrase={phrase}
+                  level={level}
+                />
               )
             })}
           </div>
@@ -271,6 +247,105 @@ export default function AdminSceneDetailPage() {
             </div>
           )}
         </section>
+      </div>
+    </div>
+  )
+}
+
+// ── Phrase Editor Component ──
+
+function PhraseEditor({ phrase, level }: { phrase: PhraseRow; level: string }) {
+  const [fields, setFields] = useState<Record<PhraseFieldKey, string>>({
+    conversation_answer: phrase.conversation_answer,
+    typing_answer: phrase.typing_answer,
+    native_hint: phrase.native_hint,
+    mix_hint: phrase.mix_hint,
+    ai_question_text: phrase.ai_question_text,
+  })
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const isDirty = PHRASE_FIELDS.some((k) => fields[k] !== phrase[k])
+
+  const handleSave = useCallback(async () => {
+    if (!isDirty) return
+    if (!fields.conversation_answer.trim()) {
+      setFeedback({ type: 'error', message: 'conversation_answer cannot be blank' })
+      return
+    }
+
+    setSaving(true)
+    setFeedback(null)
+
+    try {
+      const changed: Record<string, string> = {}
+      for (const k of PHRASE_FIELDS) {
+        if (fields[k] !== phrase[k]) changed[k] = fields[k]
+      }
+
+      const res = await fetch('/api/admin/lesson-content', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phraseId: phrase.id, fields: changed }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setFeedback({ type: 'error', message: data.error ?? 'Save failed' })
+      } else {
+        setFeedback({ type: 'success', message: 'Saved' })
+        // Update the phrase reference so isDirty resets
+        for (const k of PHRASE_FIELDS) {
+          (phrase as Record<string, string>)[k] = fields[k]
+        }
+      }
+    } catch (e) {
+      setFeedback({ type: 'error', message: e instanceof Error ? e.message : 'Unknown error' })
+    } finally {
+      setSaving(false)
+    }
+  }, [fields, phrase, isDirty])
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+            level === 'beginner' ? 'bg-green-100 text-green-700'
+            : level === 'intermediate' ? 'bg-blue-100 text-blue-700'
+            : 'bg-purple-100 text-purple-700'
+          }`}>{level}</span>
+          <span className="text-xs text-gray-400">{phrase.language_code}</span>
+          {isDirty && <span className="text-xs font-bold text-amber-600">unsaved</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {feedback && (
+            <span className={`text-xs font-bold ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {feedback.message}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-3 text-sm">
+        {PHRASE_FIELDS.map((key) => (
+          <div key={key}>
+            <label className="block text-xs font-bold text-gray-500">{key}</label>
+            <input
+              type="text"
+              value={fields[key]}
+              onChange={(e) => setFields((prev) => ({ ...prev, [key]: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+            />
+          </div>
+        ))}
       </div>
     </div>
   )
