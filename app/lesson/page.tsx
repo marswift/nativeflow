@@ -60,7 +60,7 @@ const SHOW_DEBUG_PANELS = process.env.NEXT_PUBLIC_LESSON_DEBUG === 'true'
 const LESSON_RUNTIME_STORAGE_KEY = 'nativeflow:lesson-runtime-state'
 const NF_DAILY_FLOW_SELECTION_KEY = 'nf_daily_flow_selection'
 
-const PAGE_SHELL_CLASS = 'min-h-screen bg-[#f7f4ef]'
+const PAGE_SHELL_CLASS = 'min-h-screen flex flex-col bg-[#f7f4ef]'
 const CONTAINER_CLASS = 'mx-auto w-full max-w-[1040px] px-6 py-10 sm:px-8 sm:py-12'
 const CARD_CLASS = 'rounded-2xl border border-[#ede9e2] bg-white px-6 py-6 shadow-sm sm:px-8 sm:py-7'
 
