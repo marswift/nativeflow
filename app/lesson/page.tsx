@@ -1387,6 +1387,7 @@ export default function LessonPage() {
       clearPersistedLessonState()
 
       const baseSession = {
+        sessionId: `review-${Date.now()}`,
         theme: 'Review Session',
         level: 'beginner' as const,
         totalEstimatedMinutes: sources.length,
@@ -1446,6 +1447,7 @@ export default function LessonPage() {
       clearPersistedLessonState()
 
       const baseSession = {
+        sessionId: `weekly-review-${Date.now()}`,
         theme: 'Weekly Review Challenge',
         level: 'beginner' as const,
         totalEstimatedMinutes: sources.length,
