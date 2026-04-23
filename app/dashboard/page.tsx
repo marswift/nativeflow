@@ -398,6 +398,7 @@ export default function DashboardPage() {
               {learningProfile?.target_region_slug && (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#E8E4DF] bg-white/60 px-3 py-1.5">
                   <span className="text-xs font-semibold text-[#5a5a7a]">🌏 {getRegionDisplayLabel(learningProfile.target_region_slug)}</span>
+                  <span className="text-[10px] text-[#9ca3af]">地域表現・生活会話を反映中</span>
                 </div>
               )}
 
