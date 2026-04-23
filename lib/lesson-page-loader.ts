@@ -101,14 +101,24 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     }
     await preloadDbContent(supabase, 'beginner', 'en_us_general', '20s')
     let fallbackPageData = buildLessonPageData(fallbackProfile)
-    fallbackPageData = await enrichWithCorpusSelection(fallbackPageData)
-    fallbackPageData = await applyCorpusToListen(fallbackPageData)
-    fallbackPageData = await applyCorpusToAiConversation(fallbackPageData)
-    logCorpusSelection(fallbackPageData)
-    const fallbackReviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
-    if (fallbackReviewSources.length > 0) {
-      const injected = injectReviewBlocks(fallbackPageData.lesson, fallbackReviewSources)
-      fallbackPageData.lesson = { ...fallbackPageData.lesson, blocks: injected.blocks, overviewBlockCount: injected.blocks.length }
+
+    try {
+      fallbackPageData = await enrichWithCorpusSelection(fallbackPageData)
+      fallbackPageData = await applyCorpusToListen(fallbackPageData)
+      fallbackPageData = await applyCorpusToAiConversation(fallbackPageData)
+      logCorpusSelection(fallbackPageData)
+    } catch (e) {
+      console.warn('[lesson-start] fallback corpus enrichment failed', e)
+    }
+
+    try {
+      const fallbackReviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
+      if (fallbackReviewSources.length > 0) {
+        const injected = injectReviewBlocks(fallbackPageData.lesson, fallbackReviewSources)
+        fallbackPageData.lesson = { ...fallbackPageData.lesson, blocks: injected.blocks, overviewBlockCount: injected.blocks.length }
+      }
+    } catch (e) {
+      console.warn('[lesson-start] fallback review injection failed', e)
     }
     return {
       data: {
@@ -139,15 +149,26 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
   
   await preloadDbContent(supabase, (profile.current_level as CurrentLevel) ?? 'beginner', profile.target_region_slug ?? 'en_us_general', '20s')
   let pageData = buildLessonPageData(profile)
-  pageData = await enrichWithCorpusSelection(pageData)
-  pageData = await applyCorpusToListen(pageData)
-  pageData = await applyCorpusToAiConversation(pageData)
-  logCorpusSelection(pageData)
 
-  const reviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
-  if (reviewSources.length > 0) {
-    const injected = injectReviewBlocks(pageData.lesson, reviewSources)
-    pageData.lesson = { ...pageData.lesson, blocks: injected.blocks, overviewBlockCount: injected.blocks.length }
+  // Corpus enrichment — optional, must never block lesson start
+  try {
+    pageData = await enrichWithCorpusSelection(pageData)
+    pageData = await applyCorpusToListen(pageData)
+    pageData = await applyCorpusToAiConversation(pageData)
+    logCorpusSelection(pageData)
+  } catch (e) {
+    console.warn('[lesson-start] corpus enrichment failed, continuing with catalog content', e)
+  }
+
+  // Review injection — optional, must never block lesson start
+  try {
+    const reviewSources = await fetchReviewItemsWithContent(supabase, session.user.id, 5)
+    if (reviewSources.length > 0) {
+      const injected = injectReviewBlocks(pageData.lesson, reviewSources)
+      pageData.lesson = { ...pageData.lesson, blocks: injected.blocks, overviewBlockCount: injected.blocks.length }
+    }
+  } catch (e) {
+    console.warn('[lesson-start] review injection failed, continuing without review blocks', e)
   }
 
   return {
