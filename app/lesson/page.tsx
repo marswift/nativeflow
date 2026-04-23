@@ -631,6 +631,7 @@ export default function LessonPage() {
   )
   const [runtimeState, setRuntimeState] = useState<LessonRuntimeEngineState | null>(null)
   const originalLessonRef = useRef<LessonPageData['lesson'] | null>(null)
+  const isReviewActiveRef = useRef(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [lessonRunId, setLessonRunId] = useState<string | null>(null)
   const [totalFlowPoints, setTotalFlowPoints] = useState(0)
@@ -1358,6 +1359,7 @@ export default function LessonPage() {
     setStartBlockedReason(null)
     clearPersistedLessonState()
     // Restore original lesson if it was swapped for review
+    isReviewActiveRef.current = false
     if (originalLessonRef.current) {
       setPageData((prev) => prev ? { ...prev, lesson: originalLessonRef.current! } : prev)
       originalLessonRef.current = null
@@ -1436,12 +1438,15 @@ export default function LessonPage() {
 
       // Swap lesson content to review session so the renderer uses review blocks
       if (pageData?.lesson) originalLessonRef.current = pageData.lesson
+      isReviewActiveRef.current = true
       const reviewAsLesson = reviewSession as unknown as LessonPageData['lesson']
       setPageData((prev) => prev ? { ...prev, lesson: reviewAsLesson } : prev)
 
-      // Hydrate audio for review items (non-blocking — same pattern as normal lesson)
+      // Hydrate audio for review items (non-blocking — guarded against post-exit overwrite)
       hydrateLessonAudio(reviewAsLesson as Parameters<typeof hydrateLessonAudio>[0]).then((hydrated) => {
-        setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+        if (isReviewActiveRef.current) {
+          setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+        }
       }).catch(() => { /* non-blocking */ })
 
       startLessonRunEffects(userId, reviewAsLesson as NonNullable<LessonPageData['lesson']>)
@@ -1507,10 +1512,13 @@ export default function LessonPage() {
 
       if (pageData?.lesson) originalLessonRef.current = pageData.lesson
       const weeklyAsLesson = reviewSession as unknown as LessonPageData['lesson']
+      isReviewActiveRef.current = true
       setPageData((prev) => prev ? { ...prev, lesson: weeklyAsLesson } : prev)
 
       hydrateLessonAudio(weeklyAsLesson as Parameters<typeof hydrateLessonAudio>[0]).then((hydrated) => {
-        setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+        if (isReviewActiveRef.current) {
+          setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+        }
       }).catch(() => { /* non-blocking */ })
 
       startLessonRunEffects(userId, weeklyAsLesson as NonNullable<LessonPageData['lesson']>)
