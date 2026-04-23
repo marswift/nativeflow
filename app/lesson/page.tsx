@@ -1436,9 +1436,15 @@ export default function LessonPage() {
 
       // Swap lesson content to review session so the renderer uses review blocks
       if (pageData?.lesson) originalLessonRef.current = pageData.lesson
-      setPageData((prev) => prev ? { ...prev, lesson: reviewSession as unknown as LessonPageData['lesson'] } : prev)
+      const reviewAsLesson = reviewSession as unknown as LessonPageData['lesson']
+      setPageData((prev) => prev ? { ...prev, lesson: reviewAsLesson } : prev)
 
-      startLessonRunEffects(userId, reviewSession as unknown as NonNullable<LessonPageData['lesson']>)
+      // Hydrate audio for review items (non-blocking — same pattern as normal lesson)
+      hydrateLessonAudio(reviewAsLesson as Parameters<typeof hydrateLessonAudio>[0]).then((hydrated) => {
+        setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+      }).catch(() => { /* non-blocking */ })
+
+      startLessonRunEffects(userId, reviewAsLesson as NonNullable<LessonPageData['lesson']>)
       setRuntimeState(nextRuntimeState)
       lessonStartedAtRef.current = Date.now()
       studyMinutesRecordedRef.current = 0
@@ -1500,9 +1506,14 @@ export default function LessonPage() {
       })
 
       if (pageData?.lesson) originalLessonRef.current = pageData.lesson
-      setPageData((prev) => prev ? { ...prev, lesson: reviewSession as unknown as LessonPageData['lesson'] } : prev)
+      const weeklyAsLesson = reviewSession as unknown as LessonPageData['lesson']
+      setPageData((prev) => prev ? { ...prev, lesson: weeklyAsLesson } : prev)
 
-      startLessonRunEffects(userId, reviewSession as unknown as NonNullable<LessonPageData['lesson']>)
+      hydrateLessonAudio(weeklyAsLesson as Parameters<typeof hydrateLessonAudio>[0]).then((hydrated) => {
+        setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+      }).catch(() => { /* non-blocking */ })
+
+      startLessonRunEffects(userId, weeklyAsLesson as NonNullable<LessonPageData['lesson']>)
       setRuntimeState(nextRuntimeState)
       lessonStartedAtRef.current = Date.now()
       studyMinutesRecordedRef.current = 0
