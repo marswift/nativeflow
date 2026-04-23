@@ -7,7 +7,7 @@
  * Admin-only access via existing RBAC pattern.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
@@ -50,6 +50,14 @@ export default function AdminLessonContentPage() {
   const [scenes, setScenes] = useState<SceneSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [createKey, setCreateKey] = useState('')
+  const [createLabelJa, setCreateLabelJa] = useState('')
+  const [createLabelEn, setCreateLabelEn] = useState('')
+  const [createCategory, setCreateCategory] = useState('daily-flow')
+  const [creating, setCreating] = useState(false)
+  const [createFeedback, setCreateFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const keyInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient()
@@ -115,6 +123,42 @@ export default function AdminLessonContentPage() {
     if (authorized) loadScenes()
   }, [authorized, loadScenes])
 
+  async function handleCreate() {
+    const key = createKey.trim()
+    const ja = createLabelJa.trim()
+    const en = createLabelEn.trim()
+
+    if (!key || !ja || !en) {
+      setCreateFeedback({ type: 'error', message: 'All fields are required' })
+      return
+    }
+    if (!/^[a-z][a-z0-9_]*$/.test(key)) {
+      setCreateFeedback({ type: 'error', message: 'scene_key: lowercase letters, numbers, underscores only (start with letter)' })
+      return
+    }
+
+    setCreating(true)
+    setCreateFeedback(null)
+
+    try {
+      const res = await fetch('/api/admin/lesson-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scene_key: key, label_ja: ja, label_en: en, scene_category: createCategory }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setCreateFeedback({ type: 'error', message: data.error ?? 'Create failed' })
+      } else {
+        router.push(`/admin/lesson-content/scenes/${key}`)
+      }
+    } catch (err) {
+      setCreateFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Unknown error' })
+    } finally {
+      setCreating(false)
+    }
+  }
+
   if (!authChecked || !authorized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -139,13 +183,89 @@ export default function AdminLessonContentPage() {
             <h1 className="text-2xl font-black text-gray-900">Lesson Content</h1>
             <p className="text-sm text-gray-500">{scenes.length} scenes in database</p>
           </div>
-          <Link
-            href="/admin"
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
-          >
-            Admin Top
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { setShowCreate(!showCreate); setTimeout(() => keyInputRef.current?.focus(), 100) }}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
+            >
+              {showCreate ? 'Cancel' : 'Create Scene'}
+            </button>
+            <Link
+              href="/admin"
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Admin Top
+            </Link>
+          </div>
         </div>
+
+        {showCreate && (
+          <section className="rounded-xl border border-blue-200 bg-blue-50 p-5">
+            <h2 className="text-sm font-bold text-blue-800">New Scene</h2>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500">scene_key</label>
+                <input
+                  ref={keyInputRef}
+                  type="text"
+                  value={createKey}
+                  onChange={(e) => setCreateKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                  placeholder="new_scene"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500">Label (JA)</label>
+                <input
+                  type="text"
+                  value={createLabelJa}
+                  onChange={(e) => setCreateLabelJa(e.target.value)}
+                  placeholder="新しいシーン"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500">Label (EN)</label>
+                <input
+                  type="text"
+                  value={createLabelEn}
+                  onChange={(e) => setCreateLabelEn(e.target.value)}
+                  placeholder="New Scene"
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500">Category</label>
+                <select
+                  value={createCategory}
+                  onChange={(e) => setCreateCategory(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                >
+                  <option value="daily-flow">daily-flow</option>
+                  <option value="social">social</option>
+                  <option value="travel">travel</option>
+                  <option value="work">work</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={creating}
+                className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {creating ? 'Creating...' : 'Create'}
+              </button>
+              {createFeedback && (
+                <span className={`text-xs font-bold ${createFeedback.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+                  {createFeedback.message}
+                </span>
+              )}
+            </div>
+          </section>
+        )}
 
         <div>
           <input

@@ -3,6 +3,11 @@ import { verifyAdminRequest } from '@/lib/admin-api-guard'
 import { supabaseServer } from '@/lib/supabase-server'
 
 /**
+ * POST /api/admin/lesson-content
+ *
+ * Creates a new lesson_scenes row.
+ * Body: { scene_key, label_ja, label_en, scene_category?, is_active? }
+ *
  * PATCH /api/admin/lesson-content
  *
  * Updates a single lesson_phrases row.
@@ -13,6 +18,60 @@ import { supabaseServer } from '@/lib/supabase-server'
  * Updates a single lesson_conversation_enrichments row.
  * Body: { enrichmentId, fields: { ai_question_text?, ai_conversation_opener?, typing_variations?, flavor? } }
  */
+export async function POST(req: NextRequest) {
+  const adminUserId = await verifyAdminRequest(req)
+  if (!adminUserId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
+  }
+
+  let body: { scene_key?: string; label_ja?: string; label_en?: string; scene_category?: string; is_active?: boolean }
+  try {
+    body = await req.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  }
+
+  const sceneKey = body.scene_key?.trim()
+  const labelJa = body.label_ja?.trim()
+  const labelEn = body.label_en?.trim()
+
+  if (!sceneKey || !labelJa || !labelEn) {
+    return NextResponse.json({ error: 'scene_key, label_ja, and label_en are required' }, { status: 400 })
+  }
+
+  // Validate scene_key format: lowercase, underscores only
+  if (!/^[a-z][a-z0-9_]*$/.test(sceneKey)) {
+    return NextResponse.json({ error: 'scene_key must be lowercase letters, numbers, and underscores (start with letter)' }, { status: 400 })
+  }
+
+  // Check uniqueness
+  const { data: existing } = await supabaseServer
+    .from('lesson_scenes')
+    .select('scene_key')
+    .eq('scene_key', sceneKey)
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json({ error: `scene_key "${sceneKey}" already exists` }, { status: 409 })
+  }
+
+  const { error } = await supabaseServer
+    .from('lesson_scenes')
+    .insert({
+      scene_key: sceneKey,
+      label_ja: labelJa,
+      label_en: labelEn,
+      scene_category: body.scene_category?.trim() || 'daily-flow',
+      is_active: body.is_active !== false,
+    })
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, scene_key: sceneKey })
+}
+
 export async function PATCH(req: NextRequest) {
   const adminUserId = await verifyAdminRequest(req)
   if (!adminUserId) {
