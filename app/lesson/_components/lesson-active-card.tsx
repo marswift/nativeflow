@@ -1429,7 +1429,7 @@ function AiConversationPlayer({
               onClick={() => { window.dispatchEvent(new Event('next-step')) }}
               className={BTN_PRIMARY}
             >
-              {isLastBlock ? uiText.aiConvFinishLesson : `第${problemNumber + 1}問目に進む`}
+              {isLastBlock ? uiText.aiConvFinishLesson : '次へ'}
             </button>
           </div>
         </div>
