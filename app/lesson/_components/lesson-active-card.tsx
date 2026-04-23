@@ -908,6 +908,11 @@ function pickReaction(userReply: string, _aiMessage?: string): string {
   return ['Okay!', 'Sure!', 'Alright!'][Math.floor(Math.random() * 3)]
 }
 
+function isClosingAssistantMessage(message: string): boolean {
+  const normalized = message.toLowerCase().replace(/[.!?,]/g, ' ').replace(/\s+/g, ' ').trim()
+  return /\b(see you|next time|goodbye|bye|take care|keep it up)\b/.test(normalized)
+}
+
 function AiConversationPlayer({
   item,
   uiText,
@@ -1218,8 +1223,8 @@ function AiConversationPlayer({
           return
         }
 
-        // --- Final turn guard: skip AI reply, go to completion ---
-        if (turn >= MAX_TURNS - 1) {
+        // --- Final turn/closing guard: skip AI reply generation and go to completion ---
+        if (turn >= MAX_TURNS - 1 || isClosingAssistantMessage(currentAiMessage)) {
           nextAiReplyRef.current = null
           setTurnEvalDetail(null)
           setTurnHint(null)
@@ -1327,18 +1332,18 @@ function AiConversationPlayer({
     setHistory(newHistory)
 
     const next = turn + 1
-    if (next >= MAX_TURNS) {
+    if (next >= MAX_TURNS || isClosingAssistantMessage(currentAiMessage)) {
       // Conversation complete
       setAllDone(true)
       onInputChange('[conversation done]')
       trackEvent('conversation_complete', { turns: next })
     } else {
-      // Use the AI-generated reply for the next turn — prevent identical consecutive messages
+      // Use the AI-generated reply for the next turn
       let nextMsg = nextAiReplyRef.current ?? 'That sounds great! Tell me more.'
       nextAiReplyRef.current = null
-      if (nextMsg === currentAiMessage) {
-        const alternatives = ['That\'s interesting!', 'I see. Tell me more.', 'Nice! Go on.', 'Really? What happened next?']
-        nextMsg = alternatives[Math.floor(Math.random() * alternatives.length)]
+      // If API repeats the same reply, use a user-aware fallback instead of generic scripted text.
+      if (nextMsg === currentAiMessage && !isClosingAssistantMessage(nextMsg)) {
+        nextMsg = buildFallbackEvaluation(turn, transcript, currentAnswer).aiReply
       }
 
       setCurrentAiMessage(nextMsg)
@@ -1677,7 +1682,7 @@ function AiConversationPlayer({
               onClick={() => setShowReviewScreen(true)}
               className="flex-1 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
             >
-              {isLastBlock ? uiText.aiConvFinishLesson : uiText.aiConvNextProblem}
+              {isLastBlock ? uiText.aiConvFinishLesson : '次へ'}
             </button>
           </div>
 
@@ -2134,6 +2139,14 @@ function SoundGame({ uiText, onComplete }: { uiText: LessonCopy['activeCard']; o
       audio.onended = () => { setIsPlaying(false); cleanupSgAudio() }
       audio.onerror = () => { setIsPlaying(false); cleanupSgAudio() }
       audio.play().catch(() => { setIsPlaying(false); cleanupSgAudio() })
+    } else if (typeof window !== 'undefined' && window.speechSynthesis) {
+      // Fallback: use Web Speech API when TTS service is unavailable
+      const utterance = new SpeechSynthesisUtterance(currentQ.correct)
+      utterance.lang = 'en-US'
+      utterance.rate = 0.8
+      utterance.onend = () => setIsPlaying(false)
+      utterance.onerror = () => setIsPlaying(false)
+      window.speechSynthesis.speak(utterance)
     } else {
       setIsPlaying(false)
     }
@@ -3106,20 +3119,14 @@ function AiQuestionListenStage({
     }
     return generateAiQuestionChoices(questionText, uiText)
   })
-  const sentenceType = useMemo(() => classifySentence(questionText).sentenceType, [questionText])
-  const isDeclarative = sentenceType === 'declarative_action' || sentenceType === 'declarative_state'
   const [selected, setSelected] = useState<number | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasPlayed, setHasPlayed] = useState(false)
   const [showHint, setShowHint] = useState(false)
-  // Speaking phase (unlocked after correct intent — skipped for declaratives)
+  // Post-choice phase: advance-only after correct intent
   const [speakingUnlocked, setSpeakingUnlocked] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [spokenTranscript, setSpokenTranscript] = useState('')
   const [speakingDone, setSpeakingDone] = useState(false)
   const audioUrlRef = useRef<string | null>(null)
-  const recorderRef = useRef<MediaRecorder | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
 
   const playQuestion = useCallback(async () => {
     if (isPlaying || !questionText) return
@@ -3158,12 +3165,9 @@ function AiQuestionListenStage({
     setSelected(index)
     const choice = choices[index]
     if (choice.isCorrect) {
-      if (isDeclarative) {
-        // Declarative sentences: complete immediately, no speaking phase
-        onInputChange('[ai-question-done]')
-        return
-      }
       setSpeakingUnlocked(true)
+      setSpeakingDone(true)
+      onInputChange('[ai-question-done]')
     } else if (choice.label === uiText.aiQChoiceUnsure) {
       setShowHint(true)
       setTimeout(() => { setSelected(null); setShowHint(false) }, 3000)
@@ -3174,47 +3178,6 @@ function AiQuestionListenStage({
   }
 
   const isCorrect = selected !== null && choices[selected]?.isCorrect
-
-  // Recording handler
-  const handleStartRecording = async () => {
-    if (isRecording) return
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      const recorder = new MediaRecorder(stream)
-      recorderRef.current = recorder
-      const chunks: Blob[] = []
-      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
-      recorder.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
-        setIsRecording(false)
-        // Score the recording
-        try {
-          const formData = new FormData()
-          formData.append('file', blob, 'recording.webm')
-          formData.append('expectedText', questionText)
-          const authHdrs = await getAuthHeaders()
-          const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
-          if (res.ok) {
-            const data = await res.json()
-            setSpokenTranscript(data.transcript?.trim() || '')
-          }
-        } catch { /* non-blocking */ }
-        setSpeakingDone(true)
-        onInputChange('[ai-question-done]')
-      }
-      recorder.start()
-      setIsRecording(true)
-      setTimeout(() => { if (recorder.state === 'recording') recorder.stop() }, 6000)
-    } catch {
-      setIsRecording(false)
-    }
-  }
-
-  const handleStopRecording = () => {
-    if (recorderRef.current?.state === 'recording') recorderRef.current.stop()
-  }
 
   return (
     <div className="mt-4">
@@ -3288,55 +3251,16 @@ function AiQuestionListenStage({
         </>
       )}
 
-      {/* Phase 2: Speaking response (unlocked after correct intent) */}
-      {speakingUnlocked && !speakingDone && (
-        <div className="mt-5 text-center">
-          <p className="text-sm font-bold text-[#22c55e]">{uiText.aiQCorrect}</p>
-          <p className="mt-3 text-sm text-[#5a5a7a]">{uiText.aiQSpeakPrompt}</p>
-          <div className="mt-4 flex justify-center gap-3">
-            {!isRecording ? (
-              <button type="button" onClick={handleStartRecording} className={BTN_PRIMARY}>
-                {ICON_SPEAK}{uiText.aiQRecordButton}
-              </button>
-            ) : (
-              <button type="button" onClick={handleStopRecording} className={BTN_STOP}>
-                {uiText.aiQStopButton}
-              </button>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={playQuestion}
-            disabled={isPlaying}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 disabled:opacity-50"
-          >
-            {uiText.aiQReplayButton}
-          </button>
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => { setSpeakingDone(true); onInputChange('[ai-question-done]') }}
-              className="cursor-pointer text-xs font-medium text-[#9ca3af] underline underline-offset-2 transition hover:text-[#5a5a7a]"
-            >
-              スキップして次へ
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Phase 3: Done — show feedback + next */}
       {speakingDone && (
         <div className="mt-5 text-center">
-          <p className="text-sm font-bold text-[#22c55e]">{uiText.aiQSpokenFeedback}</p>
-          {spokenTranscript && (
-            <p className="mt-2 rounded-xl bg-[#FAF7F2] px-4 py-2 text-sm text-[#5a5a7a]">{spokenTranscript}</p>
-          )}
+          <p className="text-sm font-bold text-[#22c55e]">{uiText.aiQCorrect}</p>
           <button
             type="button"
             onClick={() => { window.dispatchEvent(new Event('next-step')) }}
             className="mt-4 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600"
           >
-            {ctaLabel ?? uiText.scaffoldNextButton}
+            次へ
           </button>
         </div>
       )}
