@@ -1499,7 +1499,7 @@ function AiConversationPlayer({
               {/* Center: turn state only */}
               <div className="flex flex-col items-center">
                 {aiSpeaking ? (
-                  <p className="text-sm font-semibold text-blue-600">{uiText.aiConvSpeaking}</p>
+                  <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600"><img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiConvSpeaking}</p>
                 ) : aiThinking ? (
                   <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvThinking}</p>
                 ) : (
@@ -2189,7 +2189,7 @@ function SoundGame({ uiText, onComplete }: { uiText: LessonCopy['activeCard']; o
 
       {/* Status indicator */}
       {isPlaying && (
-        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">再生中…</p>
+        <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#7b7b94]"><img src="/images/lp/icons/listen.webp" alt="" className="h-3.5 w-3.5" aria-hidden="true" />再生中…</p>
       )}
 
       <div className="mt-3 flex justify-center">
@@ -3221,7 +3221,7 @@ function AiQuestionListenStage({
       {/* Audio control */}
       <div className="flex flex-col items-center gap-3">
         {isPlaying && (
-          <p className="text-sm font-semibold text-blue-600">{uiText.aiConvSpeaking}</p>
+          <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600"><img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiConvSpeaking}</p>
         )}
         {!isPlaying && !hasPlayed && (
           <button type="button" onClick={playQuestion} className={BTN_PRIMARY}>
