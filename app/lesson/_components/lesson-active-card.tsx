@@ -3312,6 +3312,15 @@ function AiQuestionListenStage({
           >
             <img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiQReplayButton}
           </button>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => { setSpeakingDone(true); onInputChange('[ai-question-done]') }}
+              className="cursor-pointer text-xs font-medium text-[#9ca3af] underline underline-offset-2 transition hover:text-[#5a5a7a]"
+            >
+              スキップして次へ
+            </button>
+          </div>
         </div>
       )}
 
