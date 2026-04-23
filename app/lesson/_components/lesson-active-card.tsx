@@ -11,7 +11,8 @@ import type { SemanticChunk } from '../../../lib/lesson-blueprint-adapter'
 import type { LessonProgressState } from '../../../lib/lesson-progress'
 import type { LessonStageId } from '../../../lib/lesson-runtime'
 import type { CurrentLevel } from '../../../lib/constants'
-import { buildFallbackEvaluation, incrementAiCallCount } from '../../../lib/ai-conversation-fallback'
+import { buildFallbackEvaluation, buildEngineFallbackReply, incrementAiCallCount } from '../../../lib/ai-conversation-fallback'
+import { createInitialState, classifyUserInput, selectNextIntent, advanceState, serializeState, type ConversationState } from '../../../lib/ai-conversation-state'
 import { getRegionContext } from '../../../lib/daily-timeline'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
 import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
@@ -900,10 +901,10 @@ function pickReaction(userReply: string, _aiMessage?: string): string {
     if (/usually|always|every/i.test(replyLower)) return 'Oh, that sounds like a good routine!'
     if (/like|love|enjoy/i.test(replyLower)) return "That's great to hear!"
     if (/think|feel|believe/i.test(replyLower)) return 'I see, interesting!'
-    return ['Nice!', 'That sounds good!', 'Great answer!'][Math.floor(Math.random() * 3)]
+    return ['Nice.', 'I see.', 'Got it.'][Math.floor(Math.random() * 3)]
   }
   if (words.length >= 3) {
-    return ['Got it!', 'I see!', 'Cool!'][Math.floor(Math.random() * 3)]
+    return ['Got it.', 'I see.', 'Right.'][Math.floor(Math.random() * 3)]
   }
   return ['Okay!', 'Sure!', 'Alright!'][Math.floor(Math.random() * 3)]
 }
@@ -1004,6 +1005,9 @@ function AiConversationPlayer({
   const chunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const nextAiReplyRef = useRef<string | null>(null)
+
+  // ── Engine state — single source of truth for conversation progression ──
+  const engineStateRef = useRef<ConversationState>(createInitialState(currentAnswer))
 
   // Update guide character message based on current sub-phase
   useEffect(() => {
@@ -1236,9 +1240,17 @@ function AiConversationPlayer({
         // --- Show thinking state ---
         setAiThinking(true)
 
-        // --- Prefetch likely replies for TTS speed ---
+        // --- Engine: classify input and select next intent ---
+        const userInputType = classifyUserInput(recognized)
+        const intent = selectNextIntent(engineStateRef.current, userInputType)
+        const engineSnapshot = serializeState(engineStateRef.current)
+
+        // --- Prefetch engine-driven fallback for TTS speed ---
+        const engineFallbackReply = buildEngineFallbackReply(intent, recognized, turn)
+        if (engineFallbackReply) ensureAiAudioUrl(engineFallbackReply)
+
+        // Legacy fallback (kept as secondary backup)
         const fallback = buildFallbackEvaluation(turn, recognized, currentAnswer)
-        if (fallback.aiReply) ensureAiAudioUrl(fallback.aiReply)
 
         // --- AI API ---
         const apiHistory = history.map((h) => ({ ai: h.aiMessage, user: h.userReply }))
@@ -1260,6 +1272,8 @@ function AiConversationPlayer({
               flavorContext: flavorContext ?? undefined,
               isClosingTurn: turn === 3,
               rank: level === 'beginner' ? 15 : level === 'intermediate' ? 55 : 85,
+              nextInstruction: intent.instruction,
+              engineState: engineSnapshot,
             }),
             signal: controller.signal,
           })
@@ -1290,11 +1304,15 @@ function AiConversationPlayer({
 
         // --- Fallback if API didn't produce a reply ---
         if (!replied) {
-          nextAiReplyRef.current = fallback.aiReply
+          // Prefer engine-driven fallback; legacy as secondary backup
+          nextAiReplyRef.current = engineFallbackReply || fallback.aiReply
           setTurnEvalDetail(fallback.evaluationDetail)
           setTurnHint(null)
           setTurnNextPrompt(null)
         }
+
+        // --- Advance engine state ---
+        engineStateRef.current = advanceState(engineStateRef.current, userInputType, intent)
 
         const t6 = performance.now() // [7] UI message committed
         console.log(`[AI_LATENCY] turn=${turn} segment=ui_commit duration=${Math.round(t6 - t5)}ms`)
@@ -1339,11 +1357,18 @@ function AiConversationPlayer({
       trackEvent('conversation_complete', { turns: next })
     } else {
       // Use the AI-generated reply for the next turn
-      let nextMsg = nextAiReplyRef.current ?? 'That sounds great! Tell me more.'
+      let nextMsg = nextAiReplyRef.current ?? (() => {
+        // Engine-driven fallback for missing reply
+        const inp = classifyUserInput(transcript)
+        const intent = selectNextIntent(engineStateRef.current, inp)
+        return buildEngineFallbackReply(intent, transcript, turn)
+      })()
       nextAiReplyRef.current = null
-      // If API repeats the same reply, use a user-aware fallback instead of generic scripted text.
+      // If API repeats the same reply, regenerate via engine
       if (nextMsg === currentAiMessage && !isClosingAssistantMessage(nextMsg)) {
-        nextMsg = buildFallbackEvaluation(turn, transcript, currentAnswer).aiReply
+        const inp = classifyUserInput(transcript)
+        const intent = selectNextIntent(engineStateRef.current, inp)
+        nextMsg = buildEngineFallbackReply(intent, transcript, turn)
       }
 
       setCurrentAiMessage(nextMsg)
