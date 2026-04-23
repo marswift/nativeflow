@@ -675,7 +675,7 @@ export const LESSON_COPY_JA = {
     listenAction: 'イメージと音をつなげる',
     repeatAction: 'マイクで話す',
     aiQuestionAction: '質問を聞いて選ぶ',
-    aiQPlayButton: '質問を聞く',
+    aiQPlayButton: '再生する',
     aiQReplayButton: 'もう一度聞く',
     aiQInstruction: '何について聞かれていますか？',
     aiQChoiceAction: '行動・やること について聞いている',
