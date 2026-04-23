@@ -383,7 +383,7 @@ export default function DashboardPage() {
                     <span aria-hidden="true">💎</span>
                     <span className="font-bold text-[#1a1a2e]">{profile.total_diamonds ?? 0}</span>
                   </div>
-                  <p className="text-[10px] text-[#9ca3af]">学習で集まるごほうびポイント</p>
+                  <p className="text-[10px] text-[#9ca3af]">学習してダイヤを貯めよう</p>
                 </div>
               </div>
 
