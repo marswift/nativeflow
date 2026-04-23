@@ -36,6 +36,7 @@ type PhraseRow = {
   native_hint: string
   mix_hint: string
   ai_question_text: string
+  is_active: boolean
 }
 
 type EnrichmentRow = {
@@ -89,9 +90,8 @@ export default function AdminSceneDetailPage() {
         .maybeSingle(),
       supabase
         .from('lesson_phrases')
-        .select('id, scene_key, level_band, language_code, conversation_answer, typing_answer, native_hint, mix_hint, ai_question_text')
+        .select('id, scene_key, level_band, language_code, conversation_answer, typing_answer, native_hint, mix_hint, ai_question_text, is_active')
         .eq('scene_key', sceneKey)
-        .eq('is_active', true)
         .order('level_band', { ascending: true }),
       supabase
         .from('lesson_conversation_enrichments')
@@ -208,6 +208,7 @@ export default function AdminSceneDetailPage() {
                   key={phrase.id}
                   phrase={phrase}
                   level={level}
+                  onStatusChanged={loadDetail}
                 />
               )
             })}
@@ -235,7 +236,22 @@ export default function AdminSceneDetailPage() {
 
 // ── Phrase Editor Component ──
 
-function PhraseEditor({ phrase, level }: { phrase: PhraseRow; level: string }) {
+function PhraseEditor({ phrase, level, onStatusChanged }: { phrase: PhraseRow; level: string; onStatusChanged: () => void }) {
+  const [toggling, setToggling] = useState(false)
+
+  async function handleToggleActive() {
+    setToggling(true)
+    try {
+      const res = await fetch('/api/admin/lesson-content', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phraseId: phrase.id, fields: { is_active: !phrase.is_active } }),
+      })
+      if (res.ok) onStatusChanged()
+    } catch { /* ignore */ }
+    finally { setToggling(false) }
+  }
+
   const [fields, setFields] = useState<Record<PhraseFieldKey, string>>({
     conversation_answer: phrase.conversation_answer,
     typing_answer: phrase.typing_answer,
@@ -277,7 +293,7 @@ function PhraseEditor({ phrase, level }: { phrase: PhraseRow; level: string }) {
         setFeedback({ type: 'success', message: 'Saved' })
         // Update the phrase reference so isDirty resets
         for (const k of PHRASE_FIELDS) {
-          (phrase as Record<string, string>)[k] = fields[k]
+          (phrase as unknown as Record<string, string>)[k] = fields[k]
         }
       }
     } catch (e) {
@@ -288,7 +304,7 @@ function PhraseEditor({ phrase, level }: { phrase: PhraseRow; level: string }) {
   }, [fields, phrase, isDirty])
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+    <div className={`rounded-lg border p-4 ${phrase.is_active ? 'border-gray-100 bg-gray-50' : 'border-red-100 bg-red-50/30 opacity-60'}`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
@@ -297,9 +313,22 @@ function PhraseEditor({ phrase, level }: { phrase: PhraseRow; level: string }) {
             : 'bg-purple-100 text-purple-700'
           }`}>{level}</span>
           <span className="text-xs text-gray-400">{phrase.language_code}</span>
+          {!phrase.is_active && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-600">無効</span>}
           {isDirty && <span className="text-xs font-bold text-amber-600">unsaved</span>}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleToggleActive}
+            disabled={toggling}
+            className={`cursor-pointer rounded-lg px-3 py-1 text-xs font-medium transition ${
+              phrase.is_active
+                ? 'border border-red-200 text-red-600 hover:bg-red-50'
+                : 'border border-green-200 text-green-600 hover:bg-green-50'
+            } disabled:opacity-50`}
+          >
+            {toggling ? '...' : phrase.is_active ? '無効化' : '有効化'}
+          </button>
           {feedback && (
             <span className={`text-xs font-bold ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
               {feedback.message}

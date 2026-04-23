@@ -154,7 +154,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
   }
 
-  let body: { phraseId?: string; fields?: Record<string, string> }
+  let body: { phraseId?: string; fields?: Record<string, unknown> }
   try {
     body = await req.json()
   } catch {
@@ -167,12 +167,15 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Whitelist editable columns
-  const ALLOWED = new Set(['conversation_answer', 'typing_answer', 'native_hint', 'mix_hint', 'ai_question_text'])
-  const update: Record<string, string> = {}
+  const ALLOWED_STRING = new Set(['conversation_answer', 'typing_answer', 'native_hint', 'mix_hint', 'ai_question_text'])
+  const update: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(fields)) {
-    if (ALLOWED.has(key) && typeof value === 'string') {
+    if (ALLOWED_STRING.has(key) && typeof value === 'string') {
       update[key] = value
     }
+  }
+  if ('is_active' in fields && typeof fields.is_active === 'boolean') {
+    update.is_active = fields.is_active
   }
 
   if (Object.keys(update).length === 0) {
@@ -180,12 +183,12 @@ export async function PATCH(req: NextRequest) {
   }
 
   // Validate: conversation_answer must not be blank
-  if ('conversation_answer' in update && !update.conversation_answer.trim()) {
+  if ('conversation_answer' in update && typeof update.conversation_answer === 'string' && !update.conversation_answer.trim()) {
     return NextResponse.json({ error: 'conversation_answer cannot be blank' }, { status: 400 })
   }
 
   // Validate: ai_question_text should not be blanked if phrase already has one
-  if ('ai_question_text' in update && !update.ai_question_text.trim()) {
+  if ('ai_question_text' in update && typeof update.ai_question_text === 'string' && !update.ai_question_text.trim()) {
     const { data: existing } = await supabaseServer
       .from('lesson_phrases')
       .select('ai_question_text')
