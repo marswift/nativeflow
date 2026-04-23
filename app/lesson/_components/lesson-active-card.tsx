@@ -2424,8 +2424,8 @@ function QuickResponseGame({
 
       {/* Status indicator */}
       {(isPlaying || isRecording || isJudging) && (
-        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">
-          {isPlaying ? '🔊 再生中…' : isRecording ? '🎙️ 録音中…' : '⏳ 判定中…'}
+        <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#7b7b94]">
+          {isPlaying ? <><img src="/images/lp/icons/listen.webp" alt="" className="h-3.5 w-3.5" aria-hidden="true" />再生中…</> : isRecording ? '録音中…' : '判定中…'}
         </p>
       )}
 
@@ -2591,7 +2591,7 @@ function RecallChallenge({
       {/* Status indicator */}
       {(isRecording || isJudging) && (
         <p className="mt-2 text-xs font-semibold text-[#7b7b94]">
-          {isRecording ? '🎙️ 録音中…' : '⏳ 判定中…'}
+          {isRecording ? '録音中…' : '判定中…'}
         </p>
       )}
 
