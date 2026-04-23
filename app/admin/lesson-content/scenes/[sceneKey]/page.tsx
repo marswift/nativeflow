@@ -320,14 +320,24 @@ function EnrichmentEditor({ enrichment }: { enrichment: EnrichmentRow }) {
   const [aiConversationOpener, setAiConversationOpener] = useState(e.ai_conversation_opener)
   const [typingVariationsText, setTypingVariationsText] = useState((e.typing_variations ?? []).join('\n'))
   const [flavorText, setFlavorText] = useState(e.flavor ? JSON.stringify(e.flavor, null, 2) : '')
+  const defaultChoices = e.ai_question_choices ?? [
+    { label: '', isCorrect: true },
+    { label: '', isCorrect: false },
+    { label: '', isCorrect: false },
+  ]
+  const [choices, setChoices] = useState(defaultChoices.map((c) => ({ ...c })))
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const choicesSnapshot = JSON.stringify(e.ai_question_choices ?? null)
+  const choicesDirty = JSON.stringify(choices.map((c) => ({ label: c.label, isCorrect: c.isCorrect }))) !== choicesSnapshot
 
   const isDirty =
     aiQuestionText !== e.ai_question_text ||
     aiConversationOpener !== e.ai_conversation_opener ||
     typingVariationsText !== (e.typing_variations ?? []).join('\n') ||
-    flavorText !== (e.flavor ? JSON.stringify(e.flavor, null, 2) : '')
+    flavorText !== (e.flavor ? JSON.stringify(e.flavor, null, 2) : '') ||
+    choicesDirty
 
   const handleSave = useCallback(async () => {
     if (!isDirty) return
@@ -355,11 +365,32 @@ function EnrichmentEditor({ enrichment }: { enrichment: EnrichmentRow }) {
       }
     }
 
+    // Client-side choices validation
+    if (choicesDirty) {
+      const labels = choices.map((c) => c.label.trim())
+      if (labels.some((l) => !l)) {
+        setFeedback({ type: 'error', message: 'All choice labels must be non-empty' })
+        setSaving(false)
+        return
+      }
+      if (new Set(labels).size !== labels.length) {
+        setFeedback({ type: 'error', message: 'Choice labels must not be duplicated' })
+        setSaving(false)
+        return
+      }
+      if (choices.filter((c) => c.isCorrect).length !== 1) {
+        setFeedback({ type: 'error', message: 'Exactly one choice must be correct' })
+        setSaving(false)
+        return
+      }
+    }
+
     const fields: Record<string, unknown> = {}
     if (aiQuestionText !== e.ai_question_text) fields.ai_question_text = aiQuestionText
     if (aiConversationOpener !== e.ai_conversation_opener) fields.ai_conversation_opener = aiConversationOpener
     if (typingVariationsText !== (e.typing_variations ?? []).join('\n')) fields.typing_variations = typingVariations
     if (flavorText !== (e.flavor ? JSON.stringify(e.flavor, null, 2) : '')) fields.flavor = flavor
+    if (choicesDirty) fields.ai_question_choices = choices.map((c) => ({ label: c.label.trim(), isCorrect: c.isCorrect }))
 
     try {
       const res = await fetch('/api/admin/lesson-content', {
@@ -377,13 +408,16 @@ function EnrichmentEditor({ enrichment }: { enrichment: EnrichmentRow }) {
         e.ai_conversation_opener = aiConversationOpener
         e.typing_variations = typingVariations
         e.flavor = flavor as Record<string, unknown> | null
+        if (choicesDirty) {
+          e.ai_question_choices = choices.map((c) => ({ label: c.label.trim(), isCorrect: c.isCorrect }))
+        }
       }
     } catch (err) {
       setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Unknown error' })
     } finally {
       setSaving(false)
     }
-  }, [isDirty, aiQuestionText, aiConversationOpener, typingVariationsText, flavorText, e])
+  }, [isDirty, aiQuestionText, aiConversationOpener, typingVariationsText, flavorText, choices, choicesDirty, e])
 
   return (
     <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
@@ -449,20 +483,35 @@ function EnrichmentEditor({ enrichment }: { enrichment: EnrichmentRow }) {
           />
         </div>
 
-        {/* AI Question Choices — read-only in this step */}
-        {e.ai_question_choices && (
-          <div>
-            <span className="text-xs font-bold text-gray-500">ai_question_choices (read-only)</span>
-            <div className="mt-1 space-y-1">
-              {e.ai_question_choices.map((c, i) => (
-                <div key={i} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${c.isCorrect ? 'bg-green-50 text-green-800 font-bold' : 'bg-white text-gray-600'}`}>
-                  <span>{c.isCorrect ? '✓' : '—'}</span>
-                  <span>{c.label}</span>
-                </div>
-              ))}
-            </div>
+        {/* AI Question Choices — structured editor */}
+        <div>
+          <span className="text-xs font-bold text-gray-500">ai_question_choices</span>
+          <div className="mt-1 space-y-2">
+            {choices.map((c, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setChoices((prev) => prev.map((ch, j) => ({ ...ch, isCorrect: j === i })))}
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition ${
+                    c.isCorrect
+                      ? 'border-green-400 bg-green-100 text-green-700'
+                      : 'border-gray-300 bg-white text-gray-400 hover:border-green-300 hover:text-green-600'
+                  }`}
+                  title={c.isCorrect ? 'Correct answer' : 'Mark as correct'}
+                >
+                  {c.isCorrect ? '✓' : '—'}
+                </button>
+                <input
+                  type="text"
+                  value={c.label}
+                  onChange={(ev) => setChoices((prev) => prev.map((ch, j) => j === i ? { ...ch, label: ev.target.value } : ch))}
+                  placeholder={`Choice ${i + 1}`}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+                />
+              </div>
+            ))}
           </div>
-        )}
+        </div>
       </div>
     </div>
   )

@@ -110,6 +110,32 @@ export async function PUT(req: NextRequest) {
       update.flavor = fields.flavor
     }
   }
+  if ('ai_question_choices' in fields) {
+    const choices = fields.ai_question_choices
+    if (choices === null) {
+      update.ai_question_choices = null
+    } else if (Array.isArray(choices)) {
+      // Validate structure: exactly 3 choices, exactly 1 correct, non-empty labels, no duplicates
+      if (choices.length !== 3) {
+        return NextResponse.json({ error: 'ai_question_choices must have exactly 3 entries' }, { status: 400 })
+      }
+      const correctCount = choices.filter((c: { isCorrect?: boolean }) => c.isCorrect === true).length
+      if (correctCount !== 1) {
+        return NextResponse.json({ error: 'Exactly one choice must be marked correct' }, { status: 400 })
+      }
+      const labels = choices.map((c: { label?: string }) => (typeof c.label === 'string' ? c.label.trim() : ''))
+      if (labels.some((l: string) => !l)) {
+        return NextResponse.json({ error: 'All choice labels must be non-empty' }, { status: 400 })
+      }
+      if (new Set(labels).size !== labels.length) {
+        return NextResponse.json({ error: 'Choice labels must not be duplicated' }, { status: 400 })
+      }
+      update.ai_question_choices = choices.map((c: { label: string; isCorrect: boolean }) => ({
+        label: c.label.trim(),
+        isCorrect: c.isCorrect === true,
+      }))
+    }
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
