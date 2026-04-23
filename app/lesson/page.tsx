@@ -630,6 +630,7 @@ export default function LessonPage() {
     () => getInitialRunState().correctTypingCount
   )
   const [runtimeState, setRuntimeState] = useState<LessonRuntimeEngineState | null>(null)
+  const originalLessonRef = useRef<LessonPageData['lesson'] | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [lessonRunId, setLessonRunId] = useState<string | null>(null)
   const [totalFlowPoints, setTotalFlowPoints] = useState(0)
@@ -1356,6 +1357,11 @@ export default function LessonPage() {
     setStartErrorMessage(null)
     setStartBlockedReason(null)
     clearPersistedLessonState()
+    // Restore original lesson if it was swapped for review
+    if (originalLessonRef.current) {
+      setPageData((prev) => prev ? { ...prev, lesson: originalLessonRef.current! } : prev)
+      originalLessonRef.current = null
+    }
   
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href)
@@ -1415,7 +1421,10 @@ export default function LessonPage() {
         userId,
       })
 
-      // Cast to match startLessonRunEffects signature; startLessonRun only uses LessonSession fields
+      // Swap lesson content to review session so the renderer uses review blocks
+      if (pageData?.lesson) originalLessonRef.current = pageData.lesson
+      setPageData((prev) => prev ? { ...prev, lesson: reviewSession as unknown as LessonPageData['lesson'] } : prev)
+
       startLessonRunEffects(userId, reviewSession as unknown as NonNullable<LessonPageData['lesson']>)
       setRuntimeState(nextRuntimeState)
       lessonStartedAtRef.current = Date.now()
@@ -1476,6 +1485,9 @@ export default function LessonPage() {
         session: reviewSession,
         userId,
       })
+
+      if (pageData?.lesson) originalLessonRef.current = pageData.lesson
+      setPageData((prev) => prev ? { ...prev, lesson: reviewSession as unknown as LessonPageData['lesson'] } : prev)
 
       startLessonRunEffects(userId, reviewSession as unknown as NonNullable<LessonPageData['lesson']>)
       setRuntimeState(nextRuntimeState)
