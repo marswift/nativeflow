@@ -142,7 +142,7 @@ function RationaleHelpButton({ uiText }: { uiText: LessonCopy['activeCard'] }) {
 
 // ── Button class constants (design system) ──
 const BTN_PRIMARY = 'inline-flex items-center justify-center gap-2 rounded-xl bg-blue-500 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600'
-const ICON_LISTEN = <img src="/images/lp/icons/listen.webp" alt="" className="h-5 w-5" aria-hidden="true" />
+// ICON_LISTEN removed — playback buttons use text-only labels
 const ICON_SPEAK = <img src="/images/lp/icons/speak.webp" alt="" className="h-5 w-5" aria-hidden="true" />
 const BTN_STOP = 'rounded-xl bg-gray-400 px-6 py-3 text-sm font-bold text-white transition hover:bg-gray-500'
 const BTN_DISABLED = 'rounded-xl bg-gray-300 px-6 py-3 text-sm font-bold text-white cursor-not-allowed'
@@ -2189,7 +2189,7 @@ function SoundGame({ uiText, onComplete }: { uiText: LessonCopy['activeCard']; o
 
       {/* Status indicator */}
       {isPlaying && (
-        <p className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#7b7b94]"><LpIcon emoji="🎧" size={12} /> 再生中…</p>
+        <p className="mt-2 text-xs font-semibold text-[#7b7b94]">再生中…</p>
       )}
 
       <div className="mt-3 flex justify-center">
@@ -3225,7 +3225,7 @@ function AiQuestionListenStage({
         )}
         {!isPlaying && !hasPlayed && (
           <button type="button" onClick={playQuestion} className={BTN_PRIMARY}>
-            {ICON_LISTEN}{uiText.aiQPlayButton}
+            {uiText.aiQPlayButton}
           </button>
         )}
         {!isPlaying && hasPlayed && !speakingUnlocked && (
@@ -3234,7 +3234,7 @@ function AiQuestionListenStage({
             onClick={playQuestion}
             className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100"
           >
-            <img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiQReplayButton}
+            {uiText.aiQReplayButton}
           </button>
         )}
       </div>
@@ -3310,7 +3310,7 @@ function AiQuestionListenStage({
             disabled={isPlaying}
             className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition hover:bg-blue-100 disabled:opacity-50"
           >
-            <img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiQReplayButton}
+            {uiText.aiQReplayButton}
           </button>
           <div className="mt-4">
             <button
@@ -3685,7 +3685,7 @@ function ScaffoldAutoPlay({
                 onClick={handleManualPlay}
                 className={BTN_PRIMARY}
               >
-                {ICON_LISTEN}{uiText.scaffoldPlayButton}
+                {uiText.scaffoldPlayButton}
               </button>
             ) : currentStep === 2 ? (
               <button
