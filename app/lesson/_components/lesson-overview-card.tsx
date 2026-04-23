@@ -472,14 +472,13 @@ export function LessonOverviewCard({
               </span>
             ))}
           </div>
+          {targetRegionSlug && (
+            <p className="mt-1.5 text-[11px] text-[#9ca3af]">
+              🌏 このレッスンは地域の自然な表現・生活会話を反映しています
+            </p>
+          )}
         </div>
       </div>
-
-      {targetRegionSlug && (
-        <p className="mt-2 text-[11px] text-[#9ca3af]">
-          🌏 このレッスンは地域の自然な表現・生活会話を反映しています
-        </p>
-      )}
 
       {/* ── MAIN BODY: Two-column layout ───────────────────── */}
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
