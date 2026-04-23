@@ -496,6 +496,16 @@ export function LessonOverviewCard({
                 {copy.dailyFlow.pickProgress}
               </p>
 
+              {(() => {
+                const nonReview = lesson.blocks.filter((b: { type: string }) => b.type !== 'review')
+                const totalItems = nonReview.reduce((sum: number, b: { items: unknown[] }) => sum + b.items.length, 0)
+                return (
+                  <p className="mb-2 text-[11px] font-bold text-[#5a5a7a]">
+                    全{totalItems}問・{nonReview.length}シーン
+                  </p>
+                )
+              })()}
+
               <div className="flex flex-col items-stretch">
                 {(() => {
                   const CARD_COLORS = [
