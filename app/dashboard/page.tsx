@@ -9,11 +9,32 @@ import type { DailyStatRow } from '../../lib/lesson-run-types'
 import type { UserProfileRow } from '../../lib/types'
 import { getFlowPointsToNextRank } from '../../lib/progression-utils'
 import DashboardCard from './_components/dashboard-card'
+import { getRegionByCode } from '../../lib/constants'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
 import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
+
+/** Resolve a region slug to a human-readable label. Falls back to formatted slug. */
+const REGION_ALIAS_JA: Record<string, string> = {
+  en_us_general: 'アメリカ英語（標準）',
+  en_us_ny: 'アメリカ英語（ニューヨーク）',
+  en_us_new_york: 'アメリカ英語（ニューヨーク）',
+  en_us_los_angeles: 'アメリカ英語（ロサンゼルス）',
+  en_gb_london: 'イギリス英語（ロンドン）',
+  en_gb_general: 'イギリス英語（標準）',
+  en_au_sydney: 'オーストラリア英語（シドニー）',
+  en_au_general: 'オーストラリア英語（標準）',
+  ko_kr_seoul: '韓国語（ソウル）',
+}
+
+function getRegionDisplayLabel(slug: string): string {
+  if (REGION_ALIAS_JA[slug]) return REGION_ALIAS_JA[slug]
+  const entry = getRegionByCode(slug)
+  if (entry) return entry.displayLabel
+  return slug.replace(/_/g, ' ')
+}
 
 type DashboardProfileRow = UserProfileRow & {
   current_streak_days?: number | null
@@ -376,8 +397,7 @@ export default function DashboardPage() {
 
               {learningProfile?.target_region_slug && (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#E8E4DF] bg-white/60 px-3 py-1.5">
-                  <span className="text-xs font-semibold text-[#5a5a7a]">🌏 {learningProfile.target_region_slug.replace(/_/g, ' ')}</span>
-                  <span className="text-[10px] text-[#9ca3af]">地域表現・生活会話を反映中</span>
+                  <span className="text-xs font-semibold text-[#5a5a7a]">🌏 {getRegionDisplayLabel(learningProfile.target_region_slug)}</span>
                 </div>
               )}
 
