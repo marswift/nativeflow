@@ -195,7 +195,7 @@ export default function AdminSceneDetailPage() {
           </div>
         </section>
 
-        {/* Enrichments */}
+        {/* Enrichments — Editable */}
         <section className="rounded-xl border border-gray-200 bg-white p-5">
           <h2 className="text-lg font-bold text-gray-800">Enrichments ({enrichments.length})</h2>
           {enrichments.length === 0 ? (
@@ -203,46 +203,7 @@ export default function AdminSceneDetailPage() {
           ) : (
             <div className="mt-4 space-y-4">
               {enrichments.map((e) => (
-                <div key={e.id} className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{e.region_slug}</span>
-                    <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-bold text-gray-600">{e.age_group}</span>
-                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{e.level_band}</span>
-                  </div>
-                  <div className="mt-3 grid gap-2 text-sm">
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">ai_question_text</span>
-                      <p className="text-gray-800">{e.ai_question_text}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">ai_conversation_opener</span>
-                      <p className="text-gray-800">{e.ai_conversation_opener}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-gray-500">typing_variations</span>
-                      <p className="text-gray-800">{(e.typing_variations ?? []).join(' / ')}</p>
-                    </div>
-                    {e.ai_question_choices && (
-                      <div>
-                        <span className="text-xs font-bold text-gray-500">ai_question_choices</span>
-                        <div className="mt-1 space-y-1">
-                          {e.ai_question_choices.map((c, i) => (
-                            <div key={i} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${c.isCorrect ? 'bg-green-50 text-green-800 font-bold' : 'bg-white text-gray-600'}`}>
-                              <span>{c.isCorrect ? '✓' : '—'}</span>
-                              <span>{c.label}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {e.flavor && (
-                      <div>
-                        <span className="text-xs font-bold text-gray-500">flavor</span>
-                        <pre className="mt-1 max-h-24 overflow-auto rounded bg-white p-2 text-xs text-gray-600">{JSON.stringify(e.flavor, null, 2)}</pre>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <EnrichmentEditor key={e.id} enrichment={e} />
               ))}
             </div>
           )}
@@ -346,6 +307,162 @@ function PhraseEditor({ phrase, level }: { phrase: PhraseRow; level: string }) {
             />
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Enrichment Editor Component ──
+
+function EnrichmentEditor({ enrichment }: { enrichment: EnrichmentRow }) {
+  const e = enrichment
+  const [aiQuestionText, setAiQuestionText] = useState(e.ai_question_text)
+  const [aiConversationOpener, setAiConversationOpener] = useState(e.ai_conversation_opener)
+  const [typingVariationsText, setTypingVariationsText] = useState((e.typing_variations ?? []).join('\n'))
+  const [flavorText, setFlavorText] = useState(e.flavor ? JSON.stringify(e.flavor, null, 2) : '')
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  const isDirty =
+    aiQuestionText !== e.ai_question_text ||
+    aiConversationOpener !== e.ai_conversation_opener ||
+    typingVariationsText !== (e.typing_variations ?? []).join('\n') ||
+    flavorText !== (e.flavor ? JSON.stringify(e.flavor, null, 2) : '')
+
+  const handleSave = useCallback(async () => {
+    if (!isDirty) return
+    setSaving(true)
+    setFeedback(null)
+
+    const typingVariations = typingVariationsText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+    let flavor: Record<string, unknown> | null = null
+    if (flavorText.trim()) {
+      try {
+        flavor = JSON.parse(flavorText.trim())
+        if (typeof flavor !== 'object' || Array.isArray(flavor)) {
+          setFeedback({ type: 'error', message: 'flavor must be a JSON object (not array)' })
+          setSaving(false)
+          return
+        }
+      } catch {
+        setFeedback({ type: 'error', message: 'flavor is not valid JSON' })
+        setSaving(false)
+        return
+      }
+    }
+
+    const fields: Record<string, unknown> = {}
+    if (aiQuestionText !== e.ai_question_text) fields.ai_question_text = aiQuestionText
+    if (aiConversationOpener !== e.ai_conversation_opener) fields.ai_conversation_opener = aiConversationOpener
+    if (typingVariationsText !== (e.typing_variations ?? []).join('\n')) fields.typing_variations = typingVariations
+    if (flavorText !== (e.flavor ? JSON.stringify(e.flavor, null, 2) : '')) fields.flavor = flavor
+
+    try {
+      const res = await fetch('/api/admin/lesson-content', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enrichmentId: e.id, fields }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        setFeedback({ type: 'error', message: data.error ?? 'Save failed' })
+      } else {
+        setFeedback({ type: 'success', message: 'Saved' })
+        e.ai_question_text = aiQuestionText
+        e.ai_conversation_opener = aiConversationOpener
+        e.typing_variations = typingVariations
+        e.flavor = flavor as Record<string, unknown> | null
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Unknown error' })
+    } finally {
+      setSaving(false)
+    }
+  }, [isDirty, aiQuestionText, aiConversationOpener, typingVariationsText, flavorText, e])
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{e.region_slug}</span>
+          <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-bold text-gray-600">{e.age_group}</span>
+          <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-700">{e.level_band}</span>
+          {isDirty && <span className="text-xs font-bold text-amber-600">unsaved</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {feedback && (
+            <span className={`text-xs font-bold ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {feedback.message}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!isDirty || saving}
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 text-sm">
+        <div>
+          <label className="block text-xs font-bold text-gray-500">ai_question_text</label>
+          <input
+            type="text"
+            value={aiQuestionText}
+            onChange={(ev) => setAiQuestionText(ev.target.value)}
+            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-gray-500">ai_conversation_opener</label>
+          <input
+            type="text"
+            value={aiConversationOpener}
+            onChange={(ev) => setAiConversationOpener(ev.target.value)}
+            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-gray-500">typing_variations (one per line)</label>
+          <textarea
+            value={typingVariationsText}
+            onChange={(ev) => setTypingVariationsText(ev.target.value)}
+            rows={3}
+            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-gray-500">flavor (JSON)</label>
+          <textarea
+            value={flavorText}
+            onChange={(ev) => setFlavorText(ev.target.value)}
+            rows={4}
+            className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-mono text-xs text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
+          />
+        </div>
+
+        {/* AI Question Choices — read-only in this step */}
+        {e.ai_question_choices && (
+          <div>
+            <span className="text-xs font-bold text-gray-500">ai_question_choices (read-only)</span>
+            <div className="mt-1 space-y-1">
+              {e.ai_question_choices.map((c, i) => (
+                <div key={i} className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${c.isCorrect ? 'bg-green-50 text-green-800 font-bold' : 'bg-white text-gray-600'}`}>
+                  <span>{c.isCorrect ? '✓' : '—'}</span>
+                  <span>{c.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
