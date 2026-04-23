@@ -724,7 +724,7 @@ export const LESSON_COPY_JA = {
     repeatSpeakInstruction: 'STEP1で聞いた文章をマネして録音してください',
     repeatRetryAudioButton: '聞くに戻る',
     repeatRecordingButton: '🎤 録音開始',
-    repeatRecordAgainButton: '🎤 もう一度録音する',
+    repeatRecordAgainButton: 'もう一度録音する',
     repeatScorePrompt: '音が終わったら採点ボタンを押してください',
     repeatAfterRecordingInstruction: '録音が終わったら採点ボタンを押してください',
     repeatStopRecordingButton: '■ 録音停止',
