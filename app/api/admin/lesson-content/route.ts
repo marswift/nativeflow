@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
   if (body.action === 'create_phrase') {
     return handleCreatePhrase(body)
   }
+  if (body.action === 'create_enrichment') {
+    return handleCreateEnrichment(body)
+  }
 
   // Default: create scene
   const sceneKey = (body.scene_key as string | undefined)?.trim()
@@ -146,6 +149,73 @@ async function handleCreatePhrase(body: Record<string, unknown>) {
   }
 
   return NextResponse.json({ ok: true, phraseId: inserted.id })
+}
+
+async function handleCreateEnrichment(body: Record<string, unknown>) {
+  const sceneKey = (body.scene_key as string | undefined)?.trim()
+  const regionSlug = (body.region_slug as string | undefined)?.trim()
+  const ageGroup = (body.age_group as string | undefined)?.trim()
+  const levelBand = (body.level_band as string | undefined)?.trim()
+  const aiQuestionText = (body.ai_question_text as string | undefined)?.trim()
+  const aiConversationOpener = (body.ai_conversation_opener as string | undefined)?.trim()
+
+  if (!sceneKey || !regionSlug || !ageGroup || !levelBand || !aiQuestionText || !aiConversationOpener) {
+    return NextResponse.json({ error: 'scene_key, region_slug, age_group, level_band, ai_question_text, and ai_conversation_opener are required' }, { status: 400 })
+  }
+
+  if (!VALID_LEVELS.has(levelBand)) {
+    return NextResponse.json({ error: 'level_band must be beginner, intermediate, or advanced' }, { status: 400 })
+  }
+
+  // Verify scene exists
+  const { data: scene } = await supabaseServer
+    .from('lesson_scenes')
+    .select('id')
+    .eq('scene_key', sceneKey)
+    .maybeSingle()
+
+  if (!scene) {
+    return NextResponse.json({ error: `Scene "${sceneKey}" not found` }, { status: 404 })
+  }
+
+  // Check uniqueness
+  const { data: existing } = await supabaseServer
+    .from('lesson_conversation_enrichments')
+    .select('id')
+    .eq('scene_key', sceneKey)
+    .eq('region_slug', regionSlug)
+    .eq('age_group', ageGroup)
+    .eq('level_band', levelBand)
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json({ error: `Enrichment already exists for ${sceneKey} / ${regionSlug} / ${ageGroup} / ${levelBand}` }, { status: 409 })
+  }
+
+  const { data: inserted, error } = await supabaseServer
+    .from('lesson_conversation_enrichments')
+    .insert({
+      scene_id: scene.id,
+      scene_key: sceneKey,
+      region_slug: regionSlug,
+      age_group: ageGroup,
+      level_band: levelBand,
+      ai_question_text: aiQuestionText,
+      ai_conversation_opener: aiConversationOpener,
+      typing_variations: [],
+      flavor: null,
+      ai_question_choices: null,
+      content_version: '1',
+      is_active: true,
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, enrichmentId: inserted.id })
 }
 
 export async function PATCH(req: NextRequest) {

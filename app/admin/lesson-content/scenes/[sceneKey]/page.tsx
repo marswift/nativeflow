@@ -228,6 +228,7 @@ export default function AdminSceneDetailPage() {
               ))}
             </div>
           )}
+          <AddEnrichmentForm sceneKey={sceneKey} onCreated={loadDetail} />
         </section>
       </div>
     </div>
@@ -706,6 +707,121 @@ function AddPhraseForm({ sceneKey, existingLevels, onCreated }: {
               <span className={`text-xs font-bold ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
                 {feedback.message}
               </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Add Enrichment Form ──
+
+const REGION_OPTIONS = ['en_us_general', 'en_us_ny', 'en_gb_london', 'en_au_sydney', 'ko_kr_seoul'] as const
+const AGE_OPTIONS = ['teens', '20s', '30s', '40s', '50plus'] as const
+
+function AddEnrichmentForm({ sceneKey, onCreated }: { sceneKey: string; onCreated: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [region, setRegion] = useState<string>(REGION_OPTIONS[0])
+  const [age, setAge] = useState<string>(AGE_OPTIONS[1])
+  const [level, setLevel] = useState<string>('beginner')
+  const [aiQuestionText, setAiQuestionText] = useState('')
+  const [aiConversationOpener, setAiConversationOpener] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  async function handleCreate() {
+    if (!aiQuestionText.trim() || !aiConversationOpener.trim()) {
+      setFeedback({ type: 'error', message: 'ai_question_text and ai_conversation_opener are required' })
+      return
+    }
+    setCreating(true)
+    setFeedback(null)
+    try {
+      const res = await fetch('/api/admin/lesson-content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create_enrichment',
+          scene_key: sceneKey,
+          region_slug: region,
+          age_group: age,
+          level_band: level,
+          ai_question_text: aiQuestionText.trim(),
+          ai_conversation_opener: aiConversationOpener.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setFeedback({ type: 'error', message: data.error ?? 'Create failed' })
+      } else {
+        setFeedback({ type: 'success', message: 'Enrichment created' })
+        setOpen(false)
+        setAiQuestionText('')
+        setAiConversationOpener('')
+        onCreated()
+      }
+    } catch (err) {
+      setFeedback({ type: 'error', message: err instanceof Error ? err.message : 'Unknown error' })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="mt-4">
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+        >
+          + Add Enrichment
+        </button>
+      ) : (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-blue-800">New Enrichment</h3>
+            <button type="button" onClick={() => setOpen(false)} className="cursor-pointer text-xs font-medium text-gray-500 hover:text-gray-700">Cancel</button>
+          </div>
+          <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <label className="block text-xs font-bold text-gray-500">region_slug</label>
+              <select value={region} onChange={(e) => setRegion(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20">
+                {REGION_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500">age_group</label>
+              <select value={age} onChange={(e) => setAge(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20">
+                {AGE_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500">level_band</label>
+              <select value={level} onChange={(e) => setLevel(e.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20">
+                <option value="beginner">Beginner</option>
+                <option value="intermediate">Intermediate</option>
+                <option value="advanced">Advanced</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-3 text-sm">
+            <div>
+              <label className="block text-xs font-bold text-gray-500">ai_question_text *</label>
+              <input type="text" value={aiQuestionText} onChange={(e) => setAiQuestionText(e.target.value)} placeholder="e.g., Did you sleep well?" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500">ai_conversation_opener *</label>
+              <input type="text" value={aiConversationOpener} onChange={(e) => setAiConversationOpener(e.target.value)} placeholder="e.g., Good morning. How are you feeling?" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <button type="button" onClick={handleCreate} disabled={creating} className="cursor-pointer rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              {creating ? 'Creating...' : 'Create Enrichment'}
+            </button>
+            {feedback && (
+              <span className={`text-xs font-bold ${feedback.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>{feedback.message}</span>
             )}
           </div>
         </div>
