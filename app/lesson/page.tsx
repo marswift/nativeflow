@@ -1283,7 +1283,9 @@ export default function LessonPage() {
   }, [])
 
   function startLessonRunEffects(userId: string, lesson: NonNullable<LessonPageData['lesson']>) {
+    console.log('[debug] startLessonRunEffects called', { userId, blockCount: lesson.blocks?.length, sessionId: (lesson as Record<string, unknown>).sessionId })
     startLessonRun(supabase, userId, lesson).then((result) => {
+      console.log('[debug] startLessonRun result', { ok: !result.error, id: result.data?.id, error: result.error?.message })
       if (result.error) {
         console.error('Lesson run start failed', result.error)
       } else {
@@ -1376,7 +1378,9 @@ export default function LessonPage() {
     setStartBlockedReason(null)
 
     try {
+      console.log('[debug] handleStartReview: fetching review items')
       const sources = await fetchReviewItemsWithContent(supabase, userId)
+      console.log('[debug] handleStartReview: sources', sources.length)
 
       if (sources.length === 0) {
         setStartBlockedReason('No review items available')
@@ -1418,8 +1422,8 @@ export default function LessonPage() {
       setPageError(null)
       trackEvent('lesson_start', { blockCount: reviewSession.blocks.length })
     } catch (error) {
-      console.error('Failed to start review', error)
-      setStartErrorMessage('Failed to start review')
+      console.error('Failed to start review', error instanceof Error ? error.message : error, error)
+      setStartErrorMessage(`Failed to start review: ${error instanceof Error ? error.message : 'unknown'}`)
       setStarted(false)
       setRuntimeState(null)
     } finally {
@@ -1612,11 +1616,13 @@ export default function LessonPage() {
       setShowListenRepeatComplete(false)
       awardedStageKeysRef.current = new Set()
   
+      console.log('[debug] creating runtime state', { sessionId: (lesson as Record<string, unknown>).sessionId, blockCount: lesson.blocks.length, itemCounts: lesson.blocks.map(b => b.items.length) })
       const nextRuntimeState = createLessonRuntimeStateFromSession({
         session: lesson,
         userId,
       })
-  
+      console.log('[debug] runtime state created', { blockCount: nextRuntimeState.blocks.length, currentStageId: nextRuntimeState.currentStageId })
+
       startLessonRunEffects(userId, lesson)
       setRuntimeState(nextRuntimeState)
       lessonStartedAtRef.current = Date.now()
@@ -1634,9 +1640,9 @@ export default function LessonPage() {
   
   } catch (error) {
       isStartingLessonRef.current = false
-      console.error('Failed to start lesson', error)
+      console.error('Failed to start lesson', error instanceof Error ? error.message : error, error)
       setPageError('load_failed')
-      setStartErrorMessage('Failed to start the lesson. Please check the data structure.')
+      setStartErrorMessage(`Failed to start: ${error instanceof Error ? error.message : 'unknown'}`)
       setStarted(false)
       setRuntimeState(null)
       isStartingLessonRef.current = false
