@@ -694,6 +694,22 @@ export default function LessonPage() {
       : progress
   )
 
+  // [DEBUG] content source trace
+  if (started && runtimeState && block) {
+    console.log('[content-source]', {
+      theme: lesson?.theme,
+      stageId: runtimeState.currentStageId,
+      runtimeBlockIndex: runtimeState.currentBlockIndex,
+      runtimeBlockId: runtimeState.blocks[runtimeState.currentBlockIndex]?.id,
+      lessonBlockCount: lesson?.blocks?.length,
+      renderedBlockId: block?.id,
+      renderedBlockTitle: block?.title,
+      renderedItemId: item?.id,
+      renderedItemAnswer: item?.answer?.slice(0, 40),
+      isReviewActive: isReviewActiveRef.current,
+    })
+  }
+
   const showCompleted =
   started &&
   (runtimeState?.isCompleted === true ||
