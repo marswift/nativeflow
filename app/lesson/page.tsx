@@ -2089,7 +2089,7 @@ export default function LessonPage() {
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
         <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
-        <div className="mx-auto w-full max-w-6xl px-6 pt-2 sm:px-8">
+        <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-6 pt-2 sm:px-8">
           <button
             type="button"
             onClick={_handleBackToOverview}
@@ -2097,6 +2097,12 @@ export default function LessonPage() {
           >
             ← レッスン一覧へ
           </button>
+          {lesson?.theme?.includes('Review') && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+              復習モード
+              <span className="font-normal text-amber-500">過去に学習した表現を復習中</span>
+            </span>
+          )}
         </div>
         <main className="flex-1">
           <div className={`${CONTAINER_CLASS} !pt-0 !pb-4 sm:!pt-0 sm:!pb-5`}>
