@@ -414,15 +414,15 @@ type V25LlmOutput = {
 /** Acknowledgment rotation pool — one per turn, never duplicated */
 const ACKS = ['Got it.', 'I see.', 'Right.', 'Yeah.', 'Sure.', 'Cool.', 'Okay.', 'Oh.', 'Hmm.', 'Nice.']
 
-/** Reaction templates by meaning type — no user words, no over-reaction */
+/** Reaction templates by meaning type — must NOT overlap with ACKS pool */
 const REACTION_BY_MEANING: Record<V25MeaningType, string[]> = {
   yes:       ['', '', ''],
-  no:        ['', '', ''],
-  object:    ['Oh, nice.', 'Interesting.', 'I see.'],
-  person:    ['Ah, I see.', 'Nice.', 'Oh, okay.'],
-  time:      ['That makes sense.', 'Oh, around that time.', 'I see.'],
-  frequency: ['That often?', 'Oh, okay.', 'I see.'],
-  feeling:   ['Makes sense.', 'I get that.', 'Yeah.'],
+  no:        ['No problem.', 'Fair enough.', 'That\'s fine.'],
+  object:    ['Sounds good.', 'Interesting.', 'That makes sense.'],
+  person:    ['Thanks for sharing.', 'That\'s nice.', 'Sounds good.'],
+  time:      ['That makes sense.', 'Oh, around that time.', 'Good to know.'],
+  frequency: ['That often?', 'Sounds about right.', 'That makes sense.'],
+  feeling:   ['That makes sense.', 'I get that.', 'Thanks for sharing.'],
   social:    ['', '', ''],
   unclear:   ['', '', ''],
 }
@@ -613,8 +613,10 @@ export function assembleReplyV25(
   }
 
   // Slot validation: check if the user's answer fits the question domain.
+  // Primary lookup: use LLM meaning.type (matches the user's answer domain).
+  // engineQuestion is the NEXT question to ask, not the one the user answered,
+  // so we must not use it to select the slot.
   if (llm.intent === 'answer' && engineQuestion) {
-    // Resolve slot definition for the current meaning type (dimension)
     const dimKey = llm.meaning.type as keyof SceneSlotSchema
     const slotDef = slotSchema?.[dimKey] ?? null
     const slotResult = validateSlot(llm.meaning.type, llm.meaning.value, engineQuestion, slotDef)
