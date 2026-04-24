@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getEmmaHint, type EmmaHintStage } from '../../../lib/lesson-copy'
 import { trackEvent } from '../../../lib/analytics'
+import { logLessonEvent } from '../../../lib/content-pipeline/lesson-events'
 import { evaluateRepeat } from '../../../lib/repeat-evaluator'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
 import type { LessonCopy } from '../../../lib/lesson-copy'
@@ -938,7 +939,7 @@ function AiConversationPlayer({
   problemNumber?: number
 }) {
   const currentAnswer = item.answer?.trim() || item.prompt?.trim() || ''
-  const nativeHintForRecall = (item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null
+  const _nativeHintForRecall = (item as LessonBlockItem & { nativeHint?: string | null }).nativeHint?.trim() || null
   const relatedExprs = (item as LessonBlockItem & { related_expressions?: { en: string }[] | null }).related_expressions
 
   // ── Slot extraction for extended engine ──
@@ -981,7 +982,7 @@ function AiConversationPlayer({
   const [allDone, setAllDone] = useState(false)
   const [soundGameDone, setSoundGameDone] = useState(false)
   const [quickResponseDone, setQuickResponseDone] = useState(false)
-  const [recallDone, setRecallDone] = useState(false)
+  const [_recallDone, setRecallDone] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [transcript, setTranscript] = useState('')
@@ -1200,6 +1201,9 @@ function AiConversationPlayer({
           return
         }
 
+        // --- Immediate feedback: show thinking state right away ---
+        setAiThinking(true)
+
         // --- Phase 1: STT ---
         setIsRecognizing(true)
         let recognized = ''
@@ -1223,6 +1227,7 @@ function AiConversationPlayer({
         setIsRecognizing(false)
 
         if (!recognized) {
+          setAiThinking(false)
           setShowConvSilent(true)
           return
         }
@@ -1233,15 +1238,13 @@ function AiConversationPlayer({
           setTurnEvalDetail(null)
           setTurnHint(null)
           setTurnNextPrompt(null)
+          setAiThinking(false)
           setTurnAnswered(true)
           return
         }
 
-        // --- Show thinking state ---
-        setAiThinking(true)
-
         // --- Engine: classify input and select next intent ---
-        const userInputType = classifyUserInput(recognized)
+        const userInputType = classifyUserInput(recognized, engineStateRef.current.plan.anchorAction, engineStateRef.current.plan)
         const intent = selectNextIntent(engineStateRef.current, userInputType)
         const engineSnapshot = serializeState(engineStateRef.current)
 
@@ -1249,8 +1252,8 @@ function AiConversationPlayer({
         const engineFallbackReply = buildEngineFallbackReply(intent, recognized, turn)
         if (engineFallbackReply) ensureAiAudioUrl(engineFallbackReply)
 
-        // Legacy fallback (kept as secondary backup)
-        const fallback = buildFallbackEvaluation(turn, recognized, currentAnswer)
+        // Engine-aware fallback evaluation (for score/feedback when API unavailable)
+        const fallbackEval = buildFallbackEvaluation(turn, recognized, currentAnswer)
 
         // --- AI API ---
         const apiHistory = history.map((h) => ({ ai: h.aiMessage, user: h.userReply }))
@@ -1260,7 +1263,7 @@ function AiConversationPlayer({
         const t4 = performance.now() // [5] AI request start
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 3_000)
+          const timeoutId = setTimeout(() => controller.abort(), 2_500)
           const apiRes = await fetch('/api/ai-conversation/reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1273,6 +1276,10 @@ function AiConversationPlayer({
               isClosingTurn: turn === 3,
               rank: level === 'beginner' ? 15 : level === 'intermediate' ? 55 : 85,
               nextInstruction: intent.instruction,
+              engineSuggestedQuestion: intent.suggestedQuestion,
+              engineAction: intent.action,
+              engineWrapPrompts: engineStateRef.current.plan.wrapPrompts,
+              engineClarificationPrompts: engineStateRef.current.plan.clarificationPrompts,
               engineState: engineSnapshot,
             }),
             signal: controller.signal,
@@ -1299,14 +1306,13 @@ function AiConversationPlayer({
         } catch {
           // API timeout or failure — use fallback
         }
-        const t5 = performance.now() // [6] AI response received (or timeout)
-        console.log(`[AI_LATENCY] turn=${turn} segment=ai duration=${Math.round(t5 - t4)}ms source=${replied ? 'api' : 'fallback'}`)
+        const t5 = performance.now()
 
         // --- Fallback if API didn't produce a reply ---
         if (!replied) {
-          // Prefer engine-driven fallback; legacy as secondary backup
-          nextAiReplyRef.current = engineFallbackReply || fallback.aiReply
-          setTurnEvalDetail(fallback.evaluationDetail)
+          // Engine-driven fallback is sole reply source; legacy provides evaluation data only
+          nextAiReplyRef.current = engineFallbackReply
+          setTurnEvalDetail(fallbackEval.evaluationDetail)
           setTurnHint(null)
           setTurnNextPrompt(null)
         }
@@ -1314,9 +1320,41 @@ function AiConversationPlayer({
         // --- Advance engine state ---
         engineStateRef.current = advanceState(engineStateRef.current, userInputType, intent)
 
-        const t6 = performance.now() // [7] UI message committed
-        console.log(`[AI_LATENCY] turn=${turn} segment=ui_commit duration=${Math.round(t6 - t5)}ms`)
-        console.log(`[AI_LATENCY] turn=${turn} total_visible_reply=${Math.round(t6 - t0)}ms (stt=${Math.round(t3 - t2)}ms ai=${Math.round(t5 - t4)}ms)`)
+        const t6 = performance.now()
+        // --- Structured telemetry (Implementation Spec §19) ---
+        const coveredDims = engineStateRef.current.coveredDimensions
+        const turnMetrics = {
+          turn,
+          matchedScene: engineStateRef.current.plan.matchedScene,
+          userInputType,
+          selectedDimension: intent.selectedDimension,
+          dimensionOrderUsed: coveredDims.join(',') || null,
+          usedFallback: !replied,
+          clarifyTriggered: intent.action === 'clarify' || intent.action === 'simplify',
+          offTopicTriggered: userInputType === 'off_topic',
+          wrapTriggered: intent.action === 'wrap',
+          responseLatencyMs: Math.round(t5 - t4),
+          totalMs: Math.round(t6 - t0),
+          sttMs: Math.round(t3 - t2),
+        }
+        console.log('[AI_CONV]', JSON.stringify(turnMetrics))
+        trackEvent('conversation_turn', {
+          turn,
+          scene: turnMetrics.matchedScene,
+          inputType: userInputType,
+          dimension: intent.selectedDimension,
+          fallback: !replied,
+          clarify: turnMetrics.clarifyTriggered,
+          offTopic: turnMetrics.offTopicTriggered,
+          wrap: turnMetrics.wrapTriggered,
+          latencyMs: turnMetrics.responseLatencyMs,
+        })
+        logLessonEvent({
+          userId: null, bundleId: '', versionNumber: 0, ageGroup: null, region: null,
+          stage: 'ai_conversation',
+          eventType: 'ai_conv_turn',
+          metadata: turnMetrics as Record<string, string | number | boolean | null>,
+        })
 
         setAiThinking(false)
         setTurnAnswered(true)
@@ -1354,19 +1392,36 @@ function AiConversationPlayer({
       // Conversation complete
       setAllDone(true)
       onInputChange('[conversation done]')
-      trackEvent('conversation_complete', { turns: next })
+      const engineState = engineStateRef.current
+      trackEvent('conversation_complete', {
+        turns: next,
+        scene: engineState.plan.matchedScene,
+        coveredDimensions: engineState.coveredDimensions.length,
+        completionReached: true,
+      })
+      logLessonEvent({
+        userId: null, bundleId: '', versionNumber: 0, ageGroup: null, region: null,
+        stage: 'ai_conversation',
+        eventType: 'ai_conv_complete',
+        metadata: {
+          turnCount: next,
+          matchedScene: engineState.plan.matchedScene,
+          coveredDimensions: engineState.coveredDimensions.length,
+          completionReached: true,
+        },
+      })
     } else {
       // Use the AI-generated reply for the next turn
       let nextMsg = nextAiReplyRef.current ?? (() => {
         // Engine-driven fallback for missing reply
-        const inp = classifyUserInput(transcript)
+        const inp = classifyUserInput(transcript, engineStateRef.current.plan.anchorAction, engineStateRef.current.plan)
         const intent = selectNextIntent(engineStateRef.current, inp)
         return buildEngineFallbackReply(intent, transcript, turn)
       })()
       nextAiReplyRef.current = null
       // If API repeats the same reply, regenerate via engine
       if (nextMsg === currentAiMessage && !isClosingAssistantMessage(nextMsg)) {
-        const inp = classifyUserInput(transcript)
+        const inp = classifyUserInput(transcript, engineStateRef.current.plan.anchorAction, engineStateRef.current.plan)
         const intent = selectNextIntent(engineStateRef.current, inp)
         nextMsg = buildEngineFallbackReply(intent, transcript, turn)
       }
@@ -1469,7 +1524,7 @@ function AiConversationPlayer({
 
   // ── Review screen — separate from conversation, focused single-task ──
   if (showReviewScreen) {
-    const _allReviewDone = soundGameDone && quickResponseDone && (recallDone || !nativeHintForRecall)
+    const _allReviewDone = soundGameDone && quickResponseDone
     return (
       <div className="mt-4">
         {/* Back to conversation */}
@@ -1499,17 +1554,6 @@ function AiConversationPlayer({
             uiText={uiText}
             onComplete={() => {
               setQuickResponseDone(true)
-              // If no RecallChallenge, this is the last game → show success
-              if (!nativeHintForRecall) setShowChallengeComplete(true)
-            }}
-          />
-        )}
-        {soundGameDone && quickResponseDone && !recallDone && nativeHintForRecall && (
-          <RecallChallenge
-            pairs={[{ ja: nativeHintForRecall, en: currentAnswer }]}
-            uiText={uiText}
-            onComplete={() => {
-              setRecallDone(true)
               setShowChallengeComplete(true)
             }}
           />
@@ -1530,6 +1574,8 @@ function AiConversationPlayer({
               <div className="flex flex-col items-center">
                 {aiSpeaking ? (
                   <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600"><img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiConvSpeaking}</p>
+                ) : isRecognizing ? (
+                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvRecognizing}</p>
                 ) : aiThinking ? (
                   <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvThinking}</p>
                 ) : (
@@ -1613,11 +1659,6 @@ function AiConversationPlayer({
                 </button>
               )}
             </div>
-          )}
-
-          {/* Recognizing indicator */}
-          {isRecognizing && (
-            <p className="mt-2 text-center text-sm text-[#7b7b94]">{uiText.aiConvRecognizing}</p>
           )}
 
           {/* Retry when answer needs improvement — amber hint card */}
@@ -2104,14 +2145,29 @@ const SOUND_PAIRS: { a: string; b: string }[] = [
   { a: 'rice', b: 'lice' },
 ]
 
+/** Daily-stable shuffle: uses date as seed so questions vary day-to-day but stay consistent within a session. */
+function dailyShuffle<T>(arr: T[]): T[] {
+  const d = new Date()
+  let seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+  const copy = [...arr]
+  for (let i = copy.length - 1; i > 0; i--) {
+    seed = (seed * 16807 + 1) % 2147483647
+    const j = seed % (i + 1)
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy
+}
+
 function SoundGame({ uiText, onComplete }: { uiText: LessonCopy['activeCard']; onComplete: () => void }) {
   const [questionIndex, setQuestionIndex] = useState(0)
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null)
   const [score, setScore] = useState(0)
   const [gameQuestions] = useState(() => {
-    const shuffled = [...SOUND_PAIRS].sort(() => Math.random() - 0.5)
-    return shuffled.slice(0, 5).map((pair) => {
-      const correctIsA = Math.random() > 0.5
+    const shuffled = dailyShuffle(SOUND_PAIRS)
+    const d = new Date()
+    const daySeed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate()
+    return shuffled.slice(0, 5).map((pair, i) => {
+      const correctIsA = ((daySeed + i) % 2) === 0
       return {
         correct: correctIsA ? pair.a : pair.b,
         choiceA: pair.a,
@@ -2510,8 +2566,9 @@ function QuickResponseGame({
   )
 }
 
-// ——— Recall Challenge Game ———
+// ——— Recall Challenge Game (disabled — Speaking Challenge removed from UI) ———
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function RecallChallenge({
   pairs,
   uiText,
@@ -3448,10 +3505,15 @@ function ScaffoldAutoPlay({
     playingStepRef.current = stepIndex
 
     // Step 2 (meaning bridge): English chunk audio → native meaning audio → advance
+    // Falls back to full-sentence audio (index 0) if chunk audio (index 1) is unavailable.
     if (stepIndex === 1) {
       setHasPlayedMixStep(true)
-      const engUrl = stepAudioUrlsRef.current[1] // English chunk audio (not full sentence)
+      const engUrl = stepAudioUrlsRef.current[1] ?? stepAudioUrlsRef.current[0] ?? null
       const jpUrl = meaningAudioUrlRef.current
+      if (!engUrl && jpUrl) {
+        // eslint-disable-next-line no-console
+        console.warn('[ScaffoldAutoPlay] Step 2: chunk audio missing, falling back to full-sentence audio (also missing). Playing native audio only.')
+      }
 
       let mixAdvanced = false
       const advanceFromMix = (_reason: string) => {

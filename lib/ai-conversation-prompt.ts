@@ -2,6 +2,8 @@ import 'server-only'
 import type { ChatMessage } from './openai-client'
 import { buildRegionPromptContext } from './lesson-run-service'
 import type { SerializedConversationState } from './ai-conversation-state'
+import { matchSceneQuestions } from './ai-conversation-scene-questions'
+import type { SlotDefinition, SceneSlotSchema } from './ai-conversation-scene-questions'
 
 // ——— API contract ———
 
@@ -29,6 +31,14 @@ export type AiConversationRequest = {
   isClosingTurn?: boolean
   /** Engine-determined next instruction (single source of truth for progression). */
   nextInstruction?: string | null
+  /** Engine-determined suggested question for this turn. */
+  engineSuggestedQuestion?: string | null
+  /** Engine-determined action type for this turn. */
+  engineAction?: string | null
+  /** Wrap prompts from conversation plan (for closing assembly). */
+  engineWrapPrompts?: string[] | null
+  /** Clarification prompts from conversation plan. */
+  engineClarificationPrompts?: { fragment: string[]; confusion: string[]; garbled: string[] } | null
   /** Engine conversation state snapshot. */
   engineState?: SerializedConversationState | null
 }
@@ -54,179 +64,67 @@ export type AiConversationResponse = {
   nextPrompt: string | null
 }
 
-// ——— Prompt builder ———
+// ——— Prompt builder (V2.5 — classification only, no reply text) ———
 
-const SYSTEM_PROMPT_TEMPLATE = `You are having a short, natural, real-life conversation with a language learner.
+const SYSTEM_PROMPT_V25 = `You are a classification engine for a daily-life English conversation practice app.
 
-IMPORTANT:
-This is NOT a test or quiz.
-Do NOT behave like a teacher.
-Do NOT ask a fixed sequence of questions.
+SCENE: "{lessonPhrase}"
 
-The lesson phrase for context: "{lessonPhrase}"
-This phrase sets the SCENE and TOPIC — it is NOT a question to keep asking.
+YOUR JOB: Classify the student's message and evaluate their English. Do NOT generate reply text.
 
-YOUR ROLE:
-You are a friendly conversation partner.
-Your goal is to continue the conversation naturally, respond to what the user just said, and keep things easy and comfortable.
-
-CORE RULES:
-1. ALWAYS read the full conversation history
-2. ALWAYS respond to the user's LAST message — pick up on their meaning and continue from it
-3. NEVER ignore what the user said
-4. NEVER switch topic randomly
-5. NEVER ask unrelated questions
-6. NEVER quote the user's exact words back to them in your reply
-7. NEVER ask the same question twice — read the history
-
-INPUT INTERPRETATION MODE (do this before replying):
-- A. clear_answer: user gives a clear meaning-bearing answer
-- B. fragment_unclear: short fragment/word (e.g. "Friendly", "Table", "Mom")
-- C. confusion: user is confused (e.g. "I don't understand", "Sorry?", "What?", "Huh?")
-- D. closing: user is ending (e.g. "bye", "see you", "see you next time")
-
-STRATEGY BY MODE:
-- clear_answer: acknowledge briefly, then one short related follow-up (optional)
-- fragment_unclear: clarify briefly, do NOT assume meaning confidently ("The table?", "With your mom?")
-- confusion: simplify wording, keep same topic, ask easier version, encourage lightly
-- closing: match with one short closing and end naturally
-
-GUIDED PRACTICE (NATURAL PROGRESSION):
-- The lesson phrase sets the scene/topic. Do NOT repeatedly ask about it.
-- PROGRESS the conversation based on the user's answers:
-  - If they say "after dinner" → ask about their dinner, evening routine, etc.
-  - If they say "every day" → ask about their routine or favorite part
-  - If they say "with my mom" → ask about their relationship or what they do together
-- Stay within the same general life topic (the scene), but follow the user's direction
-- Only bring the conversation back to the lesson phrase if the user goes completely off-topic
-- Do NOT use the lesson phrase as a template to repeat every turn
-- Avoid vague pronouns ("that", "it", "do that") unless the exact referenced action was explicitly named in recent turns.
-- Prefer explicit action wording in questions (e.g. "Do you clean up after breakfast?").
-
-STYLE:
-- Use short, natural spoken English
-- One idea per message
-- Keep sentences simple
-- Avoid long explanations
-- Avoid textbook grammar tone
-- Keep it casual and native-like, not tutor-like
-- Do not praise on every turn
-- A short acknowledgment-only reply is sometimes best
-- Prefer compact follow-ups when natural ("After dinner?", "Every day?", "With your mom?")
-
-SINGLE OPENER RULE (CRITICAL):
-- Use EXACTLY ONE short opener/reaction per reply. Never two.
-- FORBIDDEN: "I see. Got it." / "Okay! Right." / "Alright! Good." / "Got it. I see."
-- ALLOWED: "I see." / "Got it." / "Oh, okay." / "Right." (one only)
-- On Turn 1: Use ONLY a greeting. No reaction prefix. Just "Hi!" or "Hey!" then the question.
-- FORBIDDEN on Turn 1: "I see. Hey!" / "Got it. Hi!" / "Right. Hello!"
-- For very short/unclear input, respond gently and briefly ("The table?", "Take your time.")
-- Never use robotic praise templates like "Great answer!" or "Excellent!"
-- Never use quoted lesson-template phrasing like 'About the lesson phrase...'
-
-RESPONSE PATTERNS (pick ONE per turn, vary across turns):
-A. React + follow-up: "Oh, nice. What did you talk about?"
-B. Acknowledge + expand: "That sounds good. I like simple meals like that."
-C. Empathy + question: "I see. Was it difficult?"
-D. Light reaction only: "Nice, that sounds fun."
-E. Echo + rephrase: "So you went for a walk. Was it nice outside?"
-
-ANTI-REPETITION RULES:
-- NEVER start two consecutive replies with the same word or phrase
-- NEVER reuse the same reaction (e.g., "Nice!" or "I see!") within 3 turns
-- NEVER ask the same question again — read the full history and avoid repeating any question pattern already used
-- NEVER echo/quote the user's sentence in your reply (bad: 'I see, "I use it after dinner."')
-- Vary your opening reactions: instead of always "Nice!", use "Oh", "Right", "Yeah", "Hmm", "Ah", "Sure", "Cool" etc.
-- Do NOT wrap user words in quotation marks in your reply
-- On Turn 1 (first AI reply after greeting), do NOT start with reaction words like "Nice!", "Cool!", "Great!"
-- Turn-1 openings should feel natural: "Hi!", "Hey!", "Nice to talk with you today.", "Good to see you."
-- HARD RULE: On Turn 1, use a direct greeting opening only. Do NOT prepend any reaction word before greeting.
-- Opener variety memory: if an opener/reaction was already used in this conversation, prefer a different one when alternatives exist.
-
-QUESTION RULE:
-- Ask at most ONE question per turn
-- Do NOT ask multiple questions
-- Do NOT repeat any question pattern already used in this conversation
-- Prefer short follow-up question forms when possible
-- Yes/No progression:
-  - If user says YES, move to one concrete detail question.
-  - If user says NO, move to an alternative timing/person question.
-- Do not ask equivalent yes/no intent twice in different wording.
-- Treat semantic duplicates as same intent (e.g. "Do you do that after breakfast?" ~= "Do you clean up after breakfast?").
-
-RESCUE MODE (if user response is very short, unclear, or empty):
-- Gently help them continue
-- Suggest simple options
-- Example: "That's okay. Maybe you talked with a friend or a teacher?"
-
-GENTLE CORRECTION RULE:
-If the user's English has grammar mistakes but is understandable:
-- Do NOT lecture or point out the error explicitly
-- Instead, naturally MODEL the correct form in your reply
-- Example: User says "Are you drink coffee?" → Reply: "Do I drink coffee? Yeah, I usually have one in the morning."
-- Example: User says "I get breakfast." → Reply: "You eat breakfast? Nice. When is breakfast for you?"
-- This teaches through natural conversation, not correction
-
-NATIVE PHRASING POLISH:
-- Prefer short native phrasing over compressed awkward grammar.
-- Good: "That's great. You finish fast." / "Nice, you're quick." / "Sounds good."
-- Avoid: "That's great you finish fast."
-
-CONVERSATION STRUCTURE:
-This conversation has 5 turns:
-- Turn 0: Greeting (you already greeted, user is replying)
-- Turn 1: Respond naturally to the greeting. You may smoothly connect to the lesson topic, but do NOT jump straight to a question about the lesson phrase. A short social response is fine.
-- Turn 2-3: Main conversation about the lesson phrase
-- Turn 4: Soft wrap turn. If user is clearly closing, say goodbye. If not, keep one more short natural anchored exchange without forced early goodbye.
-
-CLOSING RULE:
-When closing the conversation:
-- First react to what the user just said
-- Then include a short natural goodbye
-- Examples: "That sounds nice. See you later!" / "I see. Have a good day!"
-- Keep it warm and brief
-- Vary closings naturally when possible:
-  - "Nice talking with you. See you later!"
-  - "Sounds good. Have a good day!"
-  - "Alright, see you next time!"
-
-Keep aiReply SHORT. Exact length depends on DIFFICULTY section below.
-
-EVALUATION:
-Also evaluate the learner's reply:
-- isRelevant: does it relate to the conversation?
-- isNatural: does it sound like natural English?
-- isComplete: is it more than one word?
-- score: 0-100
-- feedback: one short supportive sentence in Japanese
-- correction: if unnatural, provide a more natural version. null if already natural.
-- naturalAlternative: optional second way to say it. null if not needed.
-- followUp: a short follow-up question based on what they said
-
-Result:
-- "good" if score >= 50
-- "retry" if score < 50
-
-You MUST respond in this exact JSON format, no other text:
+OUTPUT — respond with this exact JSON, no other text:
 {
-  "aiReply": "your next message",
+  "intent": "answer | question_to_ai | greeting | unclear | off_topic | closing",
+  "meaning": {
+    "type": "yes | no | object | person | time | frequency | feeling | social | unclear",
+    "value": "extracted keyword or null",
+    "confidence": 0.0-1.0
+  },
+  "answerToAi": "brief answer if intent=question_to_ai, else null",
   "result": "good" or "retry",
   "evaluation": {
     "isRelevant": true/false,
     "isNatural": true/false,
     "isComplete": true/false,
     "score": 0-100,
-    "feedback": "Japanese feedback",
+    "feedback": "one short Japanese feedback sentence",
     "correction": "natural version or null",
     "naturalAlternative": "alternative or null",
     "followUp": "short follow-up question"
   },
-  "hint": "Japanese advice if retry, null if good",
-  "nextPrompt": "example sentence if retry, null if good"
-}`
+  "hint": "Japanese hint if retry, else null",
+  "nextPrompt": "example sentence if retry, else null"
+}
+
+FIELD RULES:
+- "intent": Classify the student's message into exactly one category.
+  answer = clear response to your question.
+  question_to_ai = student asks YOU something or ends with "and you?", "how about you?", "and u?", "what about you?".
+  greeting = hi/hello.
+  unclear = broken/garbled/ASR noise/nonsense tokens with no recognizable English words.
+  off_topic = unrelated to scene.
+  closing = goodbye.
+- "meaning.type": What kind of information they gave.
+  yes/no for affirmative/negative.
+  object/person/time/frequency for specific content.
+  feeling for emotional states (bored, tired, happy, sad, excited, stressed).
+  social for greetings/pleasantries/small talk ("I'm good", "not bad").
+  unclear if garbled/nonsense.
+- "meaning.value": Extract the key content word(s). "dishes" from "I clean the dishes". "bored" from "I'm bored today". null if unclear.
+- "meaning.confidence": 0.0-1.0. Set below 0.4 if ASR seems broken, words don't make sense, or input is random syllables with no recognizable English.
+- "answerToAi": ONLY when intent=question_to_ai. Write a brief, natural, friendly answer (max 8 words). Match the student's tone — if they share a feeling, acknowledge it warmly. Example: "I'm good too, thanks!" / "Oh no, hope you feel better!" / "Same here, a bit tired." Must be null for all other intents.
+- "result": "good" if score >= 50, "retry" if score < 50.
+
+EXAMPLES:
+- "I'm bored today, and you?" → intent=question_to_ai, meaning.type=feeling, meaning.value="bored", answerToAi="Yeah, me too sometimes!"
+- "How are you?" → intent=question_to_ai, meaning.type=social, answerToAi="I'm good, thanks!"
+- "mekwinyapalawan" → intent=unclear, meaning.type=unclear, confidence=0.1, answerToAi=null
+- "I klina falon" → intent=unclear, meaning.type=unclear, confidence=0.2, answerToAi=null
+- "Yes, I do" → intent=answer, meaning.type=yes, confidence=0.95, answerToAi=null
+- "The dishes" → intent=answer, meaning.type=object, meaning.value="dishes", confidence=0.9, answerToAi=null`
 
 export function buildSystemPrompt(lessonPhrase: string): string {
-  return SYSTEM_PROMPT_TEMPLATE.replace('{lessonPhrase}', lessonPhrase)
+  return SYSTEM_PROMPT_V25.replace('{lessonPhrase}', lessonPhrase)
 }
 
 /** Builds an optional flavor guidance section for the system prompt. */
@@ -338,34 +236,19 @@ export function buildChatMessages(
     }
   }
 
-  // Instruction for current turn — reinforce continuity
+  // Instruction for current turn — V2.5 classification only
   const userSaid = request.userMessage.trim()
   const userLower = userSaid.toLowerCase()
   const userIsFarewell = /\b(see you|next time|goodbye|bye|take care)\b/.test(userLower)
   const isClosing = request.isClosingTurn === true || userIsFarewell
-  const closingInstruction = isClosing
-    ? ' This is a closing turn. FIRST acknowledge exactly what the student just said, THEN include one short goodbye (e.g. "See you later!"). Do not continue the conversation after this.'
-    : ''
+  const closingHint = isClosing ? ' The student is saying goodbye.' : ''
+
   messages.push({
     role: 'system',
-    content: (() => {
-      const engineInstruction = request.nextInstruction?.trim()
-      const coveredDims = request.engineState?.coveredDimensions?.join(', ') || 'none'
-
-      if (engineInstruction) {
-        const turn1Rule = request.turnIndex === 1 ? ' TURN-1 RULE: Start with greeting only (Hi!/Hey!). No reaction prefix.' : ''
-        return `Turn ${request.turnIndex} of 5. Student said: "${userSaid}".
-ENGINE INSTRUCTION: ${engineInstruction}
-Already-asked dimensions: [${coveredDims}]. Do NOT ask about these again.
-STYLE: (1) Respond to what the student meant. (2) Model correct English naturally if errors. (3) Use explicit action words, not "do that"/"do it". (4) Keep it short, casual, native-like. (5) No robotic praise. (6) Use EXACTLY ONE opener/reaction — never stack two.${turn1Rule}${closingInstruction}
-Respond in JSON only.`
-      }
-
-      // Legacy fallback if engine state is not provided
-      return `Turn ${request.turnIndex} of 5. Scene topic: "${request.lessonPhrase}". Student said: "${userSaid}".
-RULES: (1) Respond to what the student meant. (2) Model correct English naturally. (3) Progress forward — do NOT re-ask. (4) Use explicit action words. (5) Keep it short and casual.${closingInstruction}
-Respond in JSON only.`
-    })(),
+    content: `Turn ${request.turnIndex} of 5. Student said: "${userSaid}".${closingHint}
+Classify intent, extract meaning, evaluate English. Do NOT generate reply text.
+If the student asked you a question (intent=question_to_ai), provide a brief natural answer in "answerToAi" (max 8 words).
+Respond in JSON only.`,
   })
 
   return messages
@@ -388,15 +271,441 @@ function parseEvaluationDetail(obj: unknown): AiConversationEvaluation {
   return { isRelevant: false, isNatural: false, isComplete: false, score: 0, feedback: '', correction: null, naturalAlternative: null, followUp: null }
 }
 
-export function parseAiConversationResponse(raw: string): AiConversationResponse | null {
+// ── Anti-echo runtime guard ──
+
+/** Normalize text for comparison: lowercase, collapse whitespace, strip punctuation. */
+function normalizeForCompare(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/** Split into word tokens. */
+function tokenize(s: string): string[] {
+  return normalizeForCompare(s).split(' ').filter(Boolean)
+}
+
+/** Common filler words that don't count as meaningful echo. */
+const FILLER = new Set(['i', 'a', 'the', 'is', 'it', 'do', 'did', 'yes', 'no', 'ok', 'and', 'to', 'my', 'you', 'me', 'we', 'he', 'she', 'so', 'or', 'but', 'in', 'on', 'at', 'of', 'for', 'am', 'are', 'was', 'not', 'its', 'im'])
+
+/** Short acknowledgments that are OK to keep. */
+const ACK_PATTERN = /^(nice|got it|i see|oh|right|yeah|sure|cool|hmm|ah|okay|alright)[.!,]?\s*/i
+
+/**
+ * Detect and fix AI replies that echo the user's words.
+ * Returns the sanitized reply. Only modifies the aiReply field.
+ */
+/** Strip duplicate acknowledgment prefixes until at most one remains.
+ *  "I see. Right. X" → "I see. X"
+ *  "Sure. Nice. Got it. X" → "Sure. X"
+ *  "I see. I see. X" → "I see. X"
+ */
+function stripDuplicateAcks(reply: string): string {
+  let current = reply
+  // Loop: keep stripping the second ack until only one (or zero) remains
+  for (let i = 0; i < 5; i++) {
+    const first = current.match(ACK_PATTERN)
+    if (!first) break
+    const afterFirst = current.slice(first[0].length).trim()
+    const second = afterFirst.match(ACK_PATTERN)
+    if (!second) break
+    // Drop the second ack, keep the first + rest
+    const rest = afterFirst.slice(second[0].length).trim()
+    current = rest ? `${first[0].trim()} ${rest}` : first[0].trim()
+  }
+  return current
+}
+
+export function sanitizeEchoFromReply(aiReply: string, userMessage: string): string {
+  if (!aiReply || !userMessage) return aiReply
+
+  // Check 0: strip duplicate acknowledgment prefixes ("Got it. Right." → "Got it.")
+  const deduped = stripDuplicateAcks(aiReply)
+  if (deduped !== aiReply) {
+    // eslint-disable-next-line no-console
+    console.log('[anti-echo] duplicate ack stripped', { before: aiReply.slice(0, 40), after: deduped.slice(0, 40) })
+  }
+  // Continue with deduped reply for echo checks
+  const reply = deduped
+
+  const userNorm = normalizeForCompare(userMessage)
+
+  // Extract the non-acknowledgment part of the reply
+  const ackMatch = reply.match(ACK_PATTERN)
+  const ack = ackMatch ? ackMatch[0].trim() : ''
+  const replyBody = ack ? reply.slice(ackMatch![0].length).trim() : reply
+  const replyBodyNorm = normalizeForCompare(replyBody)
+
+  // Helper: strip echoed prefix from reply body, return the fresh remainder
+  const stripEchoPrefix = (): string | null => {
+    if (!replyBodyNorm || !userNorm) return null
+    // Reply body starts with user's normalized phrase
+    if (replyBodyNorm.startsWith(userNorm) && userNorm.length >= 4) {
+      const afterEcho = replyBody.slice(userMessage.length).trim().replace(/^[.,!?\s]+/, '').trim()
+      return afterEcho.length > 5 ? afterEcho : null
+    }
+    // Reply body CONTAINS user's phrase as a substring (catches partial/mid echoes)
+    const idx = replyBodyNorm.indexOf(userNorm)
+    if (idx >= 0 && userNorm.length >= 4) {
+      const before = replyBody.slice(0, idx).trim().replace(/[.,!?\s]+$/, '').trim()
+      const after = replyBody.slice(idx + userMessage.length).trim().replace(/^[.,!?\s]+/, '').trim()
+      const fresh = [before, after].filter(s => s.length > 3).join(' ')
+      return fresh.length > 5 ? fresh : null
+    }
+    return null
+  }
+
+  // Check 1: reply body contains the user's phrase (even short ones like "Yes, I do")
+  const strippedBody = stripEchoPrefix()
+  if (strippedBody !== null) {
+    // eslint-disable-next-line no-console
+    console.log('[anti-echo] phrase echo detected, stripping', { userNorm: userNorm.slice(0, 40), replyBody: replyBody.slice(0, 40) })
+    return ack ? `${ack} ${strippedBody}` : strippedBody
+  }
+
+  // Check 1b: full echo with nothing useful remaining → generic fallback
+  if (replyBodyNorm.startsWith(userNorm) && userNorm.length >= 4) {
+    // eslint-disable-next-line no-console
+    console.log('[anti-echo] full echo with no fresh content', { userNorm: userNorm.slice(0, 40) })
+    return ack ? `${ack} Tell me more about that.` : 'I see. Tell me more about that.'
+  }
+
+  // Check 2: sentence-level echo — split reply into sentences, remove echoed ones
+  const userTokens = tokenize(userMessage)
+  const userContentWords = userTokens.filter(w => !FILLER.has(w) && w.length > 2)
+  if (userContentWords.length >= 1) {
+    const sentences = replyBody.split(/(?<=[.!?])\s+/)
+    if (sentences.length >= 2) {
+      const freshSentences = sentences.filter(s => {
+        const sNorm = normalizeForCompare(s)
+        // Reject sentence if it contains the user's full normalized phrase
+        if (sNorm.includes(userNorm) && userNorm.length >= 4) return false
+        // Reject sentence if >50% content-word overlap
+        if (userContentWords.length >= 2) {
+          const sTokens = new Set(tokenize(s))
+          const matched = userContentWords.filter(w => sTokens.has(w))
+          if (matched.length / userContentWords.length > 0.5) return false
+        }
+        return true
+      })
+      if (freshSentences.length > 0 && freshSentences.length < sentences.length) {
+        // eslint-disable-next-line no-console
+        console.log('[anti-echo] sentence-level echo stripped', { kept: freshSentences.length, dropped: sentences.length - freshSentences.length })
+        return ack ? `${ack} ${freshSentences.join(' ')}` : freshSentences.join(' ')
+      }
+    }
+  }
+
+  return reply
+}
+
+// ——— V2.5 deterministic reply assembly ———
+
+type V25MeaningType = 'yes' | 'no' | 'object' | 'person' | 'time' | 'frequency' | 'feeling' | 'social' | 'unclear'
+
+type V25LlmOutput = {
+  intent: 'answer' | 'question_to_ai' | 'greeting' | 'unclear' | 'off_topic' | 'closing'
+  meaning: {
+    type: V25MeaningType
+    value: string | null
+    confidence: number
+  }
+  answerToAi: string | null
+}
+
+/** Acknowledgment rotation pool — one per turn, never duplicated */
+const ACKS = ['Got it.', 'I see.', 'Right.', 'Yeah.', 'Sure.', 'Cool.', 'Okay.', 'Oh.', 'Hmm.', 'Nice.']
+
+/** Reaction templates by meaning type — no user words, no over-reaction */
+const REACTION_BY_MEANING: Record<V25MeaningType, string[]> = {
+  yes:       ['', '', ''],
+  no:        ['', '', ''],
+  object:    ['Oh, nice.', 'Interesting.', 'I see.'],
+  person:    ['Ah, I see.', 'Nice.', 'Oh, okay.'],
+  time:      ['That makes sense.', 'Oh, around that time.', 'I see.'],
+  frequency: ['That often?', 'Oh, okay.', 'I see.'],
+  feeling:   ['Makes sense.', 'I get that.', 'Yeah.'],
+  social:    ['', '', ''],
+  unclear:   ['', '', ''],
+}
+
+/** Phrases that count as acknowledgment-like — used for dedup in assembly */
+const ACK_LIKE = new Set(['right.', 'got it.', 'i see.', 'okay.', 'oh, okay.', 'alright.', 'sure.', 'cool.', 'oh.', 'hmm.', 'nice.', 'yeah.', 'ah, i see.'])
+
+const MIN_CLOSE_TURN = 3
+
+// ── Slot validation (V2.6) ──
+
+/** Word sets for common question domains — fallback when no scene slotSchema exists */
+const DOMAIN_KEYWORDS: Record<string, Set<string>> = {
+  clean: new Set(['dish', 'dishes', 'plate', 'plates', 'cup', 'cups', 'table', 'kitchen', 'floor', 'sink', 'counter', 'trash', 'wipe', 'sweep', 'mop', 'wash', 'rinse', 'tidy', 'vacuum', 'dust', 'laundry', 'clothes', 'room', 'bathroom']),
+  cook: new Set(['rice', 'egg', 'eggs', 'pasta', 'soup', 'meat', 'fish', 'vegetable', 'vegetables', 'fry', 'boil', 'bake', 'stir', 'pan', 'pot', 'oven', 'stove', 'microwave', 'recipe']),
+  eat: new Set(['rice', 'bread', 'toast', 'cereal', 'egg', 'eggs', 'fruit', 'salad', 'soup', 'noodle', 'noodles', 'sandwich', 'yogurt', 'coffee', 'tea', 'milk', 'juice', 'water']),
+  people: new Set(['alone', 'myself', 'family', 'mom', 'mother', 'dad', 'father', 'brother', 'sister', 'husband', 'wife', 'friend', 'friends', 'kids', 'children', 'son', 'daughter', 'roommate', 'partner', 'together', 'someone', 'nobody']),
+  frequency: new Set(['always', 'usually', 'sometimes', 'often', 'never', 'rarely', 'once', 'twice', 'everyday', 'daily', 'weekly', 'weekday', 'weekend']),
+  time: new Set(['morning', 'afternoon', 'evening', 'night', 'early', 'late', 'noon', 'midnight', 'oclock', 'before', 'after', 'minutes', 'hours', 'hour', 'minute', 'quick', 'fast', 'slow', 'long']),
+}
+
+/** Common filler words excluded from domain matching */
+const SLOT_COMMON = new Set(['i', 'my', 'the', 'a', 'it', 'do', 'is', 'yes', 'no', 'not', 'and', 'or', 'but', 'so', 'very', 'really', 'just', 'like', 'think', 'usually', 'too', 'also'])
+
+type SlotValidationResult = {
+  valid: boolean
+  reason: 'ok' | 'mismatch' | 'missing'
+}
+
+/**
+ * Validate whether a user's answer fits the semantic domain of the current question.
+ * Uses scene slotSchema when available (V2.6), falls back to generic DOMAIN_KEYWORDS.
+ * Tolerant to imperfect English — only flags clear mismatches.
+ */
+function validateSlot(
+  meaningType: string,
+  value: string | null,
+  engineQuestion: string | null,
+  slotDef?: SlotDefinition | null,
+): SlotValidationResult {
+  // No question context or no value → accept (be tolerant)
+  if (!engineQuestion || !value) return { valid: true, reason: 'ok' }
+
+  // ── Scene slotSchema path (V2.6) ──
+  if (slotDef) {
+    // Yes/no answers accepted if slot allows it
+    if ((meaningType === 'yes' || meaningType === 'no') && slotDef.acceptYesNo) {
+      return { valid: true, reason: 'ok' }
+    }
+
+    const tokens = value.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z]/g, ''))
+    // Short answers are hard to validate — accept
+    if (tokens.length <= 1 && tokens[0].length <= 3) return { valid: true, reason: 'ok' }
+
+    const contentWords = tokens.filter(w => w.length > 2 && !SLOT_COMMON.has(w))
+    if (contentWords.length === 0) return { valid: true, reason: 'ok' }
+
+    const hasRelevant = contentWords.some(w => slotDef.accept.has(w))
+    if (hasRelevant) return { valid: true, reason: 'ok' }
+
+    // People words are always relevant in any domain
+    const hasPeopleWord = contentWords.some(w => DOMAIN_KEYWORDS.people.has(w))
+    if (hasPeopleWord) return { valid: true, reason: 'ok' }
+
+    return { valid: false, reason: 'mismatch' }
+  }
+
+  // ── Generic fallback path (no slotSchema) ──
+
+  // Only strict-validate object answers in generic mode
+  if (meaningType !== 'object') return { valid: true, reason: 'ok' }
+
+  const q = engineQuestion.toLowerCase()
+  const words = value.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z]/g, ''))
+
+  // Short answers are hard to validate — accept
+  if (words.length <= 1 && words[0].length <= 3) return { valid: true, reason: 'ok' }
+
+  // Determine expected domain from question text
+  let expectedDomain: Set<string> | null = null
+  if (/\bclean|wash|tidy|sweep\b/.test(q)) expectedDomain = DOMAIN_KEYWORDS.clean
+  else if (/\bcook|make food|prepare\b/.test(q)) expectedDomain = DOMAIN_KEYWORDS.cook
+  else if (/\beat|food|breakfast|lunch|dinner|meal\b/.test(q)) expectedDomain = DOMAIN_KEYWORDS.eat
+  else if (/\balone|with someone|who\b/.test(q)) expectedDomain = DOMAIN_KEYWORDS.people
+  else if (/\bhow often|every day|frequently\b/.test(q)) expectedDomain = DOMAIN_KEYWORDS.frequency
+  else if (/\bwhat time|how long|when\b/.test(q)) expectedDomain = DOMAIN_KEYWORDS.time
+
+  if (!expectedDomain) return { valid: true, reason: 'ok' } // unknown domain — be tolerant
+
+  const contentWords = words.filter(w => w.length > 2 && !SLOT_COMMON.has(w))
+  if (contentWords.length === 0) return { valid: true, reason: 'ok' } // only filler — accept
+
+  const hasRelevant = contentWords.some(w => expectedDomain!.has(w))
+  if (hasRelevant) return { valid: true, reason: 'ok' }
+
+  // People words are always relevant in any domain
+  const hasPeopleWord = contentWords.some(w => DOMAIN_KEYWORDS.people.has(w))
+  if (hasPeopleWord) return { valid: true, reason: 'ok' }
+
+  return { valid: false, reason: 'mismatch' }
+}
+
+/** Lowercase the first character of a string. */
+function lowercaseFirst(s: string): string {
+  return s.charAt(0).toLowerCase() + s.slice(1)
+}
+
+/**
+ * Select a deterministic repair reply when slot validation fails.
+ * Uses scene-specific repair templates when available, else generic re-ask.
+ */
+function selectRepairStrategy(
+  result: SlotValidationResult,
+  engineQuestion: string,
+  turnIndex: number,
+  slotDef?: SlotDefinition | null,
+): string {
+  if (result.reason === 'mismatch') {
+    // Prefer scene-specific repair templates
+    if (slotDef?.repairTemplates && slotDef.repairTemplates.length > 0) {
+      return slotDef.repairTemplates[turnIndex % slotDef.repairTemplates.length]
+    }
+    return `Sorry, ${lowercaseFirst(engineQuestion)}`
+  }
+  if (result.reason === 'missing') {
+    return 'Could you tell me more?'
+  }
+  return engineQuestion
+}
+
+/**
+ * Deterministically assemble a natural reply from V2.5 LLM classification + engine intent.
+ * The LLM generates NO reply text — only intent/meaning. All wording comes from templates.
+ */
+export function assembleReplyV25(
+  llm: V25LlmOutput,
+  turnIndex: number,
+  engineQuestion: string | null,
+  engineAction: string | null,
+  wrapPrompts: string[],
+  clarificationPrompts: { fragment: string[]; confusion: string[]; garbled: string[] } | null,
+  lessonPhrase?: string | null,
+): string {
+  // Resolve scene slotSchema for slot validation
+  const scene = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
+  const slotSchema: SceneSlotSchema | null = scene?.slotSchema ?? null
+  // Closing
+  if (llm.intent === 'closing' || (engineAction === 'wrap' && turnIndex >= MIN_CLOSE_TURN)) {
+    const wrap = wrapPrompts[turnIndex % wrapPrompts.length] ?? 'Nice talking with you. See you next time!'
+    // If student said goodbye, just mirror. If engine wrapped, add ack.
+    if (llm.intent === 'closing') return wrap
+    const ack = ACKS[turnIndex % ACKS.length]
+    return `${ack} ${wrap}`
+  }
+
+  // Unclear / low confidence → clarification from plan templates
+  if (llm.intent === 'unclear' || llm.meaning.confidence < 0.4) {
+    if (clarificationPrompts) {
+      if (llm.intent === 'unclear' && llm.meaning.type === 'unclear') {
+        return clarificationPrompts.garbled[turnIndex % clarificationPrompts.garbled.length]
+          ?? 'Sorry, could you say that again?'
+      }
+      return clarificationPrompts.confusion[turnIndex % clarificationPrompts.confusion.length]
+        ?? 'Could you say that one more time?'
+    }
+    return 'Sorry, could you say that again?'
+  }
+
+  // Greeting (turn 0-1): answerToAi or default greeting + engine question
+  if (llm.intent === 'greeting' || (llm.intent === 'question_to_ai' && turnIndex <= 1)) {
+    const greeting = llm.answerToAi?.trim() || "Hey! I'm doing well."
+    if (engineQuestion) return `${greeting} ${engineQuestion}`
+    return greeting
+  }
+
+  // Question to AI (turn 2+): LLM provides brief answer, engine provides next question
+  if (llm.intent === 'question_to_ai') {
+    const answer = llm.answerToAi?.trim() || "Yeah, same here!"
+    if (engineQuestion) return `${answer} ${engineQuestion}`
+    return answer
+  }
+
+  // Off-topic → soft redirect with engine question
+  if (llm.intent === 'off_topic') {
+    const ack = ACKS[turnIndex % ACKS.length]
+    const redirect = engineQuestion ?? 'Tell me about your day.'
+    return `${ack} By the way, ${redirect.charAt(0).toLowerCase()}${redirect.slice(1)}`
+  }
+
+  // Slot validation: check if the user's answer fits the question domain.
+  if (llm.intent === 'answer' && engineQuestion) {
+    // Resolve slot definition for the current meaning type (dimension)
+    const dimKey = llm.meaning.type as keyof SceneSlotSchema
+    const slotDef = slotSchema?.[dimKey] ?? null
+    const slotResult = validateSlot(llm.meaning.type, llm.meaning.value, engineQuestion, slotDef)
+    if (!slotResult.valid) {
+      return selectRepairStrategy(slotResult, engineQuestion, turnIndex, slotDef)
+    }
+  }
+
+  // Normal answer — deterministic assembly
+  const segments: string[] = []
+
+  // Ack: only on turn 2+
+  const ack = turnIndex >= 2 ? ACKS[turnIndex % ACKS.length] : null
+
+  // Reaction: from pool, based on meaning type
+  const reactionPool = REACTION_BY_MEANING[llm.meaning.type] ?? REACTION_BY_MEANING.yes
+  const reaction = reactionPool[turnIndex % reactionPool.length] || null
+
+  // Deduplicate: if reaction is also an ack-like phrase, keep only one
+  const reactionIsAck = reaction ? ACK_LIKE.has(reaction.toLowerCase()) : false
+
+  if (ack && reaction && reactionIsAck) {
+    // Both are ack-like — keep only the ack
+    segments.push(ack)
+  } else {
+    if (ack) segments.push(ack)
+    if (reaction) segments.push(reaction)
+  }
+
+  // Question: from engine (single source of truth)
+  if (engineQuestion) segments.push(engineQuestion)
+
+  if (segments.length === 0) {
+    return turnIndex === 0 ? 'Hi! How are you today?' : 'Tell me more about that.'
+  }
+
+  return segments.join(' ')
+}
+
+/** Engine context needed for V2.5/V2.6 deterministic reply assembly. */
+export type V25AssemblyContext = {
+  turnIndex: number
+  engineQuestion: string | null
+  engineAction: string | null
+  wrapPrompts: string[]
+  clarificationPrompts: { fragment: string[]; confusion: string[]; garbled: string[] } | null
+  /** Lesson phrase for scene slotSchema resolution (V2.6). */
+  lessonPhrase?: string | null
+}
+
+export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContext): AiConversationResponse | null {
   try {
     // Extract JSON from response (handle markdown code blocks)
     const jsonMatch = raw.match(/\{[\s\S]*\}/)
     if (!jsonMatch) return null
 
     const parsed = JSON.parse(jsonMatch[0])
+    const turnIndex = ctx?.turnIndex ?? 0
 
-    if (typeof parsed.aiReply !== 'string') return null
+    // V2.5 path: classification-only {intent, meaning, answerToAi}
+    const hasV25 = 'intent' in parsed && 'meaning' in parsed
+    let aiReply: string
+
+    if (hasV25) {
+      const meaning = typeof parsed.meaning === 'object' && parsed.meaning !== null
+        ? parsed.meaning as Record<string, unknown>
+        : {}
+      const llm: V25LlmOutput = {
+        intent: typeof parsed.intent === 'string' ? parsed.intent as V25LlmOutput['intent'] : 'answer',
+        meaning: {
+          type: (typeof meaning.type === 'string' ? meaning.type : 'unclear') as V25MeaningType,
+          value: typeof meaning.value === 'string' ? meaning.value : null,
+          confidence: typeof meaning.confidence === 'number' ? meaning.confidence : 0.8,
+        },
+        answerToAi: typeof parsed.answerToAi === 'string' ? parsed.answerToAi : null,
+      }
+      aiReply = assembleReplyV25(
+        llm,
+        turnIndex,
+        ctx?.engineQuestion ?? null,
+        ctx?.engineAction ?? null,
+        ctx?.wrapPrompts ?? ['Nice talking with you. See you next time!'],
+        ctx?.clarificationPrompts ?? null,
+        ctx?.lessonPhrase ?? null,
+      )
+    } else if (typeof parsed.aiReply === 'string') {
+      // V1/V2 fallback: LLM returned old-style aiReply
+      aiReply = parsed.aiReply.trim()
+    } else {
+      return null
+    }
 
     // Support both "result" (new) and "evaluation" (old) field names for the pass/fail
     const result: string | undefined = parsed.result ?? (
@@ -409,7 +718,7 @@ export function parseAiConversationResponse(raw: string): AiConversationResponse
     )
 
     return {
-      aiReply: parsed.aiReply.trim(),
+      aiReply,
       evaluation: result,
       evaluationDetail: detail,
       hint: typeof parsed.hint === 'string' ? parsed.hint : null,
