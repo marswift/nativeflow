@@ -682,8 +682,13 @@ export function assembleReplyV25(
     if (reaction) segments.push(reaction)
   }
 
+  // Comment-only turn: on turn 2, if we have a value-aware bridge reaction,
+  // skip the question to let the reaction breathe. Feels more natural.
+  const isCommentOnly = turnIndex === 2 && reaction && llm.meaning.value &&
+    (engineDimension === 'object' || engineDimension === 'people')
+
   // Question: from engine (single source of truth)
-  if (engineQuestion) segments.push(engineQuestion)
+  if (engineQuestion && !isCommentOnly) segments.push(engineQuestion)
 
   if (segments.length === 0) {
     return turnIndex === 0 ? 'Hi! How are you today?' : 'Tell me more about that.'
