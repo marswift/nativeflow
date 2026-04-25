@@ -187,6 +187,9 @@ GOOD:
 | T09 | 0 | "How about you?" | warm answer + anchor question | Reciprocal at greeting |
 | T10 | 0 | "What about you?" | warm answer + anchor question | Reciprocal variant |
 | T11 | 2 | "Yes. How about you?" | brief answer + next question | Reciprocal mid-conversation |
+| T21 | 0 | "How are you?" | warm answer + anchor question | Social greeting reciprocal |
+| T22 | 0 | "Fine, and you?" | warm answer + anchor question | Short social + reciprocal |
+| T23 | 1 | "I'm good. How about you?" | warm answer + next question | Social answer + reciprocal |
 
 ### Error Handling
 
@@ -213,7 +216,7 @@ GOOD:
 
 The AI conversation engine is NOT acceptable for release unless:
 
-1. **20/20 test matrix passes** -- every test case produces the expected reply pattern.
+1. **23/23 test matrix passes** -- every test case produces the expected reply pattern.
 2. **Reciprocal questions pass 100%** -- "And you?", "How about you?", "What about you?" always get a brief answer before the lesson question.
 3. **No wrong repair question** -- repair uses the correct engine dimension's template, never a mismatched dimension.
 4. **No AI text before audio** -- current AI message is hidden during playback, revealed after.
