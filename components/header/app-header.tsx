@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
+import { useAuthProfile } from '@/lib/auth-profile-context'
 
 type AppHeaderProps = {
   /** When provided, renders authenticated nav (マイページ + ログアウト). Otherwise renders the public top-page nav. */
@@ -57,6 +58,8 @@ const NAV_CSS = `
 
 export default function AppHeader({ onLogout, scrollY = 0, variant = 'default' }: AppHeaderProps) {
   const [mobileOpen,setMobileOpen]=useState(false)
+  const { profile: authProfile } = useAuthProfile()
+  const diamonds = authProfile ? authProfile.totalDiamonds : null
   useEffect(()=>{if(mobileOpen){document.body.style.overflow='hidden'}else{document.body.style.overflow=''}return()=>{document.body.style.overflow=''}},[mobileOpen])
 
   // ── Simple mode (login/signup) — logo only, no fixed positioning ──
@@ -89,7 +92,17 @@ export default function AppHeader({ onLogout, scrollY = 0, variant = 'default' }
                 style={{ objectFit: 'contain' }}
               />
             </Link>
-            <div className="flex items-center gap-4 sm:gap-5">
+            <div className="flex items-center gap-3 sm:gap-4">
+              {diamonds !== null && (
+                <Link
+                  href="/rewards"
+                  className="inline-flex items-center gap-1 rounded-full border border-[#ede9e2] bg-[#FFFDF8] px-2.5 py-1 text-xs font-bold text-[#1a1a2e] transition hover:bg-[#FFF9EC] hover:border-[#E8E4DF] sm:gap-1.5 sm:px-3"
+                  aria-label={`${diamonds} ダイヤモンド — Rewards`}
+                >
+                  <span className="text-sm sm:text-base" aria-hidden="true">💎</span>
+                  <span className="tabular-nums">{diamonds.toLocaleString()}</span>
+                </Link>
+              )}
               <Link
                 href="/dashboard"
                 className="text-[13px] font-semibold text-[#4a4a6a] transition hover:text-[#1a1a2e] sm:text-sm"
