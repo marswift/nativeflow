@@ -611,6 +611,14 @@ export function assembleReplyV25(
     return 'Sorry, could you say that again?'
   }
 
+  // Redirect override: engine detected off-topic input.
+  if (engineAction === 'redirect') {
+    const ack = turnIndex >= 2 ? ACKS[turnIndex % ACKS.length] : null
+    const redirect = engineQuestion ?? 'Tell me about your day.'
+    const byTheWay = `By the way, ${redirect.charAt(0).toLowerCase()}${redirect.slice(1)}`
+    return ack ? `${ack} ${byTheWay}` : byTheWay
+  }
+
   // Greeting (turn 0-1): answerToAi or default greeting + engine question
   if (llm.intent === 'greeting' || (llm.intent === 'question_to_ai' && turnIndex <= 1)) {
     const greeting = llm.answerToAi?.trim() || "Hey! I'm doing well."
