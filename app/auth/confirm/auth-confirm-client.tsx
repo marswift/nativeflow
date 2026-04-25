@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -10,10 +10,12 @@ import {
   getUserProfileForCompletionCheck,
   isUserProfileOnboardingComplete,
 } from '@/lib/profile-completion'
+import { logAuthFailure } from '@/lib/log-auth-failure'
 
 const supabase = getSupabaseBrowserClient()
 
 const FAILURE_REDIRECT = '/login?confirm_error=1'
+const TIMEOUT_MS = 15_000
 
 function isSafeRedirect(next: string | null): next is string {
   if (!next || typeof next !== 'string') return false
@@ -28,18 +30,18 @@ export function AuthConfirmClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const didRun = useRef(false)
+  const [timedOut, setTimedOut] = useState(false)
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (didRun.current) return
     didRun.current = true
 
-    // [DEBUG] Log callback URL shape
-    console.log('[auth-confirm] href:', window.location.href)
-    console.log('[auth-confirm] search:', window.location.search)
-    console.log('[auth-confirm] hash:', window.location.hash)
-    console.log('[auth-confirm] searchParams:', searchParams.toString())
+    // Safety timeout — if redirect never fires, show error UI
+    timeoutRef.current = setTimeout(() => setTimedOut(true), TIMEOUT_MS)
 
     const tokenHash = searchParams.get('token_hash')
+    const code = searchParams.get('code')
     const type = searchParams.get('type')
     const nextParam = searchParams.get('next')
     const planParam = searchParams.get('plan')
@@ -51,6 +53,13 @@ export function AuthConfirmClient() {
       return
     }
 
+    function clearSafetyTimeout() {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+    }
+
     async function handlePostConfirmRedirect() {
       try {
         const {
@@ -60,94 +69,165 @@ export function AuthConfirmClient() {
 
         if (sessionError) {
           console.error('Auth confirm session fetch failed', sessionError)
+          clearSafetyTimeout()
           router.replace(FAILURE_REDIRECT)
           return
         }
 
         const user = session?.user
         if (!user) {
+          clearSafetyTimeout()
           router.replace(FAILURE_REDIRECT)
           return
         }
 
-      const { profile, error: profileError } =
-        await getUserProfileForCompletionCheck(user.id)
-      
-      if (profileError) {
-        console.warn('Auth confirm profile fetch failed, routing to onboarding', profileError)
-        router.replace(`/onboarding${planQuery}`)
-        return
-      }
-      
-      if (!profile) {
-        router.replace(`/onboarding${planQuery}`)
-        return
-      }
+        const { profile, error: profileError } =
+          await getUserProfileForCompletionCheck(user.id)
 
-      if (!isUserProfileOnboardingComplete(profile)) {
-        router.replace(`/onboarding${planQuery}`)
-        return
-      }
+        if (profileError) {
+          console.warn('Auth confirm profile fetch failed, routing to onboarding', profileError)
+          clearSafetyTimeout()
+          router.replace(`/onboarding${planQuery}`)
+          return
+        }
+
+        if (!profile) {
+          clearSafetyTimeout()
+          router.replace(`/onboarding${planQuery}`)
+          return
+        }
+
+        if (!isUserProfileOnboardingComplete(profile)) {
+          clearSafetyTimeout()
+          router.replace(`/onboarding${planQuery}`)
+          return
+        }
 
         if (isSafeRedirect(nextParam) && nextParam !== '/onboarding') {
+          clearSafetyTimeout()
           router.replace(nextParam)
           return
         }
 
+        clearSafetyTimeout()
         router.replace('/lesson')
       } catch (err) {
         console.error('Post auth redirect failed', err)
+        clearSafetyTimeout()
         router.replace(FAILURE_REDIRECT)
       }
     }
 
-    async function tryHashFallback() {
-      await supabase.auth.initialize()
-      await handlePostConfirmRedirect()
-    }
-
-    if (!tokenHash) {
+    // ── Path 1: PKCE code in URL (Google OAuth direct, or legacy redirect) ──
+    if (code) {
       ;(async () => {
         try {
-          await tryHashFallback()
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (error) {
+            console.error('Auth confirm PKCE exchange failed', error.message)
+            logAuthFailure({ reason: error.message, provider: 'pkce', route: '/auth/confirm', source: 'pkce_exchange' })
+            clearSafetyTimeout()
+            router.replace(FAILURE_REDIRECT)
+            return
+          }
+          await handlePostConfirmRedirect()
         } catch (err) {
-          console.error('Auth confirm hash fallback exception', err)
+          console.error('Auth confirm PKCE exchange exception', err)
+          logAuthFailure({ reason: 'pkce_exchange_exception', provider: 'pkce', route: '/auth/confirm', source: 'pkce_exchange' })
+          clearSafetyTimeout()
           router.replace(FAILURE_REDIRECT)
         }
       })()
       return
     }
 
-    if (!isSupportedType) {
-      router.replace(FAILURE_REDIRECT)
+    // ── Path 2: token_hash in URL (email verification, legacy flow) ──
+    if (tokenHash) {
+      if (!isSupportedType) {
+        clearSafetyTimeout()
+        router.replace(FAILURE_REDIRECT)
+        return
+      }
+
+      ;(async () => {
+        try {
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: type as 'email' | 'signup' | 'magiclink',
+          })
+
+          if (error) {
+            console.error('Auth confirm verification failed', {
+              message: error.message,
+              code: (error as { code?: string }).code,
+            })
+            logAuthFailure({ reason: error.message, provider: 'otp', route: '/auth/confirm', source: 'verify_otp' })
+            clearSafetyTimeout()
+            router.replace(FAILURE_REDIRECT)
+            return
+          }
+
+          await handlePostConfirmRedirect()
+        } catch (err) {
+          console.error('Auth confirm exception', err)
+          logAuthFailure({ reason: 'otp_verify_exception', provider: 'otp', route: '/auth/confirm', source: 'verify_otp' })
+          clearSafetyTimeout()
+          router.replace(FAILURE_REDIRECT)
+        }
+      })()
       return
     }
 
-    async function verify() {
+    // ── Path 3: No code, no token_hash — session already established (via /auth/callback server route) ──
+    ;(async () => {
       try {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: type as 'email' | 'signup' | 'magiclink',
-        })
-
-        if (error) {
-          console.error('Auth confirm verification failed', {
-            message: error.message,
-            code: (error as { code?: string }).code,
-          })
-          router.replace(FAILURE_REDIRECT)
-          return
-        }
-
+        await supabase.auth.initialize()
         await handlePostConfirmRedirect()
       } catch (err) {
-        console.error('Auth confirm exception', err)
+        console.error('Auth confirm fallback exception', err)
+        logAuthFailure({ reason: 'session_fallback_exception', provider: 'email', route: '/auth/confirm', source: 'session_fallback' })
+        clearSafetyTimeout()
         router.replace(FAILURE_REDIRECT)
       }
-    }
-
-    void verify()
+    })()
   }, [router, searchParams])
+
+  if (timedOut) {
+    return (
+      <div
+        className="min-h-screen flex flex-col bg-[#f7f4ef]"
+        style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
+      >
+        <AppHeader />
+
+        <main className="flex-1 flex items-center justify-center px-6">
+          <div className="w-full max-w-md rounded-2xl border border-[#ede9e2] bg-white px-6 py-8 shadow-sm text-center">
+            <p className="text-base font-semibold text-[#1a1a2e]">
+              確認に時間がかかっています
+            </p>
+            <p className="mt-2 text-sm text-[#4a4a6a]">
+              通信状況をご確認のうえ、もう一度お試しください
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-xl bg-amber-500 py-3 font-semibold text-white shadow-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+              >
+                再試行
+              </button>
+              <Link
+                href="/login"
+                className="rounded-xl border border-[#ede9e2] py-3 font-semibold text-[#4a4a6a] hover:bg-[#f7f4ef] focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 text-center"
+              >
+                ログイン画面に戻る
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    )
+  }
 
   return (
     <div

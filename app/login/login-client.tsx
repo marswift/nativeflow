@@ -12,6 +12,7 @@ import {
 } from '@/lib/profile-completion'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 import { getAuthCopy, readUiLanguageFromStorage } from '@/lib/auth-copy'
+import { logAuthFailure } from '@/lib/log-auth-failure'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -70,15 +71,17 @@ export function LoginClient() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/confirm`,
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       })
       if (error) {
+        logAuthFailure({ reason: error.message, provider: 'google', route: '/login', source: 'handleGoogleOAuth' })
         setFormError(t.errorGoogleFailed)
         setOauthLoading(false)
       }
       // On success, Supabase redirects the browser — no further action needed
     } catch {
+      logAuthFailure({ reason: 'google_oauth_exception', provider: 'google', route: '/login', source: 'handleGoogleOAuth' })
       setFormError(t.errorGoogleFailed)
       setOauthLoading(false)
     }
@@ -106,6 +109,7 @@ export function LoginClient() {
       })
       if (error) {
         const msg = error.message.toLowerCase()
+        logAuthFailure({ reason: error.message, provider: 'magiclink', route: '/login', source: 'handleMagicLink', email: trimmedEmail })
         if (msg.includes('rate') || msg.includes('limit')) {
           setFormError(t.errorRateLimit)
         } else {
@@ -115,6 +119,7 @@ export function LoginClient() {
         setMagicLinkSent(true)
       }
     } catch {
+      logAuthFailure({ reason: 'magiclink_exception', provider: 'magiclink', route: '/login', source: 'handleMagicLink', email: trimmedEmail })
       setFormError(t.errorMagicLinkFailed)
     } finally {
       setMagicLinkSubmitting(false)
@@ -161,6 +166,11 @@ export function LoginClient() {
         const isEmailNotConfirmed =
           msg.includes('confirm') || msg.includes('verified') || msg.includes('email not')
       
+        const reason = isInvalidCredentials ? 'invalid_credentials'
+          : isEmailNotConfirmed ? 'email_not_confirmed'
+          : signInError.message
+        logAuthFailure({ reason, provider: 'email', route: '/login', source: 'handleSubmit', email: trimmedEmail })
+
         if (isInvalidCredentials) {
           setFormError(t.errorInvalidCredentials)
         } else if (isEmailNotConfirmed) {
@@ -173,6 +183,7 @@ export function LoginClient() {
       
       // 👇 これが今回の最重要追加
       if (!data?.user) {
+        logAuthFailure({ reason: 'no_user_in_response', provider: 'email', route: '/login', source: 'handleSubmit', email: trimmedEmail })
         setFormError(t.errorGeneric)
         return
       }
@@ -184,6 +195,7 @@ export function LoginClient() {
       router.replace(nextRoute)
     } catch (err) {
       console.error('Login submit failed', err)
+      logAuthFailure({ reason: 'login_exception', provider: 'email', route: '/login', source: 'handleSubmit', email: trimmedEmail })
       setFormError(t.errorGeneric)
     } finally {
       setSubmitting(false)
