@@ -634,6 +634,7 @@ export default function LessonPage() {
   const isReviewActiveRef = useRef(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [lessonRunId, setLessonRunId] = useState<string | null>(null)
+  const [lessonSaveWarning, setLessonSaveWarning] = useState<string | null>(null)
   const [totalFlowPoints, setTotalFlowPoints] = useState(0)
   const [rankCode, setRankCode] = useState<string>('starter')
   const [flowPointsToNextRank, setFlowPointsToNextRank] = useState(0)
@@ -1130,7 +1131,13 @@ export default function LessonPage() {
   ])
 
   useEffect(() => {
-    if (!showCompleted || lessonRunId == null || userId == null || hasFinalizedLessonRun) return
+    if (!showCompleted || userId == null || hasFinalizedLessonRun) return
+
+    if (lessonRunId == null) {
+      // Progress save failed at start — warn user so they know completion was not recorded
+      setLessonSaveWarning('進捗の保存に失敗したため、今回の結果は記録されませんでした。ページを再読み込みして再度お試しください。')
+      return
+    }
 
     const runId = lessonRunId
     const uid = userId
@@ -1320,6 +1327,7 @@ export default function LessonPage() {
       console.log('[debug] startLessonRun result', { ok: !result.error, id: result.data?.id, error: result.error?.message })
       if (result.error) {
         console.error('Lesson run start failed', result.error)
+        setLessonSaveWarning('学習は続けられますが、進捗保存に失敗しました。通信環境を確認してください。')
       } else {
         if (typeof window !== 'undefined') {
           window.sessionStorage.setItem('nf_lesson_active', '1')
@@ -2219,6 +2227,13 @@ export default function LessonPage() {
             </span>
           )}
         </div>
+        {lessonSaveWarning && (
+          <div className="mx-auto mt-2 max-w-2xl px-6">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">
+              {lessonSaveWarning}
+            </div>
+          </div>
+        )}
         <main className="flex-1">
           <div className={`${CONTAINER_CLASS} !pt-0 !pb-4 sm:!pt-0 sm:!pb-5`}>
             {!showCompleted && !showListenRepeatComplete && block != null && item != null && (
