@@ -207,13 +207,23 @@ async function fetchAudioOnce(text: string, speed?: number): Promise<string | nu
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), AUDIO_FETCH_TIMEOUT_MS)
 
+  // Auth headers required since /api/audio/generate is protected
+  let authHeaders: Record<string, string> = {}
+  if (typeof window !== 'undefined') {
+    try {
+      const supabase = getSupabaseBrowserClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) authHeaders = { Authorization: `Bearer ${session.access_token}` }
+    } catch { /* fallback to no auth */ }
+  }
+
   const body: Record<string, unknown> = { text }
   if (typeof speed === 'number') body.speed = speed
 
   try {
     const res = await fetch(`${baseUrl}/api/audio/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       body: JSON.stringify(body),
       cache: 'no-store',
       signal: controller.signal,
