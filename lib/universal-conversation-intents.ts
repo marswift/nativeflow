@@ -111,8 +111,81 @@ const EN_PATTERNS: IntentPattern[] = [
   },
 ]
 
+// ── Korean social intent patterns (Phase 4 — detection only) ──
+
+const KO_PATTERNS: IntentPattern[] = [
+  {
+    intent: 'reciprocal_greeting',
+    patterns: [
+      /너는/,
+      /넌\??$/,
+      /잘 지냈/,
+      /어떻게 지내/,
+      /잘 있었/,
+      /기분 어때/,
+      /오늘 어때/,
+      /그쪽은/,
+    ],
+  },
+  {
+    intent: 'farewell',
+    patterns: [
+      /잘 가/,
+      /안녕히/,
+      /다음에 봐/,
+      /나중에 봐/,
+      /바이/,
+    ],
+  },
+  {
+    intent: 'confusion',
+    patterns: [
+      /모르겠/,
+      /이해.*안/,
+      /무슨 말/,
+      /무슨 뜻/,
+      /잘 모르/,
+      /설명해/,
+    ],
+  },
+  {
+    intent: 'thanks',
+    patterns: [
+      /고마워/,
+      /감사/,
+      /땡큐/,
+      /고맙/,
+    ],
+  },
+  {
+    intent: 'apology',
+    patterns: [
+      /미안/,
+      /죄송/,
+    ],
+  },
+  {
+    intent: 'greeting',
+    patterns: [
+      /^안녕/,
+      /반가워/,
+      /반갑습니다/,
+    ],
+  },
+  {
+    intent: 'continuation',
+    patterns: [
+      /계속/,
+      /더 말해/,
+      /더 얘기해/,
+      /그래서/,
+    ],
+  },
+]
+
 const PATTERN_LIBRARIES: Record<string, IntentPattern[]> = {
   en: EN_PATTERNS,
+  ko: KO_PATTERNS,
 }
 
 /**

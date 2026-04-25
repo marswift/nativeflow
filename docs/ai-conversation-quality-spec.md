@@ -255,6 +255,21 @@ GOOD:
 | A19 | "mekwinyapalawan" | null | Nonsense |
 | A20 | "Um" | null | Fragment |
 
+### Korean Social Intent Detection (Phase 4 — detection only, lang='ko')
+
+| # | User Input | Expected Social Intent | Check |
+|---|---|---|---|
+| K01 | "안녕" | greeting | Korean greeting |
+| K02 | "잘 지냈어?" | reciprocal_greeting | Korean reciprocal |
+| K03 | "너는?" | reciprocal_greeting | Short Korean reciprocal |
+| K04 | "고마워" | thanks | Korean thanks |
+| K05 | "미안해" | apology | Korean apology |
+| K06 | "잘 가" | farewell | Korean farewell |
+| K07 | "모르겠어" | confusion | Korean confusion |
+| K08 | "계속해" | continuation | Korean continuation |
+| K09 | "오늘 어때?" | reciprocal_greeting | Korean mood reciprocal |
+| K10 | "감사합니다" | thanks | Formal Korean thanks |
+
 ---
 
 ## 6. Acceptance Criteria
