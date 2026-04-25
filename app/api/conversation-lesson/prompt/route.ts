@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/api-auth'
 import { generateAIConversationTurn } from '@/lib/ai-conversation-engine'
 import { getLessonRuntimeStatus } from '@/lib/lesson-runtime-controller'
 import type { ConversationLessonFacadeState } from '@/lib/conversation-lesson-runtime-facade'
@@ -134,6 +135,9 @@ function validateGetConversationLessonPromptRequestBody(
 export async function POST(
   req: Request
 ): Promise<NextResponse<GetConversationLessonPromptResponseBody>> {
+  const auth = await requireAuth(req)
+  if (auth instanceof NextResponse) return auth as NextResponse<GetConversationLessonPromptResponseBody>
+
   try {
     const body: unknown = await req.json()
     const validated = validateGetConversationLessonPromptRequestBody(body)

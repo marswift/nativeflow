@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/api-auth'
 import {
   finalizeConversationLessonFacade,
   type ConversationLessonFacadeState,
@@ -223,6 +224,9 @@ function validateCompleteConversationLessonRequestBody(
 export async function POST(
   req: Request
 ): Promise<NextResponse<CompleteConversationLessonResponseBody>> {
+  const auth = await requireAuth(req)
+  if (auth instanceof NextResponse) return auth as NextResponse<CompleteConversationLessonResponseBody>
+
   try {
     const body: unknown = await req.json()
     const validated = validateCompleteConversationLessonRequestBody(body)

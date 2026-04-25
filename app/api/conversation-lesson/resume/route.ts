@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/api-auth'
 import { resumeConversationLessonRuntime } from '@/lib/conversation-lesson-runtime-resume'
 import {
   getDailyStoryRun,
@@ -94,6 +95,9 @@ function isResumeStateSceneLike(value: unknown): value is ResumeStateSceneLike {
 export async function POST(
   req: Request
 ): Promise<NextResponse<ResumeConversationLessonResponseBody>> {
+  const auth = await requireAuth(req)
+  if (auth instanceof NextResponse) return auth as NextResponse<ResumeConversationLessonResponseBody>
+
   try {
     const body: unknown = await req.json()
     const validated = validateResumeConversationLessonRequestBody(body)
