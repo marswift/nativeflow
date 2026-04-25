@@ -1603,9 +1603,14 @@ function AiConversationPlayer({
                         )}
                       </div>
                     ))}
-                    {!aiThinking && (
+                    {!aiThinking && !aiSpeaking && (
                       <div className="flex justify-start">
                         <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#1a1a2e]">{currentAiMessage}</div>
+                      </div>
+                    )}
+                    {aiSpeaking && (
+                      <div className="flex justify-start">
+                        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#7b7b94] animate-pulse">🔊 {uiText.aiConvSpeaking}</div>
                       </div>
                     )}
                     {turnAnswered && transcript && (
