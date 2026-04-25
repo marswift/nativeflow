@@ -5,6 +5,7 @@ import type { SerializedConversationState } from './ai-conversation-state'
 import { matchSceneQuestions } from './ai-conversation-scene-questions'
 import type { SlotDefinition, SceneSlotSchema } from './ai-conversation-scene-questions'
 import { detectUniversalSocialIntent } from './universal-conversation-intents'
+import { getConversationLanguagePack } from './conversation-language-packs'
 
 // ——— API contract ———
 
@@ -414,8 +415,8 @@ type V25LlmOutput = {
   answerToAi: string | null
 }
 
-/** Acknowledgment rotation pool — indexed by turnIndex, 5 items to cover all conversation turns */
-const ACKS = ['Got it.', 'I see.', 'Okay.', 'Right.', 'Sure.']
+/** Acknowledgment rotation pool — sourced from language pack (Phase 3 migration). */
+const ACKS = getConversationLanguagePack('en').acks
 
 /** Reaction templates by meaning type — must NOT overlap with ACKS pool, 5 items per pool */
 const REACTION_BY_MEANING: Record<V25MeaningType, string[]> = {
