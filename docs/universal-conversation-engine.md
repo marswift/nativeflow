@@ -460,8 +460,80 @@ These rules are permanent. Any code change must comply.
 
 ---
 
+## 11. Current Universal Conversation Engine Progress
+
+Status as of April 26, 2026. All items below are implemented and committed.
+
+### 11.1 Universal Social Intent Layer — COMPLETE
+
+- `lib/universal-conversation-intents.ts` runtime-integrated for English
+- `detectUniversalSocialIntent` called in both V2.5 assembly path and V1 fallback guard
+- 7 social intents detected: greeting, reciprocal_greeting, thanks, apology, farewell, confusion, continuation
+- Prevents bare LLM replies like "Oh good." when user asks reciprocal/social questions
+- Raw `userMessage` checked directly — does not depend on LLM classification
+
+### 11.2 AI Conversation Quality Spec — 33/33 PASS
+
+- `docs/ai-conversation-quality-spec.md` is the single source of truth
+- 33 social/runtime test cases + 20 answer intent test cases + 10 Korean detection cases
+- Covers: normal flow, reciprocal, error handling, cross-scene, social variants, negative cases
+- Acceptance criteria: all tests pass, reciprocal 100%, no wrong repair, audio-first UX
+
+### 11.3 Universal Answer Intent Layer — COMPLETE (detection only)
+
+- `detectUniversalAnswerIntent` exported from `lib/universal-conversation-intents.ts`
+- 10 answer types: yes_answer, no_answer, object_answer, person_answer, place_answer, time_answer, frequency_answer, feeling_answer, preference_answer, reason_answer
+- English patterns active, 20/20 test cases pass
+- **Not connected to runtime** — detection only, does not influence reply assembly
+
+### 11.4 Language Pack Renderer Skeleton — COMPLETE (structure only)
+
+- `lib/conversation-language-packs/index.ts` — `ConversationLanguagePack` type + `getConversationLanguagePack` registry
+- `lib/conversation-language-packs/en.ts` — English templates mirroring current inline constants
+- Covers: acks, reactions (7 types), social replies, soft prompt, wrap templates
+- **Not connected to runtime** — `assembleReplyV25` still reads inline constants
+
+### 11.5 Korean Readiness Layer — COMPLETE (detection only)
+
+- Korean social intent patterns added to `KO_PATTERNS` in `lib/universal-conversation-intents.ts`
+- 7 intent types with natural Korean patterns (안녕, 너는?, 고마워, 미안해, 잘 가, 모르겠어, 계속해)
+- Only active when explicitly called with `languageCode='ko'`
+- Cross-language isolation verified: Korean input with `lang='en'` returns null
+- 10/10 Korean detection tests pass (K01-K10)
+- **No Korean runtime replies** — detection infrastructure only
+
+### 11.6 Safety Status
+
+| Check | Status |
+|---|---|
+| English runtime behavior | Preserved, unchanged |
+| Quality spec | 33/33 social + 20/20 answer + 10/10 Korean = 63 total tests |
+| TypeScript | 0 errors |
+| Lint | 0 new errors |
+| DB changes | None |
+| Lesson flow changes | None |
+| State machine changes | None |
+| LLM prompt changes | None since V2.5 |
+
+### 11.7 Recommended Next Phase
+
+Do not connect all layers to runtime at once. Incremental migration order:
+
+1. **Korean language pack skeleton** — Create `lib/conversation-language-packs/ko.ts` with Korean templates. Structure only, no runtime connection.
+
+2. **English language pack rendering migration (single group)** — Replace one inline constant group (e.g. `ACKS`) in `assembleReplyV25` with a read from `getConversationLanguagePack('en').acks`. Verify 33/33 still passes.
+
+3. **Full English pack migration** — Replace all inline constants with language pack reads. One group at a time, testing after each.
+
+4. **Korean runtime pilot** — Connect `assembleReplyV25` to use `getConversationLanguagePack(userLanguage)` for Korean beta users only.
+
+5. **Korean quality spec** — Create Korean-equivalent test matrix (33+ cases) that must pass before Korean goes live.
+
+---
+
 ## Version History
 
 | Date | Version | Changes |
 |---|---|---|
 | 2026-04-26 | 1.0 | Initial design document |
+| 2026-04-26 | 1.1 | Added section 11: current progress, safety status, next phase recommendation |
