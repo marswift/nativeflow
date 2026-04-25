@@ -232,15 +232,37 @@ function createUiProgressFromRuntime(
 const VALID_STAGES = new Set(['listen', 'repeat', 'scaffold_transition', 'ai_question', 'ai_conversation'])
 
 function normalizePersistedRuntimeState(
-  state: LessonRuntimeEngineState | null
+  state: LessonRuntimeEngineState | null,
+  blockCount?: number,
 ): LessonRuntimeEngineState | null {
   if (!state) return null
-  const stage = (state as { currentStageId: string }).currentStageId
-  if (VALID_STAGES.has(stage)) return state
-  // typing → ai_conversation (was the next stage after typing)
-  if (stage === 'typing') return { ...state, currentStageId: 'ai_conversation' as LessonRuntimeEngineState['currentStageId'] }
-  // Unknown stage → restart from listen
-  return { ...state, currentStageId: 'listen' as LessonRuntimeEngineState['currentStageId'] }
+
+  let normalized = state
+
+  // Stage normalization
+  const stage = (normalized as { currentStageId: string }).currentStageId
+  if (!VALID_STAGES.has(stage)) {
+    // typing → ai_conversation (was the next stage after typing)
+    if (stage === 'typing') {
+      normalized = { ...normalized, currentStageId: 'ai_conversation' as LessonRuntimeEngineState['currentStageId'] }
+    } else {
+      // Unknown stage → restart from listen
+      normalized = { ...normalized, currentStageId: 'listen' as LessonRuntimeEngineState['currentStageId'] }
+    }
+  }
+
+  // Block index bounds check — prevents crash when lesson structure changed since state was saved
+  if (typeof blockCount === 'number' && blockCount > 0) {
+    const idx = normalized.currentBlockIndex
+    if (idx < 0 || idx >= blockCount) {
+      const clamped = Math.max(0, Math.min(idx, blockCount - 1))
+      // eslint-disable-next-line no-console
+      console.warn('[resume] currentBlockIndex out of range, clamping', { persisted: idx, blockCount, clamped })
+      normalized = { ...normalized, currentBlockIndex: clamped }
+    }
+  }
+
+  return normalized
 }
 
 const stageMap: Record<string, number> = {
@@ -914,7 +936,7 @@ export default function LessonPage() {
             setProgress(persisted.progress)
             setInputValue(persisted.inputValue)
             setCorrectTypingCount(persisted.correctTypingCount)
-            setRuntimeState(normalizePersistedRuntimeState(persisted.runtimeState))
+            setRuntimeState(normalizePersistedRuntimeState(persisted.runtimeState, nextPageData.lesson.blocks.length))
             setLessonRunId(persisted.lessonRunId)
             setEarnedFlowPoints(persisted.earnedFlowPoints)
             setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
@@ -1684,7 +1706,7 @@ export default function LessonPage() {
       setProgress(persisted.progress)
       setInputValue(persisted.inputValue)
       setCorrectTypingCount(persisted.correctTypingCount)
-      setRuntimeState(normalizePersistedRuntimeState(persisted.runtimeState))
+      setRuntimeState(normalizePersistedRuntimeState(persisted.runtimeState, lesson.blocks.length))
       setLessonRunId(persisted.lessonRunId)
       setEarnedFlowPoints(persisted.earnedFlowPoints)
       setHasFinalizedLessonRun(persisted.hasFinalizedLessonRun)
