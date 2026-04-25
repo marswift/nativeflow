@@ -23,6 +23,15 @@ import {
 import { buildReviewItemInsert } from '../../../lib/review-items'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  try {
+    const supabase = getSupabaseBrowserClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.access_token) return { Authorization: `Bearer ${session.access_token}` }
+  } catch { /* fallback */ }
+  return {}
+}
+
 const STAGES: LessonStage[] = [
   'scene',
   'listen',
@@ -299,9 +308,10 @@ export default function LessonRunner({
     let cancelled = false
     async function fetchAudio() {
       try {
+        const hdrs = await getAuthHeaders()
         const res = await fetch('/api/audio/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...hdrs },
           body: JSON.stringify({ text: phrase }),
         })
         if (res.ok && !cancelled) {
@@ -327,15 +337,16 @@ export default function LessonRunner({
 
     let cancelled = false
     async function fetchScaffoldAudio() {
+      const scaffoldHdrs = await getAuthHeaders()
       const results = await Promise.allSettled([
         fetch('/api/audio/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...scaffoldHdrs },
           body: JSON.stringify({ text: phrase, speed: 0.85 }),
         }),
         fetch('/api/audio/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...scaffoldHdrs },
           body: JSON.stringify({ text: phrase }),
         }),
       ])
@@ -672,9 +683,10 @@ export default function LessonRunner({
     const turnIndex = history.length - 1
 
     try {
+      const convHdrs = await getAuthHeaders()
       const res = await fetch('/api/ai-conversation/reply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...convHdrs },
         body: JSON.stringify({
           turnIndex,
           userMessage: userText,

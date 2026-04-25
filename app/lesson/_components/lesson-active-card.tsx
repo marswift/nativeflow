@@ -168,9 +168,10 @@ async function ensureChallengeAudioUrl(text: string, speed: number): Promise<str
   if (cached) return cached
   const inflight = challengeAudioInflight.get(key)
   if (inflight) return inflight
+  const authHdrs = await getAuthHeaders()
   const promise = fetch('/api/audio/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHdrs },
     body: JSON.stringify({ text, speed }),
   }).then(async (res) => {
     if (res.ok) {
@@ -1244,9 +1245,10 @@ function AiConversationPlayer({
         try {
           const controller = new AbortController()
           const timeoutId = setTimeout(() => controller.abort(), 4_000)
+          const convAuthHdrs = await getAuthHeaders()
           const apiRes = await fetch('/api/ai-conversation/reply', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...convAuthHdrs },
             body: JSON.stringify({
               turnIndex: turn,
               userMessage: recognized,
@@ -3340,9 +3342,10 @@ async function fetchAudioUrl(text: string, speed?: number): Promise<string | nul
       typeof window !== 'undefined' ? '' : 'http://localhost:3000'
     const body: Record<string, unknown> = { text }
     if (typeof speed === 'number') body.speed = speed
+    const audioAuthHdrs = await getAuthHeaders()
     const res = await fetch(`${baseUrl}/api/audio/generate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...audioAuthHdrs },
       body: JSON.stringify(body),
       cache: 'no-store',
     })
@@ -3997,9 +4000,10 @@ export function LessonActiveCard({
     let cancelled = false
     ;(async () => {
       try {
+        const miniAuthHdrs = await getAuthHeaders()
         const res = await fetch('/api/audio/generate', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...miniAuthHdrs },
           body: JSON.stringify({ text: pendingMiniReview.audioText, speed: 0.8 }),
         })
         if (res.ok && !cancelled) {
