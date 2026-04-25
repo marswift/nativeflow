@@ -594,6 +594,23 @@ export function assembleReplyV25(
     return 'Sorry, could you say that again?'
   }
 
+  // Confusion/clarify override: engine detected confusion or fragment in the raw user text.
+  // This must run before question_to_ai to prevent LLM misclassification from bypassing templates.
+  if (engineAction === 'simplify') {
+    if (clarificationPrompts) {
+      return clarificationPrompts.confusion[turnIndex % clarificationPrompts.confusion.length]
+        ?? 'No problem. Could you say that one more time?'
+    }
+    return 'No problem. Could you say that one more time?'
+  }
+  if (engineAction === 'clarify') {
+    if (clarificationPrompts) {
+      return clarificationPrompts.garbled[turnIndex % clarificationPrompts.garbled.length]
+        ?? 'Sorry, could you say that again?'
+    }
+    return 'Sorry, could you say that again?'
+  }
+
   // Greeting (turn 0-1): answerToAi or default greeting + engine question
   if (llm.intent === 'greeting' || (llm.intent === 'question_to_ai' && turnIndex <= 1)) {
     const greeting = llm.answerToAi?.trim() || "Hey! I'm doing well."
