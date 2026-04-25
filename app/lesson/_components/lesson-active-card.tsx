@@ -1587,22 +1587,22 @@ function AiConversationPlayer({
               {/* Conversation flow — expandable, below status */}
               {showConvText && (
                 <div className="mt-2 border-t border-[#E5E7EB] pt-2">
-                  <div className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-2.5">
                     {history.map((h, i) => (
-                      <div key={i} className="space-y-1">
+                      <div key={i} className="space-y-1.5">
                         <div className="flex justify-start">
-                          <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-xs text-[#1a1a2e]">{h.aiMessage}</div>
+                          <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#1a1a2e]">{h.aiMessage}</div>
                         </div>
                         {h.userReply && (
                           <div className="flex justify-end">
-                            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3 py-1.5 text-xs text-[#1a1a2e]">{h.userReply}</div>
+                            <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3 py-1.5 text-sm text-[#1a1a2e]">{h.userReply}</div>
                           </div>
                         )}
                       </div>
                     ))}
                     {!aiThinking && (
                       <div className="flex justify-start">
-                        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-xs text-[#1a1a2e]">{currentAiMessage}</div>
+                        <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#1a1a2e]">{currentAiMessage}</div>
                       </div>
                     )}
                   </div>
