@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getRegionsForLanguage } from '@/lib/constants'
+import { getActiveRegionsForLanguage, getRegionsFallback } from '@/lib/region-registry-repository'
 
 type ChangeLanguageBody = {
   language?: string
@@ -77,9 +77,14 @@ export async function POST(req: Request) {
       }
       
       if (!existingLearningProfile) {
-        // Pick a safe default region: first enabled region for this language, or null
-        const enabledRegions = getRegionsForLanguage(language).filter((r) => r.enabled)
-        const defaultRegion = enabledRegions.length === 1 ? enabledRegions[0]!.code : null
+        // Pick a safe default region from registry (falls back to constants if DB fails)
+        let enabledRegions: { code: string }[]
+        try {
+          enabledRegions = await getActiveRegionsForLanguage(language)
+        } catch {
+          enabledRegions = getRegionsFallback(language)
+        }
+        const defaultRegion = enabledRegions.length === 1 ? enabledRegions[0].code : null
 
         const { error: insertLearningProfileError } = await adminSupabase
           .from('user_learning_profiles')

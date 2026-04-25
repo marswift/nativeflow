@@ -18,9 +18,7 @@ import { readUiLanguageFromStorage, writeUiLanguageToStorage } from '@/lib/auth-
 import type { PartialUserProfileRow } from '../../lib/types'
 import {
   UI_LANGUAGE_OPTIONS,
-  ENABLED_TARGET_LANGUAGE_OPTIONS,
   CURRENT_LEVEL_OPTIONS,
-  getRegionsForLanguage,
   type CurrentLevel,
 } from '../../lib/constants'
 import { computeStudyPlan } from '../../lib/study-plan-service'
@@ -34,11 +32,13 @@ const AFTER_SAVE_REDIRECT = '/lesson'
 const DEFAULT_SUBMIT_LABEL = '7日間無料を開始する'
 const CHECKOUT_LAUNCHING_LABEL = '決済画面へ移動中...'
 
-/** UI languages available for onboarding display switching. Only production-verified languages. Korean copy exists but is hidden until human-reviewed. */
-const ONBOARDING_UI_LANGUAGES = UI_LANGUAGE_OPTIONS.filter((o) => o.value === 'ja' || o.value === 'en')
+/** Hardcoded fallback — used only when /api/languages/options is unreachable. */
+const FALLBACK_UI_LANGUAGES = UI_LANGUAGE_OPTIONS.filter((o) => o.value === 'ja' || o.value === 'en')
+const FALLBACK_LEARNING_LANGUAGES: { value: string; label: string }[] = [{ value: 'en', label: 'English' }]
 
-/** Learning languages with production-ready content (catalog, corpus, AI prompts). Korean is enabled in constants but has no content yet. */
-const PRODUCTION_READY_LANGUAGES = ENABLED_TARGET_LANGUAGE_OPTIONS.filter((o) => o.value === 'en')
+type LanguageOption = { code: string; englishName: string; nativeName: string }
+type RegionOption = { code: string; displayLabel: string }
+
 const DEADLINE_OPTIONS = [
   '6ヶ月',
   '1年',
@@ -55,11 +55,6 @@ const AGE_GROUP_OPTIONS = [
   { value: '40s', label: '40代' },
   { value: '50plus', label: '50代以上' },
 ] as const
-
-/** Region options derived from REGION_MASTER, filtered by language and enabled flag. */
-function getEnabledRegionOptions(languageCode: string) {
-  return getRegionsForLanguage(languageCode).filter((r) => r.enabled)
-}
 
 const ORIGIN_COUNTRY_OPTIONS = [
   { value: 'JP', label: '日本' },
@@ -186,6 +181,55 @@ export default function OnboardingPage() {
   const [authChecked, setAuthChecked] = useState(false)
   const [formError, setFormError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+
+  // ── Registry-backed language options (Phase 1: Language Expansion System) ──
+  const [registryUiLangs, setRegistryUiLangs] = useState<LanguageOption[] | null>(null)
+  const [registryLearningLangs, setRegistryLearningLangs] = useState<LanguageOption[] | null>(null)
+
+  useEffect(() => {
+    fetch('/api/languages/options')
+      .then((res) => res.ok ? res.json() : null)
+      .then((data: { uiLanguages?: LanguageOption[]; learningLanguages?: LanguageOption[] } | null) => {
+        if (data?.uiLanguages?.length) setRegistryUiLangs(data.uiLanguages)
+        if (data?.learningLanguages?.length) setRegistryLearningLangs(data.learningLanguages)
+      })
+      .catch(() => { /* silent — fallback to hardcoded options */ })
+  }, [])
+
+  // Derive dropdown options: registry if available, else hardcoded fallback
+  const uiLanguageOptions = registryUiLangs
+    ? registryUiLangs.map((l) => ({ value: l.code, label: l.nativeName }))
+    : FALLBACK_UI_LANGUAGES
+  const learningLanguageOptions = registryLearningLangs
+    ? registryLearningLangs.map((l) => ({ value: l.code, label: l.nativeName }))
+    : FALLBACK_LEARNING_LANGUAGES
+
+  // Guard: if saved profile value is not in the fetched options, reset to first available
+  useEffect(() => {
+    if (uiLanguageOptions.length > 0 && !uiLanguageOptions.some((o) => o.value === uiLanguage)) {
+      setUiLanguage(uiLanguageOptions[0].value)
+    }
+  }, [uiLanguageOptions, uiLanguage])
+  useEffect(() => {
+    if (learningLanguageOptions.length > 0 && !learningLanguageOptions.some((o) => o.value === targetLanguageCode)) {
+      setTargetLanguageCode(learningLanguageOptions[0].value)
+    }
+  }, [learningLanguageOptions, targetLanguageCode])
+
+  // ── Registry-backed region options ──
+  const [registryRegions, setRegistryRegions] = useState<RegionOption[]>([])
+
+  useEffect(() => {
+    if (!targetLanguageCode) { setRegistryRegions([]); return }
+    fetch(`/api/languages/regions?language=${encodeURIComponent(targetLanguageCode)}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data: { regions?: RegionOption[] } | null) => {
+        setRegistryRegions(data?.regions ?? [])
+      })
+      .catch(() => setRegistryRegions([]))
+  }, [targetLanguageCode])
+
+  const regionOptions = registryRegions.map((r) => ({ value: r.code, label: r.displayLabel }))
 
   useEffect(() => {
     let isActive = true
@@ -490,7 +534,7 @@ export default function OnboardingPage() {
                   className={INPUT_CLASS}
                   disabled={loading || checkoutLaunching}
                 >
-                  {ONBOARDING_UI_LANGUAGES.map((o) => (
+                  {uiLanguageOptions.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </select>
@@ -513,7 +557,7 @@ export default function OnboardingPage() {
                   className={INPUT_CLASS}
                   disabled={loading || checkoutLaunching}
                 >
-                  {PRODUCTION_READY_LANGUAGES.map((option) => (
+                  {learningLanguageOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
@@ -585,9 +629,9 @@ export default function OnboardingPage() {
                   disabled={loading || checkoutLaunching}
                 >
                   <option value="">{copy.placeholders.select}</option>
-                  {getEnabledRegionOptions(targetLanguageCode).map((r) => (
-                    <option key={r.code} value={r.code}>
-                      {r.displayLabel}
+                  {regionOptions.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
                     </option>
                   ))}
                 </select>

@@ -11,13 +11,25 @@ import {
   TARGET_LANGUAGE_OPTIONS,
   CURRENT_LEVEL_OPTIONS,
   type CurrentLevel,
-  getRegionsForLanguage,
 } from '../../lib/constants'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
-import { useCurrentLanguage } from '@/lib/use-current-language'
 import { isDailyLanguageLocked, getDailyLockedLanguage } from '../../lib/daily-language-lock'
 
 const supabase = getSupabaseBrowserClient()
+
+type RegionOption = { code: string; displayLabel: string }
+
+/** Fetch enabled regions for a language from the registry API. */
+async function fetchRegionsForLanguage(langCode: string): Promise<RegionOption[]> {
+  try {
+    const res = await fetch(`/api/languages/regions?language=${encodeURIComponent(langCode)}`)
+    if (!res.ok) return []
+    const data: { regions?: { code: string; displayLabel: string }[] } = await res.json()
+    return data.regions ?? []
+  } catch {
+    return []
+  }
+}
 
 const PAGE_SHELL_CLASS = 'min-h-screen flex flex-col bg-[#faf9f6]'
 const CONTAINER_CLASS = 'mx-auto w-full max-w-6xl px-6 py-8 sm:py-10 md:px-8 md:py-10 lg:px-10 lg:py-12'
@@ -94,7 +106,6 @@ type ProfileRow = UserProfileRow & {
 
 export default function SettingsPage() {
   const router = useRouter()
-  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()  // ← 追加
   const [profile, setProfile] = useState<ProfileRow | null>(null)
   const [authEmail, setAuthEmail] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -116,6 +127,27 @@ export default function SettingsPage() {
   const [langSaveStatus, setLangSaveStatus] = useState<'idle' | 'saving'>('idle')
   const [langModalOpen, setLangModalOpen] = useState(false)
   const [langModalDraft, setLangModalDraft] = useState<string[]>([])
+
+  // ── Region cache: fetched from registry API per language ──
+  const [regionCache, setRegionCache] = useState<Record<string, RegionOption[]>>({})
+
+  // Fetch regions for all selected languages
+  useEffect(() => {
+    let active = true
+    async function load() {
+      const entries = await Promise.all(
+        selectedLangCodes.map(async (code) => [code, await fetchRegionsForLanguage(code)] as const)
+      )
+      if (active) setRegionCache(Object.fromEntries(entries))
+    }
+    if (selectedLangCodes.length > 0) load()
+    return () => { active = false }
+  }, [selectedLangCodes])
+
+  /** Get cached regions for a language. Returns empty array if not yet loaded. */
+  function getRegions(langCode: string): RegionOption[] {
+    return regionCache[langCode] ?? []
+  }
 
   // Per-language learning profiles
   type LangProfile = {
@@ -336,7 +368,7 @@ export default function SettingsPage() {
         const lp = langProfiles[langCode]
         if (!lp) continue
         try {
-          const langEnabledRegions = getRegionsForLanguage(langCode).filter((r) => r.enabled)
+          const langEnabledRegions = getRegions(langCode)
           const regionSlug = lp.region || (langEnabledRegions.length === 1 ? langEnabledRegions[0].code : null)
           const dailyMin = lp.level && lp.deadline
             ? computeStudyPlan({ deadlineText: lp.deadline, currentLevel: lp.level as CurrentLevel }).recommendedDailyMinutes
@@ -389,7 +421,7 @@ export default function SettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <AppHeader onLogout={handleLogout} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -408,7 +440,7 @@ export default function SettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <AppHeader onLogout={handleLogout} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-sm text-[#4a4a6a]">{pageError || USER_FACING_ERROR}</p>
@@ -429,7 +461,7 @@ export default function SettingsPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+      <AppHeader onLogout={handleLogout} />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>
@@ -650,13 +682,12 @@ export default function SettingsPage() {
                   {selectedLangCodes.map((langCode) => {
                     const lp = langProfiles[langCode] ?? { level: '', region: '', goal: '', deadline: '' }
                     const langLabel = TARGET_LANGUAGE_OPTIONS.find((o) => o.value === langCode)?.label ?? langCode
-                    const langRegions = getRegionsForLanguage(langCode)
-                    const enabledRegions = langRegions.filter((r) => r.enabled)
+                    const enabledRegions = getRegions(langCode)
                     return (
                       <div key={langCode} className="rounded-xl border border-[#E8E4DF] bg-[#faf8f5] p-4 space-y-3">
                         <h3 className="text-sm font-bold text-[#1a1a2e]">📚 {langLabel} の設定</h3>
 
-                        {/* Region — dynamic from REGION_MASTER */}
+                        {/* Region — from registry API */}
                         {enabledRegions.length > 1 && (
                           <div>
                             <label htmlFor={`settings-region-${langCode}`} className={LABEL_CLASS}>地域・ローカル表現</label>
@@ -680,7 +711,7 @@ export default function SettingsPage() {
                             <p className={READONLY_VALUE_CLASS}>{enabledRegions[0].displayLabel}</p>
                           </div>
                         )}
-                        {enabledRegions.length === 0 && langRegions.length > 0 && (
+                        {enabledRegions.length === 0 && (
                           <div>
                             <span className={LABEL_CLASS}>地域</span>
                             <p className={READONLY_VALUE_CLASS + ' text-[#8b8ba3]'}>準備中</p>
@@ -844,7 +875,7 @@ export default function SettingsPage() {
                           // Add newly selected languages
                           const added = langModalDraft.filter((c) => !selectedLangCodes.includes(c))
                           for (const code of added) {
-                            const addedRegions = getRegionsForLanguage(code).filter((r) => r.enabled)
+                            const addedRegions = await fetchRegionsForLanguage(code)
                             const defaultRegion = addedRegions.length === 1 ? addedRegions[0].code : undefined
                             await supabase.from('user_learning_profiles').upsert({
                               user_id: userId,
