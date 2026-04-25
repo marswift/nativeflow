@@ -78,6 +78,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       wrapPrompts: body.engineWrapPrompts ?? ['Nice talking with you. See you next time!'],
       clarificationPrompts: body.engineClarificationPrompts ?? null,
       lessonPhrase: body.lessonPhrase,
+      engineDimension: body.engineDimension ?? null,
     }
     const parsed = parseAiConversationResponse(text, assemblyCtx)
 

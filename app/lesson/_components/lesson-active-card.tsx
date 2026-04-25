@@ -1258,6 +1258,7 @@ function AiConversationPlayer({
               nextInstruction: intent.instruction,
               engineSuggestedQuestion: intent.suggestedQuestion,
               engineAction: intent.action,
+              engineDimension: intent.selectedDimension,
               engineWrapPrompts: engineStateRef.current.plan.wrapPrompts,
               engineClarificationPrompts: engineStateRef.current.plan.clarificationPrompts,
               engineState: engineSnapshot,

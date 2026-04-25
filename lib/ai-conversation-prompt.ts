@@ -35,6 +35,8 @@ export type AiConversationRequest = {
   engineSuggestedQuestion?: string | null
   /** Engine-determined action type for this turn. */
   engineAction?: string | null
+  /** Engine-determined current dimension being asked (for slot validation). */
+  engineDimension?: string | null
   /** Wrap prompts from conversation plan (for closing assembly). */
   engineWrapPrompts?: string[] | null
   /** Clarification prompts from conversation plan. */
@@ -565,6 +567,7 @@ export function assembleReplyV25(
   wrapPrompts: string[],
   clarificationPrompts: { fragment: string[]; confusion: string[]; garbled: string[] } | null,
   lessonPhrase?: string | null,
+  engineDimension?: string | null,
 ): string {
   // Resolve scene slotSchema for slot validation
   const scene = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
@@ -613,11 +616,10 @@ export function assembleReplyV25(
   }
 
   // Slot validation: check if the user's answer fits the question domain.
-  // Primary lookup: use LLM meaning.type (matches the user's answer domain).
-  // engineQuestion is the NEXT question to ask, not the one the user answered,
-  // so we must not use it to select the slot.
+  // Primary: use engine's selectedDimension (what was actually asked).
+  // Fallback: use LLM meaning.type (in case engine dimension not available).
   if (llm.intent === 'answer' && engineQuestion) {
-    const dimKey = llm.meaning.type as keyof SceneSlotSchema
+    const dimKey = (engineDimension ?? llm.meaning.type) as keyof SceneSlotSchema
     const slotDef = slotSchema?.[dimKey] ?? null
     const slotResult = validateSlot(llm.meaning.type, llm.meaning.value, engineQuestion, slotDef)
     if (!slotResult.valid) {
@@ -665,6 +667,8 @@ export type V25AssemblyContext = {
   clarificationPrompts: { fragment: string[]; confusion: string[]; garbled: string[] } | null
   /** Lesson phrase for scene slotSchema resolution (V2.6). */
   lessonPhrase?: string | null
+  /** Engine's current dimension for slot validation (V2.7). */
+  engineDimension?: string | null
 }
 
 export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContext): AiConversationResponse | null {
@@ -701,6 +705,7 @@ export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContex
         ctx?.wrapPrompts ?? ['Nice talking with you. See you next time!'],
         ctx?.clarificationPrompts ?? null,
         ctx?.lessonPhrase ?? null,
+        ctx?.engineDimension ?? null,
       )
     } else if (typeof parsed.aiReply === 'string') {
       // V1/V2 fallback: LLM returned old-style aiReply
