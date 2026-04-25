@@ -418,7 +418,7 @@ const ACKS = ['Got it.', 'I see.', 'Okay.', 'Right.', 'Sure.']
 
 /** Reaction templates by meaning type — must NOT overlap with ACKS pool, 5 items per pool */
 const REACTION_BY_MEANING: Record<V25MeaningType, string[]> = {
-  yes:       ['', '', '', '', ''],
+  yes:       ['That\'s good.', 'Sounds like it.', 'Good to hear.', 'Makes sense.', 'I see, nice.'],
   no:        ['No problem.', 'Fair enough.', 'That\'s fine.', 'No worries.', 'All good.'],
   object:    ['Sounds good.', 'Interesting.', 'Good to know.', 'That helps.', 'Oh, nice.'],
   person:    ['That\'s nice.', 'Thanks for sharing.', 'Good to know.', 'Sounds good.', 'That\'s helpful.'],
