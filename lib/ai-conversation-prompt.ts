@@ -661,7 +661,11 @@ export function assembleReplyV25(
   // Reaction: prefer value-aware bridge template, fall back to generic pool
   let reaction: string | null = null
   const dimForBridge = (engineDimension ?? llm.meaning.type) as Exclude<import('./ai-conversation-state').Dimension, 'action'>
-  const bridgePool = scene?.bridgeTemplates?.[dimForBridge]
+  // Only use bridge when meaning.type roughly aligns with the engine dimension.
+  // Prevents "friends — makes sense" when engine asked about frequency.
+  const DIM_TYPE_MAP: Record<string, string> = { object: 'object', people: 'person', time: 'time', frequency: 'frequency', feeling: 'feeling', place: 'place' }
+  const bridgeAligned = !engineDimension || DIM_TYPE_MAP[engineDimension] === llm.meaning.type
+  const bridgePool = bridgeAligned ? scene?.bridgeTemplates?.[dimForBridge] : undefined
   if (bridgePool && bridgePool.length > 0 && llm.meaning.value) {
     const template = bridgePool[turnIndex % bridgePool.length]
     reaction = template.replace(/\{value\}/g, llm.meaning.value)
