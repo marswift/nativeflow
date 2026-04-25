@@ -497,6 +497,8 @@ export type LessonCopy = {
     flowStep5Sub: string
     flowStep6Label: string
     flowStep6Sub: string
+    /** Review CTA subtitle. Use {count} placeholder. */
+    reviewCountSubtitle: string
   }
   /** daily-flow-selector で使用する文字列 */
   dailyFlow: {
@@ -718,7 +720,7 @@ export const LESSON_COPY_JA = {
     listenStartRepeatInstruction: '準備ができたらリピートへ進みましょう。',
     listenPlayButton: '▶ 再生',
     listenStopButton: '■ 停止',
-    listenRecordingButton: 'リピートへ進む',
+    listenRecordingButton: '次へ',
     listenPlayingLabel: '音声再生中です',
     listenAudioNotReady: 'まだ音声ファイルがありません',
     repeatSpeakInstruction: 'STEP1で聞いた文章をマネして録音してください',
@@ -761,7 +763,7 @@ export const LESSON_COPY_JA = {
     repeatTipGenericLow: 'もう一度聞いてから真似するとさらに良くなります',
     repeatTipGenericGood: 'いい感じです。繰り返すほど自然になります',
     aiConvYouLabel: 'あなた',
-    aiConvThinking: 'AIが考え中...',
+    aiConvThinking: 'AIが返答を考えています',
     aiConvRetryButton: 'もう一度話す',
     aiConvAdvanceButton: '次へ進む',
     aiConvExamplePrefix: '💬 例',
@@ -878,7 +880,7 @@ export const LESSON_COPY_JA = {
     paywallCtaPrimary: '',
     paywallCtaSecondary: '無料で続ける（制限あり）',
     paywallFreeLimit: '無料期間中は1日3問までです。',
-    aiConvSpeaking: '🔊 話しています…',
+    aiConvSpeaking: '話しています…',
     aiConvYourTurn: 'あなたの番です',
     aiConvShowFlow: '会話の流れを見る',
     aiConvNextProblem: 'チャレンジ問題へ進む',
@@ -1011,6 +1013,7 @@ export const LESSON_COPY_JA = {
     flowStep5Sub: '記憶の定着強化',
     flowStep6Label: 'AIと会話',
     flowStep6Sub: 'アウトプット練習',
+    reviewCountSubtitle: '今日の復習は{count}問あります',
   },
   dailyFlow: {
     badge: 'Daily Flow',
@@ -1222,7 +1225,7 @@ export const LESSON_COPY_EN = {
     listenStartRepeatInstruction: 'As you listen, try to imagine how it would sound when you say it.\nWhen ready, go to repeat.',
     listenPlayButton: '▶ Play',
     listenStopButton: '■ Stop',
-    listenRecordingButton: 'Go to repeat',
+    listenRecordingButton: 'Next',
     listenPlayingLabel: 'Audio is playing',
     listenAudioNotReady: 'Audio file is not ready yet',
     repeatSpeakInstruction: 'Repeat and record the sentence you heard in STEP 1.',
@@ -1265,7 +1268,7 @@ export const LESSON_COPY_EN = {
     repeatTipGenericLow: 'Listen once more and try imitating again.',
     repeatTipGenericGood: 'Looking good! It gets more natural with practice.',
     aiConvYouLabel: 'You',
-    aiConvThinking: 'AI is thinking...',
+    aiConvThinking: 'AI is preparing a reply',
     aiConvRetryButton: 'Try again',
     aiConvAdvanceButton: 'Next',
     aiConvExamplePrefix: '💬 e.g.',
@@ -1381,7 +1384,7 @@ export const LESSON_COPY_EN = {
     paywallCtaPrimary: 'Start free trial',
     paywallCtaSecondary: 'Continue free (limited)',
     paywallFreeLimit: 'Free plan: up to 3 problems per day.',
-    aiConvSpeaking: '🔊 Speaking…',
+    aiConvSpeaking: 'Speaking…',
     aiConvYourTurn: 'Your turn',
     aiConvShowFlow: 'See the conversation flow',
     aiConvNextProblem: 'Go to challenge',
@@ -1514,6 +1517,7 @@ export const LESSON_COPY_EN = {
     flowStep5Sub: 'Write to reinforce memory',
     flowStep6Label: 'Use',
     flowStep6Sub: 'Use it in conversation',
+    reviewCountSubtitle: "Today's review has {count} questions",
   },
   dailyFlow: {
     badge: 'Daily Flow',

@@ -1557,7 +1557,7 @@ function AiConversationPlayer({
                 ) : isRecognizing ? (
                   <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvRecognizing}</p>
                 ) : aiThinking ? (
-                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvThinking}</p>
+                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvThinking}<span className="inline-block w-[1.5em] text-left tracking-widest" aria-hidden="true">...</span></p>
                 ) : (
                   <p className="text-sm font-semibold text-[#5a5a7a]">{uiText.aiConvYourTurn}</p>
                 )}
