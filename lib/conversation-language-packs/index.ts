@@ -44,9 +44,11 @@ export type ConversationLanguagePack = {
 }
 
 import { englishConversationLanguagePack } from './en'
+import { koreanConversationLanguagePack } from './ko'
 
 const packs: Record<string, ConversationLanguagePack> = {
   en: englishConversationLanguagePack,
+  ko: koreanConversationLanguagePack,
 }
 
 /**
@@ -58,3 +60,4 @@ export function getConversationLanguagePack(languageCode = 'en'): ConversationLa
 }
 
 export { englishConversationLanguagePack }
+export { koreanConversationLanguagePack }
