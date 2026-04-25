@@ -620,14 +620,16 @@ export function assembleReplyV25(
   }
 
   // Greeting (turn 0-1): answerToAi or default greeting + engine question
-  if (llm.intent === 'greeting' || (llm.intent === 'question_to_ai' && turnIndex <= 1)) {
-    const greeting = llm.answerToAi?.trim() || "Hey! I'm doing well."
+  // Also catches "I'm good, and you?" classified as answer+social at turn 0-1
+  if (llm.intent === 'greeting' || (llm.intent === 'question_to_ai' && turnIndex <= 1) || (turnIndex <= 1 && llm.meaning.type === 'social')) {
+    const greeting = llm.answerToAi?.trim() || "I'm good too, thanks!"
     if (engineQuestion) return `${greeting} ${engineQuestion}`
     return greeting
   }
 
   // Question to AI (turn 2+): LLM provides brief answer, engine provides next question
-  if (llm.intent === 'question_to_ai') {
+  // Also catches reciprocal questions ("and you?") that may be classified as 'answer' with social meaning
+  if (llm.intent === 'question_to_ai' || (llm.answerToAi && llm.meaning.type === 'social')) {
     const answer = llm.answerToAi?.trim() || "Yeah, same here!"
     if (engineQuestion) return `${answer} ${engineQuestion}`
     return answer

@@ -981,7 +981,7 @@ function AiConversationPlayer({
   const [showReviewScreen, setShowReviewScreen] = useState(false)
   const [showChallengeComplete, setShowChallengeComplete] = useState(false)
   const [showConvSilent, setShowConvSilent] = useState(false)
-  const [showConvText, setShowConvText] = useState(true)
+  const [showConvText, setShowConvText] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
