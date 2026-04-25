@@ -693,6 +693,7 @@ export function assembleReplyV25(
 
   // Question: from engine (single source of truth)
   if (engineQuestion && !isCommentOnly) segments.push(engineQuestion)
+  if (isCommentOnly) segments.push('Tell me more.')
 
   if (segments.length === 0) {
     return turnIndex === 0 ? 'Hi! How are you today?' : 'Tell me more about that.'
