@@ -230,13 +230,38 @@ GOOD:
 | T32 | "With my family." | null | Person answer |
 | T33 | "I feel good." | null | Feeling answer |
 
+### Universal Answer Intent (Phase 2 — detection only, no runtime change)
+
+| # | User Input | Expected Answer Intent | Check |
+|---|---|---|---|
+| A01 | "Yes, I do." | yes_answer | Affirmative |
+| A02 | "No, not really." | no_answer | Negative |
+| A03 | "The dishes." | object_answer | Object/thing |
+| A04 | "With my mom." | person_answer | Person |
+| A05 | "At home." | place_answer | Place |
+| A06 | "Around seven." | time_answer | Time (spelled) |
+| A07 | "Every day." | frequency_answer | Frequency |
+| A08 | "I feel good." | feeling_answer | Feeling |
+| A09 | "I like coffee." | preference_answer | Preference |
+| A10 | "Because I'm tired." | reason_answer | Reason |
+| A11 | "Yeah sure." | yes_answer | Yes variant |
+| A12 | "Nope." | no_answer | No variant |
+| A13 | "The table and the cups." | object_answer | Multi-object |
+| A14 | "By myself." | person_answer | Solo |
+| A15 | "In the morning." | time_answer | Time phrase |
+| A16 | "How are you?" | null | Social, not answer |
+| A17 | "Hi!" | null | Greeting, not answer |
+| A18 | "Bye!" | null | Farewell, not answer |
+| A19 | "mekwinyapalawan" | null | Nonsense |
+| A20 | "Um" | null | Fragment |
+
 ---
 
 ## 6. Acceptance Criteria
 
 The AI conversation engine is NOT acceptable for release unless:
 
-1. **33/33 test matrix passes** -- every test case produces the expected reply pattern.
+1. **33/33 social + 20/20 answer test matrix passes** -- every test case produces the expected result.
 2. **Reciprocal questions pass 100%** -- "And you?", "How about you?", "What about you?" always get a brief answer before the lesson question.
 3. **No wrong repair question** -- repair uses the correct engine dimension's template, never a mismatched dimension.
 4. **No AI text before audio** -- current AI message is hidden during playback, revealed after.
