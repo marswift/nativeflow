@@ -6,6 +6,7 @@
  * 2. Billing exemption (admin-granted free access)
  * 3. App-level trial (independent from Stripe)
  * 4. Active Stripe subscription or Stripe trial
+ * 5. Canceled subscription with remaining paid period
  *
  * Pure function. No DB access, no side effects.
  */
@@ -16,6 +17,7 @@ export type LessonAccessInput = {
   billing_exempt?: boolean | null
   billing_exempt_until?: string | null
   subscription_status?: string | null
+  subscription_current_period_end?: string | null
   trial_ends_at?: string | null
 }
 
@@ -38,7 +40,8 @@ const ACTIVE_STATUSES = new Set(['active', 'trialing', 'past_due'])
  * 3. billing_exempt → allowed
  * 4. App-level trial active (trial_ends_at in future) → allowed
  * 5. Stripe subscription active/trialing/past_due → allowed
- * 6. Otherwise → blocked
+ * 6. Canceled with remaining paid period → allowed (standard SaaS grace period)
+ * 7. Otherwise → blocked
  */
 export function canStartLesson(input: LessonAccessInput): LessonAccessResult {
   // 1. Internal users always allowed
@@ -76,6 +79,19 @@ export function canStartLesson(input: LessonAccessInput): LessonAccessResult {
     return { allowed: true }
   }
 
-  // 6. No valid access
+  // 6. Canceled or unpaid but paid period still active — retain access until period end.
+  //    This matches standard SaaS behavior: the user paid for the period, so
+  //    they keep access until it expires even after canceling or payment failure.
+  if (
+    (input.subscription_status === 'canceled' || input.subscription_status === 'unpaid') &&
+    input.subscription_current_period_end
+  ) {
+    const periodEnd = new Date(input.subscription_current_period_end)
+    if (periodEnd > new Date()) {
+      return { allowed: true }
+    }
+  }
+
+  // 7. No valid access
   return { allowed: false, reason: 'subscription_required' }
 }
