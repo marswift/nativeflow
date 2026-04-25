@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/api-auth'
+import { requireLessonEntitlement } from '@/lib/api-auth'
 import { generateChatCompletion } from '@/lib/openai-client'
 import {
   buildChatMessages,
@@ -45,7 +45,7 @@ function isValidRequest(body: unknown): body is AiConversationRequest {
 }
 
 export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
-  const auth = await requireAuth(req)
+  const auth = await requireLessonEntitlement(req)
   if (auth instanceof NextResponse) return auth as NextResponse<ApiResponse>
 
   const t0 = performance.now()

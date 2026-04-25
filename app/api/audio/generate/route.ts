@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createHash } from "crypto"
 import { createClient } from "@supabase/supabase-js"
 import { generateSpeech } from "@/lib/openai-client"
-import { requireAuth } from "@/lib/api-auth"
+import { requireLessonEntitlement } from "@/lib/api-auth"
 
 export const runtime = "nodejs"
 
@@ -59,7 +59,7 @@ function getServiceSupabase() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(request)
+  const auth = await requireLessonEntitlement(request)
   if (auth instanceof NextResponse) return auth
 
   try {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/api-auth'
+import { requireLessonEntitlement } from '@/lib/api-auth'
 import { startConversationLessonFacade } from '@/lib/conversation-lesson-runtime-facade'
 import type { LessonSession } from '@/lib/lesson-runner'
 
@@ -144,7 +144,7 @@ function validateStartConversationLessonRequestBody(
 export async function POST(
   req: Request
 ): Promise<NextResponse<StartConversationLessonResponseBody>> {
-  const auth = await requireAuth(req)
+  const auth = await requireLessonEntitlement(req)
   if (auth instanceof NextResponse) return auth as NextResponse<StartConversationLessonResponseBody>
 
   try {
