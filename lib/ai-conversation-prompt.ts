@@ -413,20 +413,20 @@ type V25LlmOutput = {
   answerToAi: string | null
 }
 
-/** Acknowledgment rotation pool — one per turn, never duplicated */
-const ACKS = ['Got it.', 'I see.', 'Right.', 'Yeah.', 'Sure.', 'Cool.', 'Okay.', 'Oh.', 'Hmm.', 'Nice.']
+/** Acknowledgment rotation pool — indexed by turnIndex, 5 items to cover all conversation turns */
+const ACKS = ['Got it.', 'I see.', 'Okay.', 'Right.', 'Sure.']
 
-/** Reaction templates by meaning type — must NOT overlap with ACKS pool */
+/** Reaction templates by meaning type — must NOT overlap with ACKS pool, 5 items per pool */
 const REACTION_BY_MEANING: Record<V25MeaningType, string[]> = {
-  yes:       ['', '', ''],
-  no:        ['No problem.', 'Fair enough.', 'That\'s fine.'],
-  object:    ['Sounds good.', 'Interesting.', 'That makes sense.'],
-  person:    ['Thanks for sharing.', 'That\'s nice.', 'Sounds good.'],
-  time:      ['That makes sense.', 'Oh, around that time.', 'Good to know.'],
-  frequency: ['That often?', 'Sounds about right.', 'That makes sense.'],
-  feeling:   ['That makes sense.', 'I get that.', 'Thanks for sharing.'],
-  social:    ['', '', ''],
-  unclear:   ['', '', ''],
+  yes:       ['', '', '', '', ''],
+  no:        ['No problem.', 'Fair enough.', 'That\'s fine.', 'No worries.', 'All good.'],
+  object:    ['Sounds good.', 'Interesting.', 'Good to know.', 'That helps.', 'Oh, nice.'],
+  person:    ['That\'s nice.', 'Thanks for sharing.', 'Good to know.', 'Sounds good.', 'That\'s helpful.'],
+  time:      ['Good to know.', 'Oh, around that time.', 'That helps.', 'Makes sense.', 'Sounds about right.'],
+  frequency: ['That often?', 'Sounds about right.', 'Good to know.', 'I get that.', 'Interesting.'],
+  feeling:   ['I get that.', 'Makes sense.', 'Thanks for sharing.', 'I understand.', 'That\'s fair.'],
+  social:    ['', '', '', '', ''],
+  unclear:   ['', '', '', '', ''],
 }
 
 /** Phrases that count as acknowledgment-like — used for dedup in assembly */
