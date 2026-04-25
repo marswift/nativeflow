@@ -211,6 +211,16 @@ export function buildScenarioLabel(sceneKey: string): string {
   return SCENE_LABEL_JA[sceneKey] ?? sceneKey.replace(/_/g, ' ')
 }
 
+/** Reverse-lookup: find sceneKey from a Japanese scene label (e.g. "洗濯" → "do_the_laundry"). */
+export function lookupSceneKeyByLabel(label: string): string | null {
+  if (!label) return null
+  const trimmed = label.trim()
+  for (const [key, value] of Object.entries(SCENE_LABEL_JA)) {
+    if (value === trimmed) return key
+  }
+  return null
+}
+
 /**
  * Short noun form for title composition (e.g. "友人" not "友人との会話").
  * Falls back to scenarioLabel when no dedicated short form exists.

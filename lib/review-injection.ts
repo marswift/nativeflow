@@ -8,19 +8,22 @@
  * Future social/gamification features must NOT be added here.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { LessonBlock, LessonSession } from './lesson-engine'
+import type { LessonBlock, LessonBlockItem, LessonSession } from './lesson-engine'
 import { getDueReviewItems, type ReviewItemRow } from './review-items-repository'
 import { getLessonContentRepository } from './lesson-content-repository'
-import { buildScenarioLabel } from './lesson-blueprint-service'
+import { buildScenarioLabel, lookupSceneKeyByLabel } from './lesson-blueprint-service'
 
-const MAX_REVIEW_BLOCKS = 3
+// Show up to 5 review items while fetching 10 candidates to allow deduplication.
+const MAX_REVIEW_BLOCKS = 5
 const INJECT_AFTER_INDEX = 1 // inject after the first 2 normal blocks (index 0 and 1)
-const DEFAULT_REVIEW_LIMIT = 5
+const DEFAULT_REVIEW_LIMIT = 10
 
 export type ReviewItemWithContent = {
   reviewItem: ReviewItemRow
   promptText: string
   expectedAnswer: string | null
+  /** Original block title from lesson_run_items (e.g. scene label "洗濯"). */
+  blockTitle: string | null
 }
 
 /**
@@ -42,17 +45,17 @@ export async function fetchReviewItemsWithContent(
 
   const { data: runItems, error: runItemsError } = await supabase
     .from('lesson_run_items')
-    .select('id, prompt_text, expected_answer_text')
+    .select('id, prompt_text, expected_answer_text, block_title')
     .in('id', lessonItemIds)
 
   if (runItemsError || !runItems) {
     return []
   }
 
-  const contentMap = new Map<string, { prompt_text: string; expected_answer_text: string | null }>(
-    runItems.map((item: { id: string; prompt_text: string; expected_answer_text: string | null }) => [
+  const contentMap = new Map<string, { prompt_text: string; expected_answer_text: string | null; block_title: string | null }>(
+    runItems.map((item: { id: string; prompt_text: string; expected_answer_text: string | null; block_title?: string | null }) => [
       item.id,
-      item,
+      { prompt_text: item.prompt_text, expected_answer_text: item.expected_answer_text, block_title: item.block_title ?? null },
     ])
   )
 
@@ -65,6 +68,7 @@ export async function fetchReviewItemsWithContent(
         reviewItem,
         promptText: content.prompt_text,
         expectedAnswer: content.expected_answer_text,
+        blockTitle: content.block_title,
       }
     })
     .filter((r): r is ReviewItemWithContent => r !== null)
@@ -160,17 +164,47 @@ function reviewItemToBlock(source: ReviewItemWithContent): LessonBlock {
     } catch { /* ignore */ }
   }
 
-  // Reverse-lookup source scene via repository so heading shows scene label and pass 2 gets JP audio
+  // Reverse-lookup for sceneId + nativeHint (needed for scaffold meaning-bridge audio).
   const repo = getLessonContentRepository()
-  const sourceScene = repo.lookupByAnswer(displayAnswer ?? '')
-  const sceneId = sourceScene?.sceneKey ?? null
+  const candidates = [
+    displayAnswer ?? '',
+    source.promptText ?? '',
+    (displayAnswer ?? '').replace(/[.!?]+$/, '').trim(),
+    (source.promptText ?? '').replace(/[.!?]+$/, '').trim(),
+  ]
+  let sourceScene: { sceneKey: string; nativeHint: string } | null = null
+  for (const text of candidates) {
+    if (!text) continue
+    sourceScene = repo.lookupByAnswer(text)
+    if (sourceScene) break
+  }
+  // Recover sceneId: prefer answer-based lookup, then reverse-lookup from blockTitle (JP label → sceneKey)
+  const rawBlockTitle = source.blockTitle?.trim() || null
+  const sceneId = sourceScene?.sceneKey ?? (rawBlockTitle ? lookupSceneKeyByLabel(rawBlockTitle) : null) ?? null
   const nativeHint = sourceScene?.nativeHint ?? null
+
+  // Title resolution priority:
+  //   1. Scene label from sceneId (guarantees scene names like 洗濯, 朝食, 起床)
+  //   2. blockTitle only if it's a meaningful scene label (not a stage name)
+  //   3. "復習問題" fallback
+  const STAGE_NAMES = new Set(['聞き取りとリピート', '書き取り', '復習', 'AI会話', 'repeat', 'typing', 'review', 'ai_conversation', 'listen', 'scaffold'])
+  const meaningfulBlockTitle = rawBlockTitle && !STAGE_NAMES.has(rawBlockTitle) ? rawBlockTitle : null
+  const title = (sceneId ? buildScenarioLabel(sceneId) : null) ?? meaningfulBlockTitle ?? '復習問題'
+  const description = (sceneId ? buildScenarioLabel(sceneId) : null) ?? meaningfulBlockTitle ?? displayPrompt
+
+  if (!meaningfulBlockTitle && !sceneId) {
+    // eslint-disable-next-line no-console
+    console.log('[Review][final-title-fallback]', {
+      displayAnswer: (displayAnswer ?? '').slice(0, 50),
+      promptText: (source.promptText ?? '').slice(0, 50),
+    })
+  }
 
   return {
     id: `review-${source.reviewItem.id}`,
     type: 'review',
-    title: sceneId ? buildScenarioLabel(sceneId) : '復習',
-    description: sceneId ? buildScenarioLabel(sceneId) : displayPrompt,
+    title,
+    description,
     estimatedMinutes: 1,
     sceneId,
     sceneCategory: sceneId ? 'daily-flow' : null,
@@ -183,6 +217,52 @@ function reviewItemToBlock(source: ReviewItemWithContent): LessonBlock {
       },
     ],
   }
+}
+
+/**
+ * Normalize a review block to guarantee all fields the UI needs.
+ * Called once after creation — prevents silent field omissions from causing regressions.
+ */
+function normalizeReviewBlock(block: LessonBlock): LessonBlock {
+  const item = block.items[0]
+  if (!item) return block
+
+  const missing: string[] = []
+
+  // Title: must be non-empty
+  if (!block.title || block.title === '') {
+    missing.push('title')
+    block = { ...block, title: '復習問題' }
+  }
+
+  // Description: must be non-empty
+  if (!block.description || block.description === '') {
+    block = { ...block, description: block.title }
+  }
+
+  // Audio source: item must have text for hydrateLessonAudio (reads item.text ?? item.answer ?? item.prompt)
+  const audioSource = (item as LessonBlockItem & { text?: string }).text?.trim() || item.answer?.trim() || item.prompt?.trim() || ''
+  if (!audioSource) {
+    missing.push('audio-source-text')
+  }
+
+  // Image: sceneId + sceneCategory must both exist for images, or both be null
+  if (block.sceneId && !block.sceneCategory) {
+    block = { ...block, sceneCategory: 'daily-flow' }
+  }
+
+  if (missing.length > 0) {
+    // eslint-disable-next-line no-console
+    console.log('[Review][prepared-block-missing-field]', {
+      blockId: block.id,
+      missing,
+      title: block.title.slice(0, 30),
+      sceneId: block.sceneId ?? null,
+      answerSlice: (item.answer ?? '').slice(0, 30),
+    })
+  }
+
+  return block
 }
 
 // ── Phase 6.2: Memory summary (log only, no behavior change) ──
@@ -567,8 +647,25 @@ export function injectReviewBlocks(
   // Phase 7.5: end-to-end consistency audit (read-only)
   auditReviewConsistency(prioritized)
 
-  const selected = prioritized.slice(0, MAX_REVIEW_BLOCKS)
-  const reviewBlocks = selected.map(reviewItemToBlock)
+  // Deduplicate by normalized display text to prevent the same question appearing twice
+  const seen = new Set<string>()
+  const deduplicated: ReviewItemWithContent[] = []
+  for (const item of prioritized) {
+    const { displayAnswer } = selectBestReviewDisplayText(item)
+    const key = (displayAnswer ?? item.promptText ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+    if (!key || seen.has(key)) {
+      if (key) {
+        // eslint-disable-next-line no-console
+        console.log('[Review][dedupe] removed duplicate review item', { key: key.slice(0, 50) })
+      }
+      continue
+    }
+    seen.add(key)
+    deduplicated.push(item)
+  }
+
+  const selected = deduplicated.slice(0, MAX_REVIEW_BLOCKS)
+  const reviewBlocks = selected.map(reviewItemToBlock).map(normalizeReviewBlock)
 
   // Playtest: review injection observation
   try {
