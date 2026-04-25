@@ -21,6 +21,8 @@ export type LessonCompletionCardProps = {
   copy: LessonCopy
   totalFlowPoints: number
   earnedFlowPoints: number
+  totalDiamonds?: number
+  earnedDiamonds?: number
   onStartExtraSession?: () => void
   speakingProgress?: SpeakingProgress | null
   sceneIds?: string[]
@@ -126,6 +128,8 @@ export function LessonCompletionCard({
   copy,
   totalFlowPoints,
   earnedFlowPoints,
+  totalDiamonds = 0,
+  earnedDiamonds = 0,
   onStartExtraSession,
   speakingProgress,
   sceneIds = [],
@@ -179,6 +183,15 @@ export function LessonCompletionCard({
         <p className="mt-3 text-sm font-medium text-[#355b3f]">
           {flowPointMessage}
         </p>
+
+        {/* Diamond gain */}
+        {earnedDiamonds > 0 && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#E8E4DF] bg-[#FFFDF8] px-3 py-2">
+            <span className="text-base" aria-hidden="true">💎</span>
+            <span className="text-lg font-black text-[#B7791F]">+{earnedDiamonds}</span>
+            <span className="text-xs text-[#7b7b94]">ダイヤモンド獲得（合計 {totalDiamonds.toLocaleString()}）</span>
+          </div>
+        )}
       </div>
 
       {/* --- Speaking progress --- */}
