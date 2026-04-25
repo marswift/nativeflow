@@ -97,6 +97,144 @@ export async function POST(req: NextRequest) {
             ? session.metadata.user_id.trim()
             : ''
 
+        // ── Diamond pack purchase ──
+        // Handled separately from subscription checkout.
+        // Identified by metadata.purchase_type set in /api/diamonds/checkout.
+        //
+        // Fulfillment order (retry-safe with credited_at + atomic RPC):
+        //   1. Check diamond_transactions for existing stripe_session_id
+        //      a. If exists AND credited_at is set → fully processed, skip
+        //      b. If exists AND credited_at is null → credit failed last time, retry via RPC
+        //      c. If not exists → insert row (credited_at = null), then credit via RPC
+        //   2. credit_diamonds RPC atomically: sets credited_at + increments total_diamonds
+        //
+        // The RPC sets credited_at BEFORE crediting inside one transaction.
+        // If the row is already credited, the RPC raises an exception (idempotent).
+        if (session.metadata?.purchase_type === 'diamond_pack') {
+          const packId = session.metadata.pack_id ?? ''
+          const diamondsStr = session.metadata.diamonds ?? '0'
+          const diamonds = parseInt(diamondsStr, 10)
+          const amountTotal = (session as unknown as Record<string, unknown>).amount_total as number | null
+
+          console.log('WEBHOOK DIAMOND PACK PURCHASE:', {
+            sessionId: session.id,
+            userId,
+            packId,
+            diamonds,
+            amountTotal,
+          })
+
+          if (!userId || !diamonds || diamonds <= 0) {
+            console.error('WEBHOOK [diamond_pack]: invalid userId or diamonds', {
+              sessionId: session.id,
+              userId,
+              diamonds,
+            })
+            break
+          }
+
+          // Step 1: Check existing transaction row
+          const { data: existingTx, error: checkError } = await supabase
+            .from('diamond_transactions')
+            .select('id, credited_at')
+            .eq('stripe_session_id', session.id)
+            .maybeSingle()
+
+          if (checkError) {
+            console.error('WEBHOOK THROW [diamond_pack]: diamond_transactions table is required before diamond purchase fulfillment', {
+              sessionId: session.id,
+              message: checkError.message,
+              code: (checkError as { code?: string }).code,
+            })
+            throw new Error(`diamond_transactions check failed: ${checkError.message}`)
+          }
+
+          // 1a. Fully processed — skip
+          if (existingTx && existingTx.credited_at) {
+            console.log('WEBHOOK [diamond_pack]: already processed (credited_at set), skipping', {
+              sessionId: session.id,
+              existingTxId: existingTx.id,
+            })
+            break
+          }
+
+          let txId: string
+
+          if (existingTx) {
+            // 1b. Transaction row exists but credited_at is null — credit failed last time
+            console.log('WEBHOOK [diamond_pack]: transaction exists but credited_at is null — retrying credit', {
+              sessionId: session.id,
+              existingTxId: existingTx.id,
+            })
+            txId = existingTx.id
+          } else {
+            // 1c. New purchase — insert transaction row with credited_at = null
+            const { data: insertedTx, error: txInsertError } = await supabase
+              .from('diamond_transactions')
+              .insert({
+                user_id: userId,
+                type: 'purchase',
+                diamonds,
+                amount_jpy: typeof amountTotal === 'number' ? amountTotal : null,
+                source: 'stripe',
+                stripe_session_id: session.id,
+                credited_at: null,
+              })
+              .select('id')
+              .single()
+
+            if (txInsertError || !insertedTx) {
+              console.error('WEBHOOK THROW [diamond_pack]: transaction insert failed — no diamonds credited', {
+                userId,
+                diamonds,
+                sessionId: session.id,
+                message: txInsertError?.message,
+              })
+              throw new Error(`diamond_transactions insert failed: ${txInsertError?.message}`)
+            }
+
+            txId = insertedTx.id
+          }
+
+          // Step 2: Atomic credit via RPC — sets credited_at + increments total_diamonds
+          // in one transaction. If already credited, the RPC raises an exception (safe skip).
+          const { error: rpcError } = await supabase.rpc('credit_diamonds', {
+            p_user_id: userId,
+            p_tx_id: txId,
+            p_diamonds: diamonds,
+          })
+
+          if (rpcError) {
+            // If the error is "already credited", this is a safe duplicate — skip
+            if (rpcError.message?.includes('already credited')) {
+              console.log('WEBHOOK [diamond_pack]: RPC reports already credited — safe skip', {
+                sessionId: session.id,
+                txId,
+              })
+              break
+            }
+
+            console.error('WEBHOOK THROW [diamond_pack]: credit_diamonds RPC failed — credited_at remains null for retry', {
+              userId,
+              diamonds,
+              sessionId: session.id,
+              txId,
+              message: rpcError.message,
+            })
+            throw new Error(`credit_diamonds RPC failed: ${rpcError.message}`)
+          }
+
+          console.log('WEBHOOK [diamond_pack]: diamonds credited atomically', {
+            userId,
+            diamonds,
+            txId,
+          })
+
+          break
+        }
+
+        // ── Subscription checkout (existing logic below) ──
+
         const subscriptionId =
           typeof session.subscription === 'string'
             ? session.subscription.trim()
@@ -162,6 +300,11 @@ export async function POST(req: NextRequest) {
           subscriptionCancelAtPeriodEnd,
         })
 
+        // Persist planned_plan_code from session metadata (if available)
+        const checkoutPlanCode =
+          session.metadata?.plan === 'yearly' ? 'yearly' :
+          session.metadata?.plan === 'monthly' ? 'monthly' : null
+
         const { data: updatedRows, error: updateError } = await supabase
           .from('user_profiles')
           .update({
@@ -170,6 +313,7 @@ export async function POST(req: NextRequest) {
             subscription_status: subscriptionStatus,
             subscription_current_period_end: subscriptionCurrentPeriodEnd,
             subscription_cancel_at_period_end: subscriptionCancelAtPeriodEnd,
+            ...(checkoutPlanCode !== null && { planned_plan_code: checkoutPlanCode }),
           })
           .eq('id', userId)
           .select('id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end')
@@ -331,6 +475,13 @@ export async function POST(req: NextRequest) {
           )
         }
 
+        // Preserve period end so the user retains access until expiry
+        const deletedPeriodEndTs = sub.items?.data[0]?.current_period_end ?? null
+        const deletedPeriodEnd =
+          typeof deletedPeriodEndTs === 'number'
+            ? new Date(deletedPeriodEndTs * 1000).toISOString()
+            : null
+
         const { data: updatedRows, error: updateError } = await supabase
           .from('user_profiles')
           .update({
@@ -338,10 +489,11 @@ export async function POST(req: NextRequest) {
             stripe_subscription_id: sub.id,
             subscription_status: 'canceled',
             subscription_cancel_at_period_end: true,
+            ...(deletedPeriodEnd && { subscription_current_period_end: deletedPeriodEnd }),
           })
           .eq('id', userId)
           .select(
-            'id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_cancel_at_period_end'
+            'id, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_cancel_at_period_end, subscription_current_period_end'
           )
 
         if (updateError) {
@@ -370,6 +522,185 @@ export async function POST(req: NextRequest) {
         }
 
         console.log('UPDATED USER PROFILE FROM SUBSCRIPTION DELETE:', updatedRows)
+        break
+      }
+
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice
+        const invoiceRaw = event.data.object as unknown as Record<string, unknown>
+
+        // Resolve subscription ID from invoice (Stripe SDK v20 compat)
+        const paidSubId =
+          typeof invoiceRaw.subscription === 'string' ? invoiceRaw.subscription.trim() :
+          (typeof invoice.parent?.subscription_details?.subscription === 'string'
+            ? invoice.parent.subscription_details.subscription.trim() : null)
+
+        if (!paidSubId) {
+          // One-time invoice (e.g. diamond purchase) — no subscription to update
+          console.log('WEBHOOK [invoice.paid]: no subscription on invoice, skipping', { invoiceId: invoice.id })
+          break
+        }
+
+        const paidSub = await stripe.subscriptions.retrieve(paidSubId)
+        const paidUserId = await resolveUserIdForSubscription(paidSub)
+
+        if (!paidUserId) {
+          console.error('WEBHOOK THROW [invoice.paid]: could not resolve userId', {
+            invoiceId: invoice.id,
+            subscriptionId: paidSubId,
+            customerId: invoice.customer,
+          })
+          throw new Error(`invoice.paid: could not resolve userId for subscription ${paidSubId}`)
+        }
+
+        const paidPeriodEndTs = paidSub.trial_end ?? paidSub.items.data[0]?.current_period_end ?? null
+        const paidPeriodEnd = typeof paidPeriodEndTs === 'number' ? new Date(paidPeriodEndTs * 1000).toISOString() : null
+        const paidPlanCode = paidSub.metadata?.plan === 'yearly' ? 'yearly' :
+          paidSub.metadata?.plan === 'monthly' ? 'monthly' : null
+
+        console.log('WEBHOOK [invoice.paid]: updating profile', {
+          invoiceId: invoice.id,
+          userId: paidUserId,
+          subscriptionId: paidSubId,
+          status: paidSub.status,
+          periodEnd: paidPeriodEnd,
+        })
+
+        const { error: paidUpdateError } = await supabase
+          .from('user_profiles')
+          .update({
+            stripe_subscription_id: paidSubId,
+            subscription_status: paidSub.status,
+            subscription_current_period_end: paidPeriodEnd,
+            subscription_cancel_at_period_end: paidSub.cancel_at_period_end === true,
+            ...(paidPlanCode !== null && { planned_plan_code: paidPlanCode }),
+          })
+          .eq('id', paidUserId)
+
+        if (paidUpdateError) {
+          console.error('WEBHOOK THROW [invoice.paid]: update failed', {
+            userId: paidUserId,
+            message: paidUpdateError.message,
+          })
+          throw new Error(`invoice.paid update failed: ${paidUpdateError.message}`)
+        }
+
+        console.log('WEBHOOK [invoice.paid]: profile updated', { userId: paidUserId, status: paidSub.status })
+        break
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice
+        // Stripe SDK v20: subscription and payment_intent are nested or removed from
+        // top-level Invoice type. Access safely via the raw event data object.
+        const invoiceRaw = event.data.object as unknown as Record<string, unknown>
+
+        const customerId =
+          typeof invoice.customer === 'string' ? invoice.customer.trim() : null
+        const subscriptionId =
+          typeof invoiceRaw.subscription === 'string' ? invoiceRaw.subscription.trim() :
+          (typeof invoice.parent?.subscription_details?.subscription === 'string'
+            ? invoice.parent.subscription_details.subscription.trim() : null)
+        const paymentIntentId =
+          typeof invoiceRaw.payment_intent === 'string' ? invoiceRaw.payment_intent.trim() : null
+
+        // Resolve user for actor_user_id (best-effort)
+        let userId: string | null = null
+        if (customerId) {
+          const { data: profileRow } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .maybeSingle()
+          userId = profileRow?.id ?? null
+        }
+
+        console.log('WEBHOOK INVOICE PAYMENT FAILED:', {
+          invoiceId: invoice.id,
+          customerId,
+          subscriptionId,
+          userId,
+          amountDue: invoice.amount_due,
+          currency: invoice.currency,
+        })
+
+        // Best-effort audit log — must not break webhook
+        try {
+          await supabase.from('admin_audit_log').insert({
+            actor_user_id: userId,
+            event_type: 'stripe_payment_failed',
+            metadata: {
+              stripe_event_id: event.id,
+              stripe_event_type: event.type,
+              customer: customerId,
+              subscription: subscriptionId,
+              invoice: invoice.id,
+              payment_intent: paymentIntentId,
+              amount_due: invoice.amount_due,
+              currency: invoice.currency,
+              failure_message: invoice.last_finalization_error?.message ?? null,
+              created: invoice.created,
+            },
+          })
+        } catch (auditErr) {
+          console.error('Failed to log payment failure to admin_audit_log', auditErr)
+        }
+
+        break
+      }
+
+      case 'payment_intent.payment_failed': {
+        const pi = event.data.object as Stripe.PaymentIntent
+        // Stripe SDK v20: invoice may not be on the typed PaymentIntent. Access safely.
+        const piRaw = event.data.object as unknown as Record<string, unknown>
+
+        const customerId =
+          typeof pi.customer === 'string' ? pi.customer.trim() : null
+        const invoiceId =
+          typeof piRaw.invoice === 'string' ? piRaw.invoice.trim() : null
+
+        // Resolve user for actor_user_id (best-effort)
+        let userId: string | null = null
+        if (customerId) {
+          const { data: profileRow } = await supabase
+            .from('user_profiles')
+            .select('id')
+            .eq('stripe_customer_id', customerId)
+            .maybeSingle()
+          userId = profileRow?.id ?? null
+        }
+
+        console.log('WEBHOOK PAYMENT INTENT FAILED:', {
+          paymentIntentId: pi.id,
+          customerId,
+          userId,
+          amount: pi.amount,
+          currency: pi.currency,
+          failureMessage: pi.last_payment_error?.message,
+        })
+
+        // Best-effort audit log — must not break webhook
+        try {
+          await supabase.from('admin_audit_log').insert({
+            actor_user_id: userId,
+            event_type: 'stripe_payment_failed',
+            metadata: {
+              stripe_event_id: event.id,
+              stripe_event_type: event.type,
+              customer: customerId,
+              payment_intent: pi.id,
+              invoice: invoiceId,
+              amount_due: pi.amount,
+              currency: pi.currency,
+              failure_message: pi.last_payment_error?.message ?? null,
+              failure_code: pi.last_payment_error?.code ?? null,
+              created: pi.created,
+            },
+          })
+        } catch (auditErr) {
+          console.error('Failed to log payment_intent failure to admin_audit_log', auditErr)
+        }
+
         break
       }
 
