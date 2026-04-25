@@ -1606,6 +1606,11 @@ function AiConversationPlayer({
                         <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#1a1a2e]">{currentAiMessage}</div>
                       </div>
                     )}
+                    {turnAnswered && transcript && (
+                      <div className="flex justify-end">
+                        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-[#FFF8EE] px-3 py-1.5 text-sm text-[#1a1a2e]">{transcript}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
