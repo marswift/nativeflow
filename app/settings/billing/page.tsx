@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import type { UserProfileRow } from '../../../lib/types'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
+import { trackEvent } from '@/lib/analytics'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 
 const supabase = getSupabaseBrowserClient()
@@ -127,6 +128,7 @@ export default function BillingSettingsPage() {
   }
 
   async function handleStartCheckout(plan: 'monthly' | 'yearly') {
+    trackEvent('checkout_started', { plan })
     setBillingActionError('')
     setBillingActionLoading(true)
   
@@ -237,6 +239,7 @@ export default function BillingSettingsPage() {
     }
   
     checkSession()
+    trackEvent('billing_page_viewed')
     return () => {
       isActive = false
     }

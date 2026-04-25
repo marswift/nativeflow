@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
+import { trackEvent } from '../../lib/analytics'
 import { getTodayStatDate } from '../../lib/daily-stats-service'
 import type { DailyStatRow } from '../../lib/lesson-run-types'
 import type { UserProfileRow } from '../../lib/types'
@@ -252,6 +253,13 @@ export default function DashboardPage() {
       intervalId = setInterval(() => setNowMs(Date.now()), 60000)
     }, msUntilNextMinute)
     return () => { clearTimeout(timeoutId); if (intervalId) clearInterval(intervalId) }
+  }, [])
+
+  useEffect(() => {
+    // Detect checkout success redirect from Stripe
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('checkout') === 'success') {
+      trackEvent('checkout_completed')
+    }
   }, [])
 
   useEffect(() => {

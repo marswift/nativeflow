@@ -1166,6 +1166,14 @@ export default function LessonPage() {
 
     setHasFinalizedLessonRun(true)
 
+    // Beta signals
+    trackEvent('lesson_completed', { blockCount: pageData?.lesson?.blocks?.length ?? 0, isReview: isReviewActiveRef.current })
+    // first_lesson_completed: fire once per user (localStorage guard)
+    if (typeof window !== 'undefined' && !window.localStorage.getItem('nf_first_lesson_done')) {
+      trackEvent('first_lesson_completed')
+      window.localStorage.setItem('nf_first_lesson_done', '1')
+    }
+
     // Playtest: lesson complete observation
     try {
 
@@ -1293,6 +1301,9 @@ export default function LessonPage() {
       const uid = userIdRef.current
       const runId = lessonRunIdRef.current
       if (!uid || !startedAt || startedAt === 0 || hasFinalizedRef.current) return
+
+      // Beta signal: lesson abandoned (not completed)
+      try { navigator.sendBeacon('/api/track', JSON.stringify({ event: 'lesson_abandoned', properties: { stage: runtimeStageRef.current, block: runtimeBlockIdxRef.current } })) } catch { /* non-blocking */ }
 
       const MAX_SESSION_MINUTES = 60
       const rawElapsed = Math.max(1, Math.floor((Date.now() - startedAt) / 60000))
@@ -1765,6 +1776,11 @@ export default function LessonPage() {
       setStarted(true)
       setPageError(null)
       trackEvent('lesson_start', { blockCount: lesson.blocks.length })
+      // first_lesson_started: fire once per user (localStorage guard)
+      if (typeof window !== 'undefined' && !window.localStorage.getItem('nf_first_lesson')) {
+        trackEvent('first_lesson_started')
+        window.localStorage.setItem('nf_first_lesson', '1')
+      }
 
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href)

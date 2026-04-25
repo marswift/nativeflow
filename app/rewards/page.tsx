@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
+import { trackEvent } from '@/lib/analytics'
 import { useAuthProfile } from '@/lib/auth-profile-context'
 import { getRewardsCopy, type RewardsCopy } from '@/lib/rewards-copy'
 import { readUiLanguageFromStorage } from '@/lib/auth-copy'
@@ -110,6 +111,7 @@ export default function RewardsPage() {
 
   // Detect Stripe checkout return and refresh balance
   useEffect(() => {
+    trackEvent('rewards_page_viewed')
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const result = params.get('purchase')

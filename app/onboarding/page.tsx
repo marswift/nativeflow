@@ -463,6 +463,7 @@ export default function OnboardingPage() {
 
       // Skip Stripe checkout — let user experience lessons first.
       // Payment is requested later via paywall or billing page.
+      try { const { trackEvent } = await import('@/lib/analytics'); trackEvent('onboarding_completed', { language: targetLanguageCode, level: currentLevel }) } catch { /* non-blocking */ }
       window.location.assign('/lesson')
     } catch (error) {
       console.warn('Onboarding submit handled exception', error)

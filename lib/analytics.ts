@@ -5,11 +5,21 @@
 
 export type TrackEventName =
   | 'lesson_start'
+  | 'lesson_completed'
+  | 'lesson_abandoned'
   | 'ai_question_answer'
   | 'typing_answer'
   | 'conversation_turn'
   | 'conversation_complete'
   | 'paywall_clicked'
+  | 'signup_completed'
+  | 'onboarding_completed'
+  | 'first_lesson_started'
+  | 'first_lesson_completed'
+  | 'billing_page_viewed'
+  | 'checkout_started'
+  | 'checkout_completed'
+  | 'rewards_page_viewed'
   // LP Pattern A events
   | 'hero_cta_view'
   | 'cta_click'

@@ -75,6 +75,9 @@ export function AuthConfirmClient() {
         }
 
         const user = session?.user
+        if (user) {
+          try { const { trackEvent } = await import('@/lib/analytics'); trackEvent('signup_completed') } catch { /* non-blocking */ }
+        }
         if (!user) {
           clearSafetyTimeout()
           router.replace(FAILURE_REDIRECT)
