@@ -658,9 +658,18 @@ export function assembleReplyV25(
   // Ack: only on turn 2+
   const ack = turnIndex >= 2 ? ACKS[turnIndex % ACKS.length] : null
 
-  // Reaction: from pool, based on meaning type
-  const reactionPool = REACTION_BY_MEANING[llm.meaning.type] ?? REACTION_BY_MEANING.yes
-  const reaction = reactionPool[turnIndex % reactionPool.length] || null
+  // Reaction: prefer value-aware bridge template, fall back to generic pool
+  let reaction: string | null = null
+  const dimForBridge = (engineDimension ?? llm.meaning.type) as Exclude<import('./ai-conversation-state').Dimension, 'action'>
+  const bridgePool = scene?.bridgeTemplates?.[dimForBridge]
+  if (bridgePool && bridgePool.length > 0 && llm.meaning.value) {
+    const template = bridgePool[turnIndex % bridgePool.length]
+    reaction = template.replace(/\{value\}/g, llm.meaning.value)
+  }
+  if (!reaction) {
+    const reactionPool = REACTION_BY_MEANING[llm.meaning.type] ?? REACTION_BY_MEANING.yes
+    reaction = reactionPool[turnIndex % reactionPool.length] || null
+  }
 
   // Deduplicate: if reaction is also an ack-like phrase, keep only one
   const reactionIsAck = reaction ? ACK_LIKE.has(reaction.toLowerCase()) : false

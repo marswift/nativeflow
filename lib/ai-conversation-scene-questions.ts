@@ -46,6 +46,8 @@ export type SceneQuestionSet = {
   }
   /** Optional slot schema for semantic validation (V2.6) */
   slotSchema?: SceneSlotSchema
+  /** Optional value-aware bridge templates per dimension. Use {value} placeholder. */
+  bridgeTemplates?: Partial<Record<Exclude<Dimension, 'action'>, string[]>>
 }
 
 // ── Scene Question Libraries ──
@@ -195,6 +197,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         repairTemplates: ['Do you do it in the kitchen?'],
         acceptYesNo: true,
       },
+    },
+    bridgeTemplates: {
+      object: ['The {value} first — that makes sense.', 'Oh, {value} first. Nice.', '{value} first — got it.'],
+      people: ['With {value} — that\'s nice.', 'Oh, with {value}. Sounds good.', '{value} helps you. Nice.'],
+      time: ['{value} sounds quick.', 'Oh, {value}. That\'s not long.', '{value} — got it.'],
+      frequency: ['{value}? That\'s a good habit.', 'Oh, {value}. Nice routine.', '{value} sounds consistent.'],
+      feeling: ['{value} — I understand.', 'Oh, {value}. I get that.', '{value}. Thanks for sharing.'],
     },
   },
 
