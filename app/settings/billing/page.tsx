@@ -7,7 +7,6 @@ import type { UserProfileRow } from '../../../lib/types'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
-import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -73,7 +72,6 @@ function formatPeriodEnd(value: BillingProfile['subscription_current_period_end'
 
 export default function BillingSettingsPage() {
   const router = useRouter()
-  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()  // ← 追加
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<BillingProfile | null>(null)
   const [pageError, setPageError] = useState('')
@@ -156,8 +154,28 @@ export default function BillingSettingsPage() {
       const data = (await res.json().catch(() => ({}))) as {
         url?: string
         message?: string
+        code?: string
       }
-  
+
+      // Active subscription exists — switch plan via update instead of new checkout
+      if (data.code === 'USE_PLAN_CHANGE') {
+        const changePlanRes = await fetch('/api/stripe/change-plan', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ plan }),
+        })
+        if (changePlanRes.ok) {
+          window.location.reload()
+        } else {
+          const changePlanData = (await changePlanRes.json().catch(() => ({}))) as { message?: string }
+          setBillingActionError(changePlanData.message ?? 'プラン変更に失敗しました。')
+        }
+        return
+      }
+
       if (!res.ok || !data.url) {
         setBillingActionError(data.message ?? '決済画面を開けませんでした。時間をおいて再度お試しください。')
         return
@@ -178,15 +196,17 @@ export default function BillingSettingsPage() {
     async function checkSession() {
       try {
         const {
-          data: { user },
-          error: userError,
-        } = await supabase.auth.getUser()
-        
-        if (userError || !user) {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession()
+
+        if (sessionError || !session?.user) {
           if (isActive) router.replace('/login')
           return
         }
-        
+
+        const user = session.user
+
         const { data: row, error: fetchError } = await supabase
           .from('user_profiles')
           .select('planned_plan_code, subscription_status, subscription_current_period_end, subscription_cancel_at_period_end, next_plan_code, stripe_subscription_id')
@@ -229,7 +249,7 @@ export default function BillingSettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <AppHeader onLogout={handleLogout} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-[#4a4a6a]" aria-live="polite">
@@ -248,7 +268,7 @@ export default function BillingSettingsPage() {
         className={PAGE_SHELL_CLASS}
         style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
       >
-        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <AppHeader onLogout={handleLogout} />
         <main className="flex-1 flex items-center justify-center px-6 py-12">
           <div className={`w-full max-w-md ${CARD_BASE} px-6 py-8 text-center`}>
             <p className="text-sm text-red-600">{pageError}</p>
@@ -275,7 +295,7 @@ export default function BillingSettingsPage() {
       className={PAGE_SHELL_CLASS}
       style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
     >
-      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+      <AppHeader onLogout={handleLogout} />
 
       <main className="flex-1">
         <div className={CONTAINER_CLASS}>

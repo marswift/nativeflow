@@ -92,21 +92,25 @@ export async function POST(req: NextRequest) {
       ? profileRow.stripe_customer_id.trim()
       : ''
 
-  // Cancel existing subscription before creating a new one
+  // If user already has an active subscription, reject checkout and direct to plan change.
+  // Never cancel an active subscription before a replacement is confirmed.
   const existingSubId =
     typeof profileRow?.stripe_subscription_id === 'string'
       ? profileRow.stripe_subscription_id.trim()
       : ''
   if (existingSubId) {
     try {
-      await stripe.subscriptions.cancel(existingSubId)
-      console.log('CANCELLED EXISTING SUBSCRIPTION:', existingSubId)
-    } catch (cancelErr) {
-      // Not fatal — subscription may already be cancelled or invalid
-      console.warn('Failed to cancel existing subscription (continuing)', {
-        subscriptionId: existingSubId,
-        message: cancelErr instanceof Error ? cancelErr.message : String(cancelErr),
-      })
+      const existingSub = await stripe.subscriptions.retrieve(existingSubId)
+      const activeStatuses = new Set(['active', 'trialing', 'past_due'])
+      if (activeStatuses.has(existingSub.status)) {
+        return NextResponse.json(
+          { message: 'Active subscription exists. Use plan change instead.', code: 'USE_PLAN_CHANGE' },
+          { status: 409 }
+        )
+      }
+      // Subscription exists but is canceled/unpaid/incomplete — safe to proceed with new checkout
+    } catch {
+      // Subscription not found in Stripe — safe to proceed with new checkout
     }
   }
 
