@@ -619,17 +619,23 @@ export function assembleReplyV25(
     return ack ? `${ack} ${byTheWay}` : byTheWay
   }
 
-  // Greeting (turn 0-1): answerToAi or default greeting + engine question
-  // Also catches "I'm good, and you?" classified as answer+social at turn 0-1
-  if (llm.intent === 'greeting' || (llm.intent === 'question_to_ai' && turnIndex <= 1) || (turnIndex <= 1 && llm.meaning.type === 'social')) {
+  // Reciprocal question detection: catch "and you?" patterns regardless of LLM classification.
+  // The LLM often misclassifies "I'm good, and you?" as intent=answer because the first half is an answer.
+  const RECIPROCAL = /\band you\b|\bhow about you\b|\bwhat about you\b|\byou too\b|\bhow are you\b|\bhows your day\b|\bhow is your day\b/i
+  const valueOrAnswer = `${llm.meaning.value ?? ''} ${llm.answerToAi ?? ''}`
+  const hasReciprocalPhrase = RECIPROCAL.test(valueOrAnswer)
+  const isReciprocal = llm.intent === 'question_to_ai' || llm.intent === 'greeting' ||
+    hasReciprocalPhrase || (turnIndex <= 1 && llm.meaning.type === 'social')
+
+  // Greeting / reciprocal (turn 0-1): answer briefly + engine question
+  if (isReciprocal && turnIndex <= 1) {
     const greeting = llm.answerToAi?.trim() || "I'm good too, thanks!"
     if (engineQuestion) return `${greeting} ${engineQuestion}`
     return greeting
   }
 
-  // Question to AI (turn 2+): LLM provides brief answer, engine provides next question
-  // Also catches reciprocal questions ("and you?") that may be classified as 'answer' with social meaning
-  if (llm.intent === 'question_to_ai' || (llm.answerToAi && llm.meaning.type === 'social')) {
+  // Question to AI / reciprocal (turn 2+): answer briefly + engine question
+  if (isReciprocal) {
     const answer = llm.answerToAi?.trim() || "Yeah, same here!"
     if (engineQuestion) return `${answer} ${engineQuestion}`
     return answer
