@@ -26,7 +26,7 @@ import { runLessonCompletionEffect } from '../../lib/lesson-run-effects'
 import { getTodayStatDate } from '../../lib/daily-stats-service'
 import { executeNextStep } from '../../lib/lesson-run-next-step'
 import { fetchReviewItemsWithContent, injectReviewBlocks } from '../../lib/review-injection'
-// import { canStartLesson } from '../../lib/lesson-access' // disabled during MVP
+import { canStartLesson } from '../../lib/lesson-access'
 import { type LessonPageData } from '../../lib/lesson-page-data'
 import { DAILY_FLOW_BLOCKS } from '../../lib/daily-flow-config'
 import { buildScenarioLabel } from '../../lib/lesson-blueprint-service'
@@ -644,6 +644,8 @@ export default function LessonPage() {
   const [isExtraSession, setIsExtraSession] = useState(false)
   const [scoreHistory, setScoreHistory] = useState<ScoreHistoryItem[]>([])
   const [dueReviewCount, setDueReviewCount] = useState(0)
+  /** Pre-built review session prepared at page load. handleStartReview uses this exact object. */
+  const preparedReviewSessionRef = useRef<ReturnType<typeof injectReviewBlocks> | null>(null)
   const [completedDates, setCompletedDates] = useState<string[]>([])
   const [repeatAutoStartNonce, setRepeatAutoStartNonce] = useState(0)
   const [showListenRepeatComplete, setShowListenRepeatComplete] = useState(false)
@@ -975,21 +977,33 @@ export default function LessonPage() {
     }
   }, [userId])
 
-  // Fetch due review count (DB-backed, non-blocking)
+  // Pre-build the review session at page load.
+  // handleStartReview reuses this exact session object — guarantees count match.
   useEffect(() => {
     if (!userId) return
     let cancelled = false
 
-    const now = new Date().toISOString()
-    supabase
-      .from('review_items')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .or(`next_review_at.is.null,next_review_at.lte.${now}`)
-      .then(({ count }: { count: number | null }) => {
-        if (!cancelled) setDueReviewCount(count ?? 0)
-      })
-      .catch(() => {})
+    ;(async () => {
+      try {
+        const sources = await fetchReviewItemsWithContent(supabase, userId)
+        if (cancelled) return
+        // Prepared review sessions need a stable id because lesson run startup
+        // requires id/lessonId/sessionId. Use date-based id for daily stability.
+        const today = new Date().toISOString().slice(0, 10)
+        const session = injectReviewBlocks({
+          id: `review-${userId}-${today}`,
+          theme: 'Review Session',
+          level: 'beginner' as const,
+          totalEstimatedMinutes: sources.length,
+          blocks: [],
+        }, sources)
+        preparedReviewSessionRef.current = session
+        if (!cancelled) setDueReviewCount(session.blocks.length)
+      } catch {
+        preparedReviewSessionRef.current = null
+        if (!cancelled) setDueReviewCount(0)
+      }
+    })()
 
     // Fetch completed study days for this month's calendar
     const d = new Date()
@@ -1393,38 +1407,46 @@ export default function LessonPage() {
     if (!userId) return
     if (started || isStartingLessonRef.current) return
 
-    // Billing gate — disabled during MVP free trial period
-    // const access = canStartLesson(pageData?.profile ?? {})
-    // if (!access.allowed) {
-    //   setStartBlockedReason('A subscription is required to continue lessons')
-    //   return
-    // }
+    const reviewAccess = canStartLesson(pageData?.profile ?? {})
+    if (!reviewAccess.allowed) {
+      setStartBlockedReason('subscription_required')
+      return
+    }
 
     isStartingLessonRef.current = true
     setStartErrorMessage(null)
     setStartBlockedReason(null)
 
     try {
-      console.log('[debug] handleStartReview: fetching review items')
-      const sources = await fetchReviewItemsWithContent(supabase, userId)
-      console.log('[debug] handleStartReview: sources', sources.length)
+      // Use the pre-built review session (same object that determined lesson top count).
+      // Only rebuild if the prepared session is unavailable (e.g. page was idle too long).
+      let reviewSession = preparedReviewSessionRef.current
+      if (!reviewSession || reviewSession.blocks.length === 0) {
+        const sources = await fetchReviewItemsWithContent(supabase, userId)
+        if (sources.length === 0) {
+          setStartBlockedReason('No review items available')
+          isStartingLessonRef.current = false
+          return
+        }
+        const fallbackToday = new Date().toISOString().slice(0, 10)
+        reviewSession = injectReviewBlocks({
+          id: `review-${userId}-${fallbackToday}`,
+          theme: 'Review Session',
+          level: 'beginner' as const,
+          totalEstimatedMinutes: sources.length,
+          blocks: [],
+        }, sources)
+      }
+      // Clear prepared session after use so next review fetches fresh data
+      preparedReviewSessionRef.current = null
 
-      if (sources.length === 0) {
+      if (reviewSession.blocks.length === 0) {
         setStartBlockedReason('No review items available')
         isStartingLessonRef.current = false
         return
       }
 
       clearPersistedLessonState()
-
-      const baseSession = {
-        sessionId: `review-${Date.now()}`,
-        theme: 'Review Session',
-        level: 'beginner' as const,
-        totalEstimatedMinutes: sources.length,
-        blocks: [],
-      }
-      const reviewSession = injectReviewBlocks(baseSession, sources)
 
       console.log('[click-review] reviewSession', {
         sessionId: (reviewSession as Record<string, unknown>).sessionId,
@@ -1457,16 +1479,22 @@ export default function LessonPage() {
       if (pageData?.lesson) originalLessonRef.current = pageData.lesson
       isReviewActiveRef.current = true
       const reviewAsLesson = reviewSession as unknown as LessonPageData['lesson']
-      setPageData((prev) => prev ? { ...prev, lesson: reviewAsLesson } : prev)
 
-      // Hydrate audio for review items (non-blocking — guarded against post-exit overwrite)
-      hydrateLessonAudio(reviewAsLesson as Parameters<typeof hydrateLessonAudio>[0]).then((hydrated) => {
+      // Hydrate audio for review items BEFORE starting — review items have no pre-existing audio_url,
+      // so hydration must complete before the user enters the Listen stage.
+      let hydratedReview = reviewAsLesson
+      try {
+        const hydrated = await hydrateLessonAudio(reviewAsLesson as Parameters<typeof hydrateLessonAudio>[0])
         if (isReviewActiveRef.current) {
-          setPageData((prev) => prev ? { ...prev, lesson: hydrated as unknown as LessonPageData['lesson'] } : prev)
+          hydratedReview = hydrated as unknown as LessonPageData['lesson']
         }
-      }).catch(() => { /* non-blocking */ })
+      } catch {
+        // eslint-disable-next-line no-console
+        console.warn('[review] Audio hydration failed — review will start without audio')
+      }
+      setPageData((prev) => prev ? { ...prev, lesson: hydratedReview } : prev)
 
-      startLessonRunEffects(userId, reviewAsLesson as NonNullable<LessonPageData['lesson']>)
+      startLessonRunEffects(userId, hydratedReview as NonNullable<LessonPageData['lesson']>)
       setRuntimeState(nextRuntimeState)
       lessonStartedAtRef.current = Date.now()
       studyMinutesRecordedRef.current = 0
@@ -1486,6 +1514,12 @@ export default function LessonPage() {
   async function handleStartWeeklyChallenge() {
     if (!userId) return
     if (started || isStartingLessonRef.current) return
+
+    const challengeAccess = canStartLesson(pageData?.profile ?? {})
+    if (!challengeAccess.allowed) {
+      setStartBlockedReason('subscription_required')
+      return
+    }
 
     isStartingLessonRef.current = true
     setStartErrorMessage(null)
@@ -1594,12 +1628,11 @@ export default function LessonPage() {
       showCompleted,
     })
 
-    // Billing gate — disabled during MVP free trial period
-    // const access = canStartLesson(pageData?.profile ?? {})
-    // if (!access.allowed) {
-    //   setStartBlockedReason('A subscription is required to continue lessons')
-    //   return
-    // }
+    const access = canStartLesson(pageData?.profile ?? {})
+    if (!access.allowed) {
+      setStartBlockedReason('subscription_required')
+      return
+    }
 
     if (lesson == null) {
       setStartBlockedReason('Cannot start: lesson data is missing.')
@@ -1702,41 +1735,32 @@ export default function LessonPage() {
       setStarted(true)
       setPageError(null)
       trackEvent('lesson_start', { blockCount: lesson.blocks.length })
-  
+
       if (typeof window !== 'undefined') {
         const url = new URL(window.location.href)
         url.searchParams.set('resume', 'true')
         window.history.replaceState(null, '', url.toString())
       }
-  
+
   } catch (error) {
-      isStartingLessonRef.current = false
       console.error('Failed to start lesson', error instanceof Error ? error.message : error, error)
       setPageError('load_failed')
       setStartErrorMessage(`Failed to start: ${error instanceof Error ? error.message : 'unknown'}`)
       setStarted(false)
       setRuntimeState(null)
+    } finally {
       isStartingLessonRef.current = false
     }
   }
 
   function handleStartExtraSession() {
     setIsExtraSession(true)
-    // Reload page data to get a fresh lesson
+    // Clear persisted state so the reload fetches a fresh lesson
     clearPersistedLessonState()
     clearDailyFlowSelection()
-    setStarted(false)
-    setRuntimeState(null)
-    setProgress(getInitialRunState().progress)
-    setInputValue('')
-    setCorrectTypingCount(0)
-    setEarnedFlowPoints(0)
-    setHasFinalizedLessonRun(false)
-    setShowListenRepeatComplete(false)
-    awardedStageKeysRef.current = new Set()
-    setPageData(null)
-    setPageError(null)
     isStartingLessonRef.current = false
+    // Full reload — ensures fresh lesson data from server
+    window.location.reload()
   }
 
   function handleStartRepeatFromListen() {
@@ -2070,6 +2094,61 @@ export default function LessonPage() {
           <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
             <h2 className="text-lg font-semibold text-[#1a1a2e]">Error</h2>
             <p className="mt-3 text-sm text-[#4a4a6a]">{errorMessage}</p>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+              >
+                もう一度読み込む
+              </button>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center rounded-xl border border-[#ede9e2] bg-white px-6 py-3 text-sm font-bold text-[#4a4a6a] hover:bg-[#faf8f5] focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+              >
+                マイページに戻る
+              </Link>
+            </div>
+          </div>
+        </main>
+        <AppFooter />
+      </div>
+    )
+  }
+
+  // Billing gate — check entitlement before showing lesson
+  const lessonAccess = canStartLesson(pageData?.profile ?? {})
+  if (!lessonAccess.allowed) {
+    return (
+      <div
+        className={PAGE_SHELL_CLASS}
+        style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}
+      >
+        <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+        <main className="flex-1 flex items-center justify-center px-6 py-12">
+          <div className={`w-full max-w-md ${CARD_CLASS} text-center`}>
+            <h2 className="text-lg font-semibold text-[#1a1a2e]">
+              {isJaUi ? 'プランが必要です' : 'Plan required'}
+            </h2>
+            <p className="mt-3 text-sm text-[#4a4a6a] leading-relaxed">
+              {isJaUi
+                ? 'レッスンを続けるには、プランの契約または更新が必要です。'
+                : 'Please start or renew a plan to access lessons.'}
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <Link
+                href="/settings/billing"
+                className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-6 py-3 text-sm font-bold text-white shadow-sm hover:bg-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+              >
+                {isJaUi ? 'お支払い・契約を確認する' : 'View billing'}
+              </Link>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center rounded-xl border border-[#ede9e2] bg-white px-6 py-3 text-sm font-bold text-[#4a4a6a] hover:bg-[#faf8f5] focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+              >
+                {isJaUi ? 'マイページに戻る' : 'Back to dashboard'}
+              </Link>
+            </div>
           </div>
         </main>
         <AppFooter />
@@ -2163,7 +2242,12 @@ export default function LessonPage() {
                   copy={copy}
                   isLessonComplete={isLessonComplete}
                   targetLanguageLabel={targetLanguageLabel}
-                  scenarioLabel={sanitizeScenarioLabel(block.description) || getDailyFlowSceneLabel(block.sceneId, isJaUi) || (block.sceneId ? buildScenarioLabel(block.sceneId) : null) || findNearestSceneLabel(lesson.blocks, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0, isJaUi) || copy.overviewCard.defaultSceneLabel}
+                  scenarioLabel={
+                    // Review blocks: use the pre-computed title directly (already resolved from block_title / sceneId / fallback in reviewItemToBlock)
+                    (block.type === 'review' && block.title) ? block.title
+                    // Normal blocks: existing derivation chain
+                    : sanitizeScenarioLabel(block.description) || getDailyFlowSceneLabel(block.sceneId, isJaUi) || (block.sceneId ? buildScenarioLabel(block.sceneId) : null) || findNearestSceneLabel(lesson.blocks, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0, isJaUi) || copy.overviewCard.defaultSceneLabel
+                  }
                   previousPhrases={lesson.blocks
                     .slice(0, runtimeState?.currentBlockIndex ?? progress.currentBlockIndex ?? 0)
                     .map((b) => b.items[0]?.answer?.trim())
@@ -2259,6 +2343,8 @@ export default function LessonPage() {
                 copy={copy}
                 totalFlowPoints={totalFlowPoints}
                 earnedFlowPoints={earnedFlowPoints}
+                totalDiamonds={pageData?.profile?.total_diamonds ?? 0}
+                earnedDiamonds={earnedFlowPoints > 0 ? Math.max(1, Math.floor(earnedFlowPoints / 5)) : 0}
                 onStartExtraSession={handleStartExtraSession}
                 speakingProgress={{
                   speakingAttempts,
