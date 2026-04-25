@@ -568,6 +568,7 @@ export function assembleReplyV25(
   clarificationPrompts: { fragment: string[]; confusion: string[]; garbled: string[] } | null,
   lessonPhrase?: string | null,
   engineDimension?: string | null,
+  userMessage?: string | null,
 ): string {
   // Resolve scene slotSchema for slot validation
   const scene = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
@@ -624,8 +625,9 @@ export function assembleReplyV25(
   const RECIPROCAL = /\band you\b|\bhow about you\b|\bwhat about you\b|\byou too\b|\bhow are you\b|\bhows your day\b|\bhow is your day\b/i
   const valueOrAnswer = `${llm.meaning.value ?? ''} ${llm.answerToAi ?? ''}`
   const hasReciprocalPhrase = RECIPROCAL.test(valueOrAnswer)
+  const hasReciprocalRaw = userMessage ? RECIPROCAL.test(userMessage) : false
   const isReciprocal = llm.intent === 'question_to_ai' || llm.intent === 'greeting' ||
-    hasReciprocalPhrase || (turnIndex <= 1 && llm.meaning.type === 'social')
+    hasReciprocalPhrase || hasReciprocalRaw || (turnIndex <= 1 && llm.meaning.type === 'social')
 
   // Greeting / reciprocal (turn 0-1): answer briefly + engine question
   if (isReciprocal && turnIndex <= 1) {
@@ -721,6 +723,8 @@ export type V25AssemblyContext = {
   lessonPhrase?: string | null
   /** Engine's current dimension for slot validation (V2.7). */
   engineDimension?: string | null
+  /** Raw user message for reciprocal detection. */
+  userMessage?: string | null
 }
 
 export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContext): AiConversationResponse | null {
@@ -758,6 +762,7 @@ export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContex
         ctx?.clarificationPrompts ?? null,
         ctx?.lessonPhrase ?? null,
         ctx?.engineDimension ?? null,
+        ctx?.userMessage ?? null,
       )
     } else if (typeof parsed.aiReply === 'string') {
       // V1/V2 fallback: LLM returned old-style aiReply

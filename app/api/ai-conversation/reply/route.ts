@@ -83,6 +83,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       clarificationPrompts: body.engineClarificationPrompts ?? null,
       lessonPhrase: body.lessonPhrase,
       engineDimension: body.engineDimension ?? null,
+      userMessage: body.userMessage,
     }
     const parsed = parseAiConversationResponse(text, assemblyCtx)
 
