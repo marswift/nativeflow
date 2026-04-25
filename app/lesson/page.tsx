@@ -2326,15 +2326,13 @@ export default function LessonPage() {
               <div className="rounded-[24px] border border-[#E8E4DF] bg-white px-6 py-8 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
                 <div className="mx-auto max-w-[680px] text-center">
                   <p className="text-[13px] font-bold tracking-[0.08em] text-[#7b7b94]">
-                    LISTEN & REPEAT COMPLETE
+                    {copy.activeCard.listenRepeatCompleteTitle}
                   </p>
                   <h2 className="mt-3 text-2xl font-black tracking-tight text-[#1a1a2e]">
-                    Listen & Repeat practice is complete
+                    {copy.activeCard.listenRepeatCompleteBody}
                   </h2>
-                  <p className="mt-4 text-sm leading-7 text-[#5a5a7a]">
-                    You practiced listening and repeating what you heard.
-                    <br />
-                    Next, let&apos;s practice answering AI questions in English.
+                  <p className="mt-4 whitespace-pre-line text-sm leading-7 text-[#5a5a7a]">
+                    {copy.activeCard.listenRepeatCompleteDescription}
                   </p>
 
                   <div className="mt-6 flex justify-center">
@@ -2343,7 +2341,7 @@ export default function LessonPage() {
                       onClick={handleAdvanceFromListenRepeatComplete}
                       className="cursor-pointer rounded-xl bg-[#F5A623] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#D4881A]"
                     >
-                      Continue to next practice
+                      {copy.activeCard.listenRepeatCompleteButton}
                     </button>
                   </div>
                 </div>

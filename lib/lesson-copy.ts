@@ -201,6 +201,10 @@ export type LessonCopy = {
     listenRecordingButton: string
     listenPlayingLabel: string
     listenAudioNotReady: string
+    listenRepeatCompleteTitle: string
+    listenRepeatCompleteBody: string
+    listenRepeatCompleteDescription: string
+    listenRepeatCompleteButton: string
     repeatSpeakInstruction: string
     repeatRetryAudioButton: string
     repeatRecordingButton: string
@@ -721,6 +725,10 @@ export const LESSON_COPY_JA = {
     listenRecordingButton: '次へ',
     listenPlayingLabel: '音声再生中です',
     listenAudioNotReady: 'まだ音声ファイルがありません',
+    listenRepeatCompleteTitle: '聞く・リピート完了',
+    listenRepeatCompleteBody: '聞く・リピート練習が完了しました',
+    listenRepeatCompleteDescription: '聞いた音声を理解し、マネして話す練習ができました。\n次はAIの質問に英語で答える練習です。',
+    listenRepeatCompleteButton: '次の練習へ進む',
     repeatSpeakInstruction: 'STEP1で聞いた文章をマネして録音してください',
     repeatRetryAudioButton: '聞くに戻る',
     repeatRecordingButton: '録音開始',
@@ -1224,6 +1232,10 @@ export const LESSON_COPY_EN = {
     listenRecordingButton: 'Next',
     listenPlayingLabel: 'Audio is playing',
     listenAudioNotReady: 'Audio file is not ready yet',
+    listenRepeatCompleteTitle: 'Listen & Repeat Complete',
+    listenRepeatCompleteBody: 'Listen and repeat practice is complete.',
+    listenRepeatCompleteDescription: 'You practiced understanding and repeating what you heard.\nNext, let\'s practice answering AI questions in English.',
+    listenRepeatCompleteButton: 'Continue to next practice',
     repeatSpeakInstruction: 'Repeat and record the sentence you heard in STEP 1.',
     repeatRetryAudioButton: 'Back to listen',
     repeatRecordingButton: 'Start recording',
