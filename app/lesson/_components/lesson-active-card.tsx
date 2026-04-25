@@ -3836,8 +3836,36 @@ export function LessonActiveCard({
   }, [block.sceneId, block.region, block.ageGroup, level])
 
 
-  const audioUrl = getItemAudioUrl(item)
+  const hydratedAudioUrl = getItemAudioUrl(item)
   const rawAudioStatus = (item as LessonBlockItem & { audio_status?: 'ok' | 'fallback' | 'failed' }).audio_status
+
+  // On-demand audio fetch: if hydration missed this item, try fetching audio client-side
+  const [onDemandAudioUrl, setOnDemandAudioUrl] = useState<string | null>(null)
+  const onDemandFetchedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (hydratedAudioUrl || onDemandAudioUrl) return // already have audio
+    const speechText = getListenSpeechText(item)
+    if (!speechText || onDemandFetchedRef.current === speechText) return
+    onDemandFetchedRef.current = speechText
+    ;(async () => {
+      try {
+        const hdrs = await getAuthHeaders()
+        const res = await fetch('/api/audio/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...hdrs },
+          body: JSON.stringify({ text: speechText, speed: 0.85 }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.audio_url) setOnDemandAudioUrl(data.audio_url)
+        }
+      } catch { /* non-blocking */ }
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydratedAudioUrl, item.id])
+
+  const audioUrl = hydratedAudioUrl || onDemandAudioUrl || ''
+
   // If audio_status is set (hydration complete), use it. If not set and no URL, pending.
   // Timeout: if pending lasts > 30s, treat as failed.
   const [audioPendingTimedOut, setAudioPendingTimedOut] = useState(false)
