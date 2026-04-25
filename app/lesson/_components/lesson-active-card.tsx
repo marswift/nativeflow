@@ -1460,7 +1460,7 @@ function AiConversationPlayer({
     if (!started || !turnAnswered || turnHint || allDone) return
     const timer = setTimeout(() => {
       advanceToNextTurn()
-    }, 100)
+    }, 1_000)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, turnAnswered, turnHint, allDone])
