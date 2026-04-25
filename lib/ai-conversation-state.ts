@@ -264,10 +264,10 @@ function getNextUncoveredDimension(state: ConversationState): Dimension | null {
   return null
 }
 
-function getDimensionQuestion(dim: Dimension, plan: ConversationPlan): string | null {
+function getDimensionQuestion(dim: Dimension, plan: ConversationPlan, turnIndex = 0): string | null {
   const pool = plan.dimensions[dim]
   if (!pool || pool.length === 0) return null
-  return pool[0]
+  return pool[turnIndex % pool.length]
 }
 
 // ── Deterministic next-intent selection ──
@@ -336,7 +336,7 @@ export function selectNextIntent(state: ConversationState, userInput: UserInputT
   if (stage === 'anchor_intro' || stage === 'detail' || stage === 'clarify') {
     if (userInput === 'yes' || userInput === 'clear_answer') {
       if (nextDim) {
-        const q = getDimensionQuestion(nextDim, plan)
+        const q = getDimensionQuestion(nextDim, plan, turnIndex)
         return {
           stage: 'detail', action: 'ask_dimension',
           questionIntent: dimensionToQuestionIntent(nextDim),
@@ -357,7 +357,7 @@ export function selectNextIntent(state: ConversationState, userInput: UserInputT
 
     if (userInput === 'no') {
       if (nextDim) {
-        const q = getDimensionQuestion(nextDim, plan)
+        const q = getDimensionQuestion(nextDim, plan, turnIndex)
         return {
           stage: 'detail', action: 'ask_dimension',
           questionIntent: dimensionToQuestionIntent(nextDim),
@@ -404,7 +404,7 @@ export function advanceState(state: ConversationState, userInput: UserInputType,
       turnIndex: state.turnIndex + 1,
       coveredDimensions: state.coveredDimensions,
       lastQuestionIntent: nextDim ? dimensionToQuestionIntent(nextDim) : 'wrap',
-      lastAskedQuestion: nextDim ? (getDimensionQuestion(nextDim, state.plan) ?? null) : null,
+      lastAskedQuestion: nextDim ? (getDimensionQuestion(nextDim, state.plan, state.turnIndex) ?? null) : null,
       userInputType: userInput,
       repairCount: 0,
     }
