@@ -210,13 +210,33 @@ GOOD:
 | T19 | restaurant | 2 | "Ramen." (dim=object) | ack + object bridge + "Tell me more." | Comment-only cross-scene |
 | T20 | school | 2 | "Math." (dim=object) | ack + object bridge + "Tell me more." | Comment-only cross-scene |
 
+### Universal Social Intent
+
+| # | User Input | Expected Intent | Expected Behavior | Check |
+|---|---|---|---|---|
+| T24 | "Thanks, and you?" | reciprocal_greeting | warm answer + question | Reciprocal wins over thanks |
+| T25 | "Sorry, can you say that again?" | apology | confusion/clarify template | Apology detected |
+| T26 | "Bye, see you." | farewell | wrap template | Farewell detected |
+| T27 | "Can you explain?" | confusion | confusion template | Confusion detected |
+| T28 | "Tell me more." | continuation | normal progression | Continuation detected |
+
+### Negative Cases (must NOT trigger reciprocal_greeting)
+
+| # | User Input | Expected Intent | Check |
+|---|---|---|---|
+| T29 | "Yes I do." | null | Normal scene answer |
+| T30 | "The dishes." | null | Object answer |
+| T31 | "About ten minutes." | null | Time answer |
+| T32 | "With my family." | null | Person answer |
+| T33 | "I feel good." | null | Feeling answer |
+
 ---
 
 ## 6. Acceptance Criteria
 
 The AI conversation engine is NOT acceptable for release unless:
 
-1. **23/23 test matrix passes** -- every test case produces the expected reply pattern.
+1. **33/33 test matrix passes** -- every test case produces the expected reply pattern.
 2. **Reciprocal questions pass 100%** -- "And you?", "How about you?", "What about you?" always get a brief answer before the lesson question.
 3. **No wrong repair question** -- repair uses the correct engine dimension's template, never a mismatched dimension.
 4. **No AI text before audio** -- current AI message is hidden during playback, revealed after.
