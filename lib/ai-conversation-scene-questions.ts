@@ -124,6 +124,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         acceptYesNo: true,
       },
     },
+    bridgeTemplates: {
+      time: ['{value} — that\'s pretty early.', 'Oh, {value}. Not bad.', '{value} — got it.'],
+      object: ['An {value} — makes sense.', 'Oh, {value}. Smart.', '{value} — that works.'],
+      people: ['{value} wakes you up — nice.', 'Oh, {value}. That helps.', '{value} — got it.'],
+      frequency: ['{value}? That\'s consistent.', 'Oh, {value}. Good habit.', '{value} — makes sense.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Same here sometimes.', '{value} — fair enough.'],
+    },
   },
 
   // ── breakfast_cleanup: Cleaning up after breakfast ──
@@ -279,6 +286,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         acceptYesNo: true,
       },
     },
+    bridgeTemplates: {
+      object: ['{value} — that sounds good.', 'Oh, {value}. Yummy.', '{value} — nice choice.'],
+      time: ['{value} — that\'s a good time.', 'Oh, {value}. Not too early.', '{value} — got it.'],
+      people: ['With {value} — that\'s nice.', 'Oh, {value}. Sounds fun.', '{value} — that\'s good.'],
+      frequency: ['{value}? Good to know.', 'Oh, {value}. I see.', '{value} — makes sense.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Same here.', '{value} — nice.'],
+    },
   },
 
   // ── commute: Going to work/school ──
@@ -354,6 +368,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         acceptYesNo: true,
       },
     },
+    bridgeTemplates: {
+      object: ['The {value} — that\'s common.', 'Oh, {value}. Makes sense.', '{value} — got it.'],
+      time: ['{value} — that\'s reasonable.', 'Oh, {value}. Not too bad.', '{value} — I see.'],
+      people: ['{value} — that\'s nice.', 'Oh, with {value}. Sounds good.', '{value} — got it.'],
+      frequency: ['{value}? That\'s steady.', 'Oh, {value}. I see.', '{value} — makes sense.'],
+      feeling: ['{value} — I understand.', 'Oh, {value}. That\'s fair.', '{value} — I get that.'],
+    },
   },
 
   // ── sleep: Going to bed / bedtime ──
@@ -426,6 +447,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         repairTemplates: ['Do you have your own room?'],
         acceptYesNo: true,
       },
+    },
+    bridgeTemplates: {
+      time: ['{value} — not too late.', 'Oh, {value}. That\'s reasonable.', '{value} — I see.'],
+      object: ['{value} before bed — nice.', 'Oh, {value}. Relaxing.', '{value} — sounds cozy.'],
+      people: ['{value} — that\'s sweet.', 'Oh, {value}. Nice.', '{value} — got it.'],
+      frequency: ['{value}? That\'s consistent.', 'Oh, {value}. Good routine.', '{value} — makes sense.'],
+      feeling: ['{value} — I understand.', 'Oh, {value}. Same sometimes.', '{value} — that\'s fair.'],
     },
   },
 
@@ -501,6 +529,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         acceptYesNo: true,
       },
     },
+    bridgeTemplates: {
+      people: ['{value} — sounds fun.', 'Oh, {value}. Nice.', 'With {value} — that\'s cool.'],
+      object: ['{value} together — that\'s fun.', 'Oh, {value}. Nice choice.', '{value} — sounds good.'],
+      frequency: ['{value}? That\'s nice.', 'Oh, {value}. Good for you.', '{value} — not bad.'],
+      feeling: ['{value} — I bet.', 'Oh, {value}. That\'s great.', '{value} — makes sense.'],
+      time: ['{value} — good timing.', 'Oh, {value}. Works well.', '{value} — got it.'],
+    },
   },
 
   // ── restaurant: Ordering food / eating out ──
@@ -574,6 +609,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         repairTemplates: ['Do you enjoy trying new places?', 'Is it fun?'],
         acceptYesNo: true,
       },
+    },
+    bridgeTemplates: {
+      object: ['{value} — yummy.', 'Oh, {value}. Good choice.', '{value} — I like that too.'],
+      people: ['With {value} — sounds nice.', 'Oh, {value}. That\'s fun.', '{value} — nice.'],
+      frequency: ['{value}? Not bad.', 'Oh, {value}. Good to know.', '{value} — makes sense.'],
+      feeling: ['{value} ��� I get that.', 'Oh, {value}. Same here.', '{value} — nice.'],
+      time: ['{value} — good choice.', 'Oh, {value}. That works.', '{value} — got it.'],
     },
   },
 
@@ -649,6 +691,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         acceptYesNo: true,
       },
     },
+    bridgeTemplates: {
+      object: ['{value} — useful.', 'Oh, {value}. Makes sense.', '{value} — got it.'],
+      frequency: ['{value}? That\'s regular.', 'Oh, {value}. Good rhythm.', '{value} — I see.'],
+      people: ['With {value} — that\'s nice.', 'Oh, {value}. Sounds good.', '{value} — got it.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Fair enough.', '{value} — makes sense.'],
+      time: ['{value} — good timing.', 'Oh, {value}. That works.', '{value} — I see.'],
+    },
   },
 
   // ── small_talk: Weekend / hobbies / general chat ──
@@ -722,6 +771,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         repairTemplates: ['Do you enjoy your weekends?', 'Is it relaxing?'],
         acceptYesNo: true,
       },
+    },
+    bridgeTemplates: {
+      object: ['{value} — that sounds fun.', 'Oh, {value}. Nice.', '{value} — good choice.'],
+      people: ['With {value} — sounds great.', 'Oh, {value}. That\'s nice.', '{value} — fun.'],
+      time: ['{value} — that\'s chill.', 'Oh, {value}. Relaxing.', '{value} — nice.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Makes sense.', '{value} — sounds right.'],
+      frequency: ['{value}? That\'s a good pace.', 'Oh, {value}. I see.', '{value} — makes sense.'],
     },
   },
 
@@ -797,6 +853,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         acceptYesNo: true,
       },
     },
+    bridgeTemplates: {
+      object: ['{value} — sounds important.', 'Oh, {value}. Interesting.', '{value} — got it.'],
+      people: ['With {value} — nice team.', 'Oh, {value}. Good to know.', '{value} — sounds good.'],
+      feeling: ['{value} — I understand.', 'Oh, {value}. That\'s real.', '{value} — fair enough.'],
+      time: ['{value} — that\'s reasonable.', 'Oh, {value}. Not bad.', '{value} — I see.'],
+      frequency: ['{value}? That\'s steady.', 'Oh, {value}. Makes sense.', '{value} — got it.'],
+    },
   },
 
   // ── family: Family conversation / homework / school ──
@@ -869,6 +932,13 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
         repairTemplates: ['Do you study at home or at a library?'],
         acceptYesNo: true,
       },
+    },
+    bridgeTemplates: {
+      object: ['{value} — interesting subject.', 'Oh, {value}. Makes sense.', '{value} — got it.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Same for many people.', '{value} — fair enough.'],
+      people: ['With {value} — that helps.', 'Oh, {value}. Nice.', '{value} — good to know.'],
+      time: ['{value} — that\'s not bad.', 'Oh, {value}. Got it.', '{value} — I see.'],
+      frequency: ['{value}? That\'s regular.', 'Oh, {value}. Makes sense.', '{value} — I see.'],
     },
   },
 ]
