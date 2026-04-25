@@ -4,6 +4,7 @@ import { buildRegionPromptContext } from './lesson-run-service'
 import type { SerializedConversationState } from './ai-conversation-state'
 import { matchSceneQuestions } from './ai-conversation-scene-questions'
 import type { SlotDefinition, SceneSlotSchema } from './ai-conversation-scene-questions'
+import { detectUniversalSocialIntent } from './universal-conversation-intents'
 
 // ——— API contract ———
 
@@ -620,14 +621,12 @@ export function assembleReplyV25(
     return ack ? `${ack} ${byTheWay}` : byTheWay
   }
 
-  // Reciprocal question detection: catch "and you?" patterns regardless of LLM classification.
-  // The LLM often misclassifies "I'm good, and you?" as intent=answer because the first half is an answer.
-  const RECIPROCAL = /\band you\b|\bhow about you\b|\bwhat about you\b|\byou too\b|\bhow are you\b|\bhows your day\b|\bhow is your day\b/i
-  const valueOrAnswer = `${llm.meaning.value ?? ''} ${llm.answerToAi ?? ''}`
-  const hasReciprocalPhrase = RECIPROCAL.test(valueOrAnswer)
-  const hasReciprocalRaw = userMessage ? RECIPROCAL.test(userMessage) : false
+  // Reciprocal / social intent detection using universal layer + LLM classification.
+  const universalIntent = userMessage ? detectUniversalSocialIntent(userMessage) : null
+  const hasUniversalReciprocal = universalIntent === 'reciprocal_greeting'
+  const hasUniversalGreeting = universalIntent === 'greeting'
   const isReciprocal = llm.intent === 'question_to_ai' || llm.intent === 'greeting' ||
-    hasReciprocalPhrase || hasReciprocalRaw || (turnIndex <= 1 && llm.meaning.type === 'social')
+    hasUniversalReciprocal || hasUniversalGreeting || (turnIndex <= 1 && llm.meaning.type === 'social')
 
   // Greeting / reciprocal (turn 0-1): answer briefly + engine question
   if (isReciprocal && turnIndex <= 1) {
@@ -768,12 +767,12 @@ export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContex
       // V1/V2 fallback: LLM returned old-style aiReply
       aiReply = parsed.aiReply.trim()
 
-      // Guard: if user asked a reciprocal question but LLM returned a bare reaction
+      // Guard: if user asked a reciprocal/social question but LLM returned a bare reaction
       // (e.g. "Oh good." without answering "and you?"), override with deterministic answer.
-      const RECIPROCAL_GUARD = /\band you\b|\bhow about you\b|\bwhat about you\b|\byou too\b|\bhow are you\b|\bhows your day\b|\bhow is your day\b/i
-      if (ctx?.userMessage && RECIPROCAL_GUARD.test(ctx.userMessage)) {
+      const v1SocialIntent = ctx?.userMessage ? detectUniversalSocialIntent(ctx.userMessage) : null
+      if (v1SocialIntent === 'reciprocal_greeting' || v1SocialIntent === 'greeting') {
         const reciprocalAnswer = turnIndex <= 1 ? "I'm good too, thanks!" : "Yeah, same here!"
-        const eq = ctx.engineQuestion
+        const eq = ctx?.engineQuestion
         aiReply = eq ? `${reciprocalAnswer} ${eq}` : reciprocalAnswer
       }
     } else {
