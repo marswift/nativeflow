@@ -889,26 +889,6 @@ function summarizeSession(turns: ConvTurn[], isJa: boolean, _lessonPhrase?: stri
   return { finalScore, finalEvaluation, summary, improvementHint }
 }
 
-/**
- * Pick a context-aware AI reaction based on the user's reply and the AI question.
- */
-function pickReaction(userReply: string, _aiMessage?: string): string {
-  const words = userReply.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return ''
-
-  // Echo back part of the user's reply for a natural feel
-  const replyLower = userReply.toLowerCase()
-  if (words.length >= 5) {
-    if (/usually|always|every/i.test(replyLower)) return 'Oh, that sounds like a good routine!'
-    if (/like|love|enjoy/i.test(replyLower)) return "That's great to hear!"
-    if (/think|feel|believe/i.test(replyLower)) return 'I see, interesting!'
-    return ['Nice.', 'I see.', 'Got it.'][Math.floor(Math.random() * 3)]
-  }
-  if (words.length >= 3) {
-    return ['Got it.', 'I see.', 'Right.'][Math.floor(Math.random() * 3)]
-  }
-  return ['Okay!', 'Sure!', 'Alright!'][Math.floor(Math.random() * 3)]
-}
 
 function isClosingAssistantMessage(message: string): boolean {
   const normalized = message.toLowerCase().replace(/[.!?,]/g, ' ').replace(/\s+/g, ' ').trim()
@@ -1263,7 +1243,7 @@ function AiConversationPlayer({
         const t4 = performance.now() // [5] AI request start
         try {
           const controller = new AbortController()
-          const timeoutId = setTimeout(() => controller.abort(), 2_500)
+          const timeoutId = setTimeout(() => controller.abort(), 4_000)
           const apiRes = await fetch('/api/ai-conversation/reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1382,7 +1362,7 @@ function AiConversationPlayer({
       userReply: transcript,
       hint: turnHint,
       nextPrompt: turnNextPrompt,
-      reaction: pickReaction(transcript, currentAiMessage),
+      reaction: '',
       eval: turnScore,
     }]
     setHistory(newHistory)
@@ -1698,10 +1678,7 @@ function AiConversationPlayer({
                   <div key={i} className="space-y-2">
                     <div className="flex justify-start">
                       <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3.5 py-2 text-sm text-[#1a1a2e]">
-                        {h.reaction
-                          ? <p>{h.reaction} {h.aiMessage}</p>
-                          : <p>{h.aiMessage}</p>
-                        }
+                        <p>{h.aiMessage}</p>
                       </div>
                     </div>
                     {h.userReply && (
