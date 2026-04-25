@@ -767,6 +767,15 @@ export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContex
     } else if (typeof parsed.aiReply === 'string') {
       // V1/V2 fallback: LLM returned old-style aiReply
       aiReply = parsed.aiReply.trim()
+
+      // Guard: if user asked a reciprocal question but LLM returned a bare reaction
+      // (e.g. "Oh good." without answering "and you?"), override with deterministic answer.
+      const RECIPROCAL_GUARD = /\band you\b|\bhow about you\b|\bwhat about you\b|\byou too\b|\bhow are you\b|\bhows your day\b|\bhow is your day\b/i
+      if (ctx?.userMessage && RECIPROCAL_GUARD.test(ctx.userMessage)) {
+        const reciprocalAnswer = turnIndex <= 1 ? "I'm good too, thanks!" : "Yeah, same here!"
+        const eq = ctx.engineQuestion
+        aiReply = eq ? `${reciprocalAnswer} ${eq}` : reciprocalAnswer
+      }
     } else {
       return null
     }
