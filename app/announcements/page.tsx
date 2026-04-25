@@ -10,7 +10,6 @@ import Link from 'next/link'
 import { getSupabaseBrowserClient } from '../../lib/supabase/browser-client'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
-import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
 const PAGE_SIZE = 20
@@ -48,7 +47,6 @@ function AnnouncementsPage() {
   const [items, setItems] = useState<Announcement[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
-  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()
 
   const rawPage = parseInt(searchParams.get('page') ?? '1', 10)
   const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1
@@ -94,7 +92,7 @@ function AnnouncementsPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
-      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+      <AppHeader onLogout={handleLogout} />
       <main className="flex-1">
         <div className="mx-auto w-full max-w-3xl px-6 pt-8 pb-10">
           <section className="relative overflow-hidden rounded-[24px] border border-[#E8E4DF] bg-[linear-gradient(135deg,#FFF9EC_0%,#FFFFFF_55%,#FFFDF8_100%)] px-6 py-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] sm:px-7 sm:py-7">
@@ -121,30 +119,36 @@ function AnnouncementsPage() {
             <p className="mt-8 text-center text-sm text-[#8a8a9a]">お知らせはまだありません。</p>
           )}
 
-          <div className="mt-6 space-y-3">
-            {items.map((item) => (
+          <div className="mt-6 overflow-hidden rounded-2xl border border-[#E8E4DF] bg-white shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+            {items.map((item, idx) => (
               <Link
                 key={item.id}
                 href={`/announcements/${item.id}`}
-                className="block rounded-[16px] border border-[#E8E4DF] bg-white px-5 py-4 shadow-[0_4px_14px_rgba(15,23,42,0.04)] transition hover:bg-[#FAFAF8]"
+                className={`flex items-start gap-3 px-5 py-4 transition hover:bg-[#FAFAF8] sm:items-center${idx < items.length - 1 ? ' border-b border-[#F0ECE6]' : ''}`}
               >
-                <div className="flex items-center gap-2">
+                {/* Date + badges column */}
+                <div className="flex shrink-0 flex-col items-start gap-1.5 pt-0.5 sm:w-36 sm:flex-row sm:items-center sm:gap-2 sm:pt-0">
+                  <span className="text-xs text-[#8a8a9a]">{formatDate(item.published_at)}</span>
                   {item.type === 'urgent' && (
-                    <span className="shrink-0 rounded-full bg-[#FFF1F0] px-2.5 py-[3px] text-[11px] font-bold text-[#D14343]">
+                    <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-[#FFF1F0] px-2.5 py-0.5 text-[11px] font-bold leading-none text-[#D14343]">
                       緊急
                     </span>
                   )}
                   {isNewAnnouncement(item.published_at) && item.type !== 'urgent' && (
-                    <span className="shrink-0 rounded-full bg-[#E8FFF3] px-2.5 py-[3px] text-[11px] font-bold text-[#16A34A]">
+                    <span className="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-[#E8FFF3] px-2.5 py-0.5 text-[11px] font-bold leading-none text-[#16A34A]">
                       NEW
                     </span>
                   )}
-                  <span className="shrink-0 text-xs text-[#8a8a9a]">{formatDate(item.published_at)}</span>
-                  <h2 className="min-w-0 truncate text-base font-bold text-[#1a1a2e]">{item.title}</h2>
                 </div>
-                {item.body && (
-                  <p className="mt-1 truncate text-sm text-[#5a5a7a]">{item.body}</p>
-                )}
+                {/* Title + excerpt */}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <h2 className="truncate text-sm font-bold leading-snug text-[#1a1a2e]">{item.title}</h2>
+                  {item.body && (
+                    <p className="truncate text-[13px] leading-normal text-[#8a8a9a]">{item.body}</p>
+                  )}
+                </div>
+                {/* Chevron */}
+                <svg className="hidden shrink-0 text-[#ccc] sm:block" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 4l4 4-4 4" /></svg>
               </Link>
             ))}
           </div>

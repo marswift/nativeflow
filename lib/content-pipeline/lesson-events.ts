@@ -18,6 +18,9 @@ export type LessonEventType =
   | 'stage_complete'
   | 'stage_retry'
   | 'stage_silent'
+  | 'ai_conv_turn'
+  | 'ai_conv_complete'
+  | 'ai_conv_error'
 
 export type LessonEventPayload = {
   userId: string | null

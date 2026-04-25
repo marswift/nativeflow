@@ -7,6 +7,7 @@ export type TrackEventName =
   | 'lesson_start'
   | 'ai_question_answer'
   | 'typing_answer'
+  | 'conversation_turn'
   | 'conversation_complete'
   | 'paywall_clicked'
   // LP Pattern A events

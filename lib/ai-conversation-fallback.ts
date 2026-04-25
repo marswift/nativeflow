@@ -179,15 +179,13 @@ const REACTIONS = ['Oh, okay.', 'Right.', 'I see.', 'Got it.', 'Sure.', 'Yeah.']
  */
 export function buildEngineFallbackReply(
   intent: NextIntent,
-  userMessage: string,
+  _userMessage: string,
   turnIndex: number,
 ): string {
-  const trimmed = userMessage.trim()
   const reaction = REACTIONS[turnIndex % REACTIONS.length]
 
   switch (intent.action) {
     case 'greet':
-      // Turn-1: clean greeting only, no reaction prefix
       return intent.suggestedQuestion
         ? `Hi! ${intent.suggestedQuestion}`
         : 'Hi! How are you today?'
@@ -195,14 +193,8 @@ export function buildEngineFallbackReply(
       return `${reaction} ${intent.suggestedQuestion ?? 'Tell me about your day.'}`
     case 'ask_dimension':
       return `${reaction} ${intent.suggestedQuestion ?? 'Tell me more.'}`
-    case 'clarify': {
-      const words = trimmed.split(/\s+/)
-      if (words.length <= 2 && trimmed.length > 0) {
-        // Natural echo-question for short input
-        return `${trimmed}?`
-      }
-      return 'Could you say a bit more?'
-    }
+    case 'clarify':
+      return 'Could you say that one more time?'
     case 'simplify':
       return `No worries. ${intent.suggestedQuestion ?? "Let's keep it simple."}`
     case 'redirect':

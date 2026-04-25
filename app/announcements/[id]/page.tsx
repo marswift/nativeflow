@@ -10,7 +10,6 @@ import Link from 'next/link'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
-import { useCurrentLanguage } from '@/lib/use-current-language'
 
 const supabase = getSupabaseBrowserClient()
 
@@ -33,7 +32,6 @@ export default function AnnouncementDetailPage() {
   const [item, setItem] = useState<Announcement | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
-  const { currentLanguage, handleChangeLanguage } = useCurrentLanguage()
 
   useEffect(() => {
     if (!announcementId) {
@@ -69,7 +67,7 @@ export default function AnnouncementDetailPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-[#f7f4ef]" style={{ fontFamily: "'Nunito','Hiragino Sans',sans-serif" }}>
-      <AppHeader onLogout={handleLogout} currentLanguage={currentLanguage} onChangeLanguage={handleChangeLanguage} />
+      <AppHeader onLogout={handleLogout} />
       <main className="flex-1">
         <div className="mx-auto w-full max-w-3xl px-6 pt-8 pb-10">
 

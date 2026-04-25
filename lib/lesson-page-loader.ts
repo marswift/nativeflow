@@ -49,7 +49,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
   const { data: userRow } = await supabase
     .from('user_profiles')
     .select(
-      'id, ui_language_code, current_learning_language, planned_plan_code, subscription_status, preferred_session_length, enable_dating_contexts, total_flow_points, total_diamonds, diamond_boost_until, streak_frozen_date, streak_freeze_expiry, weekly_challenge_unlocked_at, weekly_challenge_completed_at, current_streak_days, last_streak_date, last_streak_restore_date, role, is_admin, billing_exempt, billing_exempt_until, trial_ends_at'
+      'id, ui_language_code, current_learning_language, planned_plan_code, subscription_status, subscription_current_period_end, preferred_session_length, enable_dating_contexts, total_flow_points, total_diamonds, diamond_boost_until, streak_frozen_date, streak_freeze_expiry, weekly_challenge_unlocked_at, weekly_challenge_completed_at, current_streak_days, last_streak_date, last_streak_restore_date, role, is_admin, billing_exempt, billing_exempt_until, trial_ends_at'
     )
     .eq('id', session.user.id)
     .single()
@@ -96,6 +96,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
       total_flow_points: userRow?.total_flow_points ?? 0,
       planned_plan_code: userRow?.planned_plan_code ?? null,
       subscription_status: userRow?.subscription_status ?? null,
+      subscription_current_period_end: userRow?.subscription_current_period_end ?? null,
       current_period_end: null,
       cancel_at_period_end: null,
     }
@@ -143,6 +144,7 @@ export async function loadLessonPage(): Promise<LoadLessonPageResult> {
     total_flow_points: userRow?.total_flow_points ?? 0,
     planned_plan_code: userRow?.planned_plan_code ?? null,
     subscription_status: userRow?.subscription_status ?? null,
+    subscription_current_period_end: userRow?.subscription_current_period_end ?? null,
     current_period_end: null,
     cancel_at_period_end: null,
   }
