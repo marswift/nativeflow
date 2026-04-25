@@ -495,8 +495,6 @@ export type LessonCopy = {
     flowStep4Sub: string
     flowStep5Label: string
     flowStep5Sub: string
-    flowStep6Label: string
-    flowStep6Sub: string
     /** Review CTA subtitle. Use {count} placeholder. */
     reviewCountSubtitle: string
   }
@@ -1000,7 +998,7 @@ export const LESSON_COPY_JA = {
     skillSpeaking: 'スピーキング',
     skillWriting: 'ライティング',
     lessonFlowTitle: 'レッスンの流れ',
-    lessonFlowSubtitle: '聞く → リピート → チャレンジ → AI質問 → ライティング → AI会話 の順で進みます',
+    lessonFlowSubtitle: '聞く → リピート → チャレンジ → AI質問 → AI会話 の順で進みます',
     flowStep1Label: '聞く',
     flowStep1Sub: '意味をつかむ',
     flowStep2Label: 'リピート',
@@ -1009,10 +1007,8 @@ export const LESSON_COPY_JA = {
     flowStep3Sub: '思い出して答える',
     flowStep4Label: 'AI質問',
     flowStep4Sub: '会話形式で返答する',
-    flowStep5Label: 'ライティング',
-    flowStep5Sub: '記憶の定着強化',
-    flowStep6Label: 'AI会話',
-    flowStep6Sub: '自由にやりとりする',
+    flowStep5Label: 'AI会話',
+    flowStep5Sub: '自由にやりとりする',
     reviewCountSubtitle: '今日の復習は{count}問あります',
   },
   dailyFlow: {
@@ -1504,7 +1500,7 @@ export const LESSON_COPY_EN = {
     skillSpeaking: 'Speaking',
     skillWriting: 'Writing',
     lessonFlowTitle: "Today's flow",
-    lessonFlowSubtitle: 'Listen → Repeat → Challenge → AI Question → Writing → AI Conversation',
+    lessonFlowSubtitle: 'Listen → Repeat → Challenge → AI Question → AI Conversation',
     flowStep1Label: 'Listen',
     flowStep1Sub: 'Grasp the meaning',
     flowStep2Label: 'Repeat',
@@ -1513,10 +1509,8 @@ export const LESSON_COPY_EN = {
     flowStep3Sub: 'Recall and answer',
     flowStep4Label: 'AI Question',
     flowStep4Sub: 'Respond in conversation',
-    flowStep5Label: 'Writing',
-    flowStep5Sub: 'Reinforce memory',
-    flowStep6Label: 'AI Conversation',
-    flowStep6Sub: 'Free conversation practice',
+    flowStep5Label: 'AI Conversation',
+    flowStep5Sub: 'Free conversation practice',
     reviewCountSubtitle: "Today's review has {count} questions",
   },
   dailyFlow: {
