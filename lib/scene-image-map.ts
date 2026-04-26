@@ -27,8 +27,8 @@ export type SceneImageEntry = {
 const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
   // ── Morning ──────────────────────────────────────────────
   wake_up: {
-    path: '/images/backgrounds/wake_up_01.webp',
-    mobilePath: '/images/backgrounds/wake_up_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-01-wake-up/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   wash_face: {
@@ -52,20 +52,20 @@ const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
     status: 'exists',
   },
   make_breakfast: {
-    path: '/images/backgrounds/make_breakfast_01.webp',
-    mobilePath: '/images/backgrounds/make_breakfast_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-07-eat-breakfast/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   get_ready_to_leave: {
-    path: '/images/backgrounds/get_ready_to_leave_01.webp',
-    mobilePath: '/images/backgrounds/get_ready_to_leave_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-08-leave-home/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
 
   // ── Daytime ──────────────────────────────────────────────
   arrive_at_work: {
-    path: '/images/backgrounds/arrive_at_work_01.webp',
-    mobilePath: '/images/backgrounds/arrive_at_work_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-10-arrive/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   greet_coworkers: {
@@ -91,54 +91,54 @@ const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
     status: 'exists',
   },
   lunch_break: {
-    path: '/images/backgrounds/lunch_break_01.webp',
-    mobilePath: '/images/backgrounds/lunch_break_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-13-have-lunch/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   talk_with_friends: {
-    path: '/images/backgrounds/talk_with_friends_01.webp',
-    mobilePath: '/images/backgrounds/talk_with_friends_01_p.webp',
+    path: '/images/scenes/social/talk/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
 
   // ── Evening ──────────────────────────────────────────────
   shop_at_the_supermarket: {
-    path: '/images/backgrounds/shop_at_the_supermarket_01.webp',
-    mobilePath: '/images/backgrounds/shop_at_the_supermarket_01_p.webp',
+    path: '/images/scenes/shopping/shop/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   come_home: {
-    path: '/images/backgrounds/come_home_01.webp',
-    mobilePath: '/images/backgrounds/come_home_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-14-get-home/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   make_dinner: {
-    path: '/images/backgrounds/make_dinner_01.webp',
-    mobilePath: '/images/backgrounds/make_dinner_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-07-eat-breakfast/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
 
   // ── Night ────────────────────────────────────────────────
   take_a_bath: {
-    path: '/images/backgrounds/take_a_bath_01.webp',
-    mobilePath: '/images/backgrounds/take_a_bath_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-17-take-shower/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   watch_videos: {
-    path: '/images/backgrounds/watch_videos_01.webp',
-    mobilePath: '/images/backgrounds/watch_videos_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-16-watch-videos/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   go_to_bed: {
-    path: '/images/backgrounds/go_to_bed_01.webp',
-    mobilePath: '/images/backgrounds/go_to_bed_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-19-go-to-bed/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
 
   // ── Aliases (share image with a related scene) ──
   eat_dinner: {
-    path: '/images/backgrounds/make_dinner_01.webp',
-    mobilePath: '/images/backgrounds/make_dinner_01_p.webp',
+    path: '/images/scenes/daily-flow/scene-07-eat-breakfast/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   clean_up_after_breakfast: {
