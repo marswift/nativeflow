@@ -1558,9 +1558,11 @@ function AiConversationPlayer({
                 {aiSpeaking ? (
                   <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600"><img src="/images/lp/icons/listen.webp" alt="" className="h-4 w-4" aria-hidden="true" />{uiText.aiConvSpeaking}</p>
                 ) : isRecognizing ? (
-                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvRecognizing}</p>
+                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvRecognizing}<span className="inline-block w-[1.5em] text-left tracking-widest" aria-hidden="true">...</span></p>
                 ) : aiThinking ? (
                   <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvThinking}<span className="inline-block w-[1.5em] text-left tracking-widest" aria-hidden="true">...</span></p>
+                ) : turnAnswered ? (
+                  <p className="text-sm font-semibold text-[#7b7b94] animate-pulse">{uiText.aiConvSpeaking}<span className="inline-block w-[1.5em] text-left tracking-widest" aria-hidden="true">...</span></p>
                 ) : (
                   <p className="text-sm font-semibold text-[#5a5a7a]">{uiText.aiConvYourTurn}</p>
                 )}
