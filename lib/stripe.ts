@@ -56,6 +56,14 @@ export function getPriceIdByPlan(plan: BillingPlanCode): string {
   return plan === 'monthly' ? getMonthlyPriceId() : getYearlyPriceId()
 }
 
+/** Derive plan code from a Stripe price ID. Returns null if unrecognized. */
+export function getPlanByPriceId(priceId: string | null | undefined): BillingPlanCode | null {
+  if (!priceId) return null
+  if (priceId === getMonthlyPriceId()) return 'monthly'
+  if (priceId === getYearlyPriceId()) return 'yearly'
+  return null
+}
+
 export function normalizePlanCode(value: unknown): BillingPlanCode | null {
   if (value === 'monthly' || value === 'yearly') {
     return value

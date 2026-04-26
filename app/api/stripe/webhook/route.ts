@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
-import { getStripe } from '@/lib/stripe'
+import { getStripe, getPlanByPriceId } from '@/lib/stripe'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -398,8 +398,11 @@ export async function POST(req: NextRequest) {
           break
         }
 
-        const planCode = sub.metadata?.plan === 'yearly' ? 'yearly' :
-                 sub.metadata?.plan === 'monthly' ? 'monthly' : null
+        // Derive plan from active price ID first (reliable after deferred downgrades),
+        // then fall back to metadata.plan (set at checkout).
+        const planCode = getPlanByPriceId(sub.items.data[0]?.price?.id) ??
+          (sub.metadata?.plan === 'yearly' ? 'yearly' :
+           sub.metadata?.plan === 'monthly' ? 'monthly' : null)
 
         const { data: updatedRows, error: updateError } = await supabase
           .from('user_profiles')
@@ -555,8 +558,9 @@ export async function POST(req: NextRequest) {
 
         const paidPeriodEndTs = paidSub.trial_end ?? paidSub.items.data[0]?.current_period_end ?? null
         const paidPeriodEnd = typeof paidPeriodEndTs === 'number' ? new Date(paidPeriodEndTs * 1000).toISOString() : null
-        const paidPlanCode = paidSub.metadata?.plan === 'yearly' ? 'yearly' :
-          paidSub.metadata?.plan === 'monthly' ? 'monthly' : null
+        const paidPlanCode = getPlanByPriceId(paidSub.items.data[0]?.price?.id) ??
+          (paidSub.metadata?.plan === 'yearly' ? 'yearly' :
+           paidSub.metadata?.plan === 'monthly' ? 'monthly' : null)
 
         console.log('WEBHOOK [invoice.paid]: updating profile', {
           invoiceId: invoice.id,
