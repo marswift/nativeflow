@@ -48,23 +48,28 @@ export const englishConversationLanguagePack: ConversationLanguagePack = {
     "Go ahead.",
   ],
 
-  // Acknowledgment pool — mirrors current ACKS in ai-conversation-prompt.ts
+  // Acknowledgment pool — 10 items for better variety across turns
   acks: [
     'Got it.',
     'I see.',
     'Okay.',
     'Right.',
     'Sure.',
+    'Nice.',
+    'Alright.',
+    'Ah.',
+    'Oh.',
+    'Mm-hm.',
   ],
 
-  // Reaction pools — mirrors current REACTION_BY_MEANING
+  // Reaction pools — warm, varied, beginner-friendly
   reactions: {
-    yes:       ["That's good.", "Sounds like it.", "Good to hear.", "Makes sense.", "I see, nice."],
-    no:        ["No problem.", "Fair enough.", "That's fine.", "No worries.", "All good."],
-    object:    ["Sounds good.", "Interesting.", "Good to know.", "That helps.", "Oh, nice."],
-    person:    ["That's nice.", "Thanks for sharing.", "Good to know.", "Sounds good.", "That's helpful."],
-    time:      ["Good to know.", "Oh, around that time.", "That helps.", "Makes sense.", "Sounds about right."],
-    frequency: ["That often?", "Sounds about right.", "Good to know.", "I get that.", "Interesting."],
+    yes:       ["That's good.", "Good to hear.", "Great.", "Sounds like it.", "Oh, nice.", "Good.", "Cool."],
+    no:        ["No problem.", "Fair enough.", "That's fine.", "No worries.", "All good.", "That's okay.", "Got it, no worries."],
+    object:    ["Sounds good.", "Interesting.", "Good to know.", "Oh, nice.", "That helps.", "Ah, got it.", "Cool."],
+    person:    ["That's nice.", "Sounds fun.", "Good to know.", "Oh, with them.", "That's sweet.", "Nice.", "All by yourself?"],
+    time:      ["Good to know.", "Oh, around then.", "That helps.", "Not bad.", "Sounds about right.", "Makes sense.", "Early bird."],
+    frequency: ["That often?", "Sounds about right.", "Good to know.", "Wow.", "Interesting.", "Oh, really?", "That's consistent."],
     feeling:   ["I get that.", "Makes sense.", "Thanks for sharing.", "I understand.", "That's fair."],
   },
 

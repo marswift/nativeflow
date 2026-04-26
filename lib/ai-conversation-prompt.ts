@@ -418,21 +418,21 @@ type V25LlmOutput = {
 /** Acknowledgment rotation pool — sourced from language pack (Phase 3 migration). */
 const ACKS = getConversationLanguagePack('en').acks
 
-/** Reaction templates by meaning type — must NOT overlap with ACKS pool, 5 items per pool */
+/** Reaction templates by meaning type — warm, varied, must NOT overlap with ACKS */
 const REACTION_BY_MEANING: Record<V25MeaningType, string[]> = {
-  yes:       ['That\'s good.', 'Sounds like it.', 'Good to hear.', 'Makes sense.', 'I see, nice.'],
-  no:        ['No problem.', 'Fair enough.', 'That\'s fine.', 'No worries.', 'All good.'],
-  object:    ['Sounds good.', 'Interesting.', 'Good to know.', 'That helps.', 'Oh, nice.'],
-  person:    ['That\'s nice.', 'Thanks for sharing.', 'Good to know.', 'Sounds good.', 'That\'s helpful.'],
-  time:      ['Good to know.', 'Oh, around that time.', 'That helps.', 'Makes sense.', 'Sounds about right.'],
-  frequency: ['That often?', 'Sounds about right.', 'Good to know.', 'I get that.', 'Interesting.'],
-  feeling:   ['I get that.', 'Makes sense.', 'Thanks for sharing.', 'I understand.', 'That\'s fair.'],
-  social:    ['', '', '', '', ''],
-  unclear:   ['', '', '', '', ''],
+  yes:       ['That\'s good.', 'Good to hear.', 'Great.', 'Sounds like it.', 'Oh, nice.', 'Good.', 'Cool.'],
+  no:        ['No problem.', 'Fair enough.', 'That\'s fine.', 'No worries.', 'All good.', 'That\'s okay.', 'Got it, no worries.'],
+  object:    ['Sounds good.', 'Interesting.', 'Good to know.', 'Oh, nice.', 'That helps.', 'Ah, got it.', 'Cool.'],
+  person:    ['That\'s nice.', 'Sounds fun.', 'Good to know.', 'Oh, with them.', 'That\'s sweet.', 'Nice.', 'All by yourself?'],
+  time:      ['Good to know.', 'Oh, around then.', 'That helps.', 'Not bad.', 'Sounds about right.', 'Makes sense.', 'Early bird.'],
+  frequency: ['That often?', 'Sounds about right.', 'Good to know.', 'Wow.', 'Interesting.', 'Oh, really?', 'That\'s consistent.'],
+  feeling:   ['I get that.', 'Makes sense.', 'Yeah, same.', 'I understand.', 'That\'s fair.', 'Totally.', 'For real.'],
+  social:    ['', '', '', '', '', '', ''],
+  unclear:   ['', '', '', '', '', '', ''],
 }
 
 /** Phrases that count as acknowledgment-like — used for dedup in assembly */
-const ACK_LIKE = new Set(['right.', 'got it.', 'i see.', 'okay.', 'oh, okay.', 'alright.', 'sure.', 'cool.', 'oh.', 'hmm.', 'nice.', 'yeah.', 'ah, i see.'])
+const ACK_LIKE = new Set(['right.', 'got it.', 'i see.', 'okay.', 'oh, okay.', 'alright.', 'sure.', 'cool.', 'oh.', 'hmm.', 'nice.', 'yeah.', 'ah, i see.', 'ah.', 'mm-hm.', 'good.', 'great.'])
 
 const MIN_CLOSE_TURN = 3
 
