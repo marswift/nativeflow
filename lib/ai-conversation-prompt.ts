@@ -680,6 +680,28 @@ export function assembleReplyV25(
     const template = bridgePool[turnIndex % bridgePool.length]
     reaction = template.replace(/\{value\}/g, llm.meaning.value)
   }
+  // Value-keyword micro-reactions: short natural responses for common answer values
+  // when bridge didn't fire (misaligned dimension or no bridge templates)
+  if (!reaction && llm.meaning.value) {
+    const v = llm.meaning.value.toLowerCase()
+    const MICRO: Record<string, string[]> = {
+      alone:    ['On your own?', 'Solo, huh.', 'Just you?'],
+      myself:   ['All by yourself.', 'Solo — nice.', 'Just you?'],
+      mom:      ['With your mom — sweet.', 'Oh, your mom.', 'That\'s nice.'],
+      mother:   ['With your mom — sweet.', 'Oh, your mom.', 'That\'s nice.'],
+      dad:      ['With your dad — nice.', 'Oh, your dad.', 'That\'s cool.'],
+      family:   ['With family — love that.', 'Oh, as a family.', 'That\'s warm.'],
+      friend:   ['With a friend — fun.', 'Oh, nice.', 'Sounds fun.'],
+      friends:  ['With friends — fun.', 'Oh, nice.', 'Sounds like a good time.'],
+      morning:  ['In the morning — nice.', 'Oh, a morning person.', 'Bright and early.'],
+      night:    ['At night — cozy.', 'A night owl.', 'Late vibes.'],
+      everyday: ['Every day — impressive.', 'Oh, daily.', 'That\'s dedication.'],
+      always:   ['Always — wow.', 'Oh, always.', 'That\'s consistent.'],
+      never:    ['Never? Interesting.', 'Oh, never.', 'Hmm, okay.'],
+    }
+    const pool = MICRO[v]
+    if (pool) reaction = pool[turnIndex % pool.length]
+  }
   if (!reaction) {
     const reactionPool = REACTION_BY_MEANING[llm.meaning.type] ?? REACTION_BY_MEANING.yes
     reaction = reactionPool[turnIndex % reactionPool.length] || null
