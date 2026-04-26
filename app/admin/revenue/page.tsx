@@ -15,12 +15,13 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseBrowserClient } from '../../../lib/supabase/browser-client'
 import { checkIsAdmin } from '../../../lib/admin-guard'
+import { PLAN_PRICES } from '../../../lib/billing-prices'
 import AdminKpiCard from '../_components/admin-kpi-card'
 
 // ── Pricing (matches Stripe-configured amounts; used only for MRR estimation) ──
 // TODO: centralize pricing into a shared config when pricing changes are planned
-const PLAN_MONTHLY_JPY = 2480
-const PLAN_YEARLY_JPY = 19800
+const PLAN_MONTHLY_JPY = PLAN_PRICES.monthly.amountJpy
+const PLAN_YEARLY_JPY = PLAN_PRICES.yearly.amountJpy
 const PLAN_YEARLY_MONTHLY_EQUIV = Math.round(PLAN_YEARLY_JPY / 12)
 
 // ── Types ──

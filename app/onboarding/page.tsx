@@ -7,6 +7,7 @@
  * MVP: UI language and target learning language are fixed (Japanese / English). Labels are Japanese.
  */
 import type { FormEvent } from 'react'
+import { PLAN_PRICES } from '@/lib/billing-prices'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -97,8 +98,8 @@ function deriveNativeLanguageCode(countryCode: string): string {
 
 function getPlannedPlanSummary(plan: PlannedPlanCode): { label: string; priceText: string } {
   return plan === 'yearly'
-    ? { label: '年額プラン', priceText: '¥19,800 / 年（約33%お得）' }
-    : { label: '月額プラン', priceText: '¥2,480 / 月' }
+    ? { label: '年額プラン', priceText: `${PLAN_PRICES.yearly.labelJa}（約${PLAN_PRICES.yearly.discountLabel}）` }
+    : { label: '月額プラン', priceText: PLAN_PRICES.monthly.labelJa }
 }
 
 type OnboardingProfileRow = PartialUserProfileRow & {

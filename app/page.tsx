@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import { PLAN_PRICES } from '@/lib/billing-prices'
 import { useEffect, useState, useCallback } from 'react'
 import AppHeader from '@/components/header/app-header'
 import AppFooter, { LP_FOOTER_CSS } from '@/components/footer/app-footer'
@@ -672,7 +673,7 @@ export default function LpB() {
             <div style={{background:'#fff',borderRadius:16,padding:'24px 20px',border:'1px solid rgba(0,0,0,0.08)',textAlign:'center'}}>
               <div style={{fontSize:13,fontWeight:700,color:gray,marginBottom:4}}>月額プラン</div>
               <div style={{fontSize:11,color:gray,marginBottom:8}}>気軽に始めたい方に</div>
-              <div style={{fontSize:32,fontWeight:900,color:navy,marginBottom:4}}>¥2,480<span style={{fontSize:14,fontWeight:600,color:gray}}>/月</span></div>
+              <div style={{fontSize:32,fontWeight:900,color:navy,marginBottom:4}}>{PLAN_PRICES.monthly.shortJa}<span style={{fontSize:14,fontWeight:600,color:gray}}>/月</span></div>
               <div style={{fontSize:12,color:gray,marginBottom:16}}>いつでも解約OK</div>
               <CTA loc="pricing-monthly" label="月額プランで無料体験" compact />
             </div>
@@ -680,7 +681,7 @@ export default function LpB() {
             <div style={{background:'#fff',borderRadius:16,padding:'24px 20px',border:`2px solid ${orange}`,textAlign:'center',position:'relative',overflow:'hidden'}}>
               <div style={{position:'absolute',top:0,right:0,background:orange,color:'#fff',fontSize:10,fontWeight:800,padding:'4px 12px',borderRadius:'0 0 0 8px'}}>人気No.1</div>
               <div style={{fontSize:13,fontWeight:700,color:orange,marginBottom:8}}>年額プラン</div>
-              <div style={{fontSize:32,fontWeight:900,color:navy,marginBottom:4}}>¥19,800<span style={{fontSize:14,fontWeight:600,color:gray}}>/年</span></div>
+              <div style={{fontSize:32,fontWeight:900,color:navy,marginBottom:4}}>{PLAN_PRICES.yearly.shortJa}<span style={{fontSize:14,fontWeight:600,color:gray}}>/年</span></div>
               <div style={{fontSize:14,fontWeight:700,color:orange,marginBottom:4}}>1日たった約55円</div>
               <div style={{fontSize:12,fontWeight:700,color:'#16A34A',marginBottom:16}}>年間で約10,000円お得</div>
               <CTA loc="pricing-yearly" label="年額プランで無料体験" compact />

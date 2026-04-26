@@ -7,6 +7,7 @@ import type { UserProfileRow } from '../../../lib/types'
 import AppHeader from '@/components/header/app-header'
 import AppFooter from '@/components/footer/app-footer'
 import { trackEvent } from '@/lib/analytics'
+import { PLAN_PRICES } from '@/lib/billing-prices'
 import { getSupabaseBrowserClient } from '@/lib/supabase/browser-client'
 
 const supabase = getSupabaseBrowserClient()
@@ -481,7 +482,7 @@ export default function BillingSettingsPage() {
                     disabled={billingActionLoading}
                     className="inline-flex items-center justify-center rounded-[14px] bg-[#F5A623] px-5 py-3 text-sm font-black text-white shadow-[0_10px_24px_rgba(245,166,35,0.28)] transition hover:-translate-y-px hover:bg-[#D4881A] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
-                    月額プラン（¥2,480/月）
+                    月額プラン（{PLAN_PRICES.monthly.labelJa}）
                   </button>
 
                   <button
@@ -490,7 +491,7 @@ export default function BillingSettingsPage() {
                     disabled={billingActionLoading}
                     className="inline-flex items-center justify-center rounded-[14px] border border-amber-300 bg-white px-5 py-3 text-sm font-black text-amber-700 transition hover:-translate-y-px hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
-                    年額プラン（¥19,800/年・33%お得）
+                    年額プラン（{PLAN_PRICES.yearly.labelJa}・{PLAN_PRICES.yearly.discountLabel}）
                   </button>
                 </div>
               </section>
