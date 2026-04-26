@@ -48,16 +48,16 @@ export const englishConversationLanguagePack: ConversationLanguagePack = {
     "Go ahead.",
   ],
 
-  // Acknowledgment pool — 10 items for better variety across turns
+  // Acknowledgment pool — 10 items, warmer options first for early turns
   acks: [
-    'Got it.',
+    'Oh.',
     'I see.',
     'Okay.',
     'Right.',
-    'Sure.',
+    'Ah.',
     'Nice.',
     'Alright.',
-    'Ah.',
+    'Got it.',
     'Oh.',
     'Mm-hm.',
   ],

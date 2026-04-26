@@ -685,19 +685,43 @@ export function assembleReplyV25(
   if (!reaction && llm.meaning.value) {
     const v = llm.meaning.value.toLowerCase()
     const MICRO: Record<string, string[]> = {
-      alone:    ['On your own?', 'Solo, huh.', 'Just you?'],
-      myself:   ['All by yourself.', 'Solo — nice.', 'Just you?'],
-      mom:      ['With your mom — sweet.', 'Oh, your mom.', 'That\'s nice.'],
-      mother:   ['With your mom — sweet.', 'Oh, your mom.', 'That\'s nice.'],
-      dad:      ['With your dad — nice.', 'Oh, your dad.', 'That\'s cool.'],
-      family:   ['With family — love that.', 'Oh, as a family.', 'That\'s warm.'],
-      friend:   ['With a friend — fun.', 'Oh, nice.', 'Sounds fun.'],
-      friends:  ['With friends — fun.', 'Oh, nice.', 'Sounds like a good time.'],
-      morning:  ['In the morning — nice.', 'Oh, a morning person.', 'Bright and early.'],
-      night:    ['At night — cozy.', 'A night owl.', 'Late vibes.'],
-      everyday: ['Every day — impressive.', 'Oh, daily.', 'That\'s dedication.'],
-      always:   ['Always — wow.', 'Oh, always.', 'That\'s consistent.'],
-      never:    ['Never? Interesting.', 'Oh, never.', 'Hmm, okay.'],
+      // People / family
+      alone:     ['On your own?', 'Solo, huh.', 'Just you?'],
+      myself:    ['All by yourself.', 'Solo — nice.', 'Just you?'],
+      mom:       ['With your mom — sweet.', 'Oh, your mom. Nice.', 'Aw, that\'s warm.'],
+      mother:    ['With your mom — sweet.', 'Oh, your mom. Nice.', 'Aw, that\'s warm.'],
+      dad:       ['With your dad — nice.', 'Oh, your dad. Cool.', 'That sounds fun.'],
+      father:    ['With your dad — nice.', 'Oh, your dad. Cool.', 'That sounds fun.'],
+      family:    ['With family — love that.', 'As a family. That\'s nice.', 'Aw, together.'],
+      together:  ['Together — that\'s nice.', 'Oh, together. Sweet.', 'Love that.'],
+      sister:    ['With your sister — fun.', 'Oh, your sister. Nice.', 'That\'s sweet.'],
+      brother:   ['With your brother — cool.', 'Oh, your brother.', 'That\'s fun.'],
+      husband:   ['With your husband — nice.', 'Oh, together. Sweet.', 'That\'s lovely.'],
+      wife:      ['With your wife — nice.', 'Oh, together. Sweet.', 'That\'s lovely.'],
+      friend:    ['With a friend — fun.', 'Oh, nice.', 'Sounds fun.'],
+      friends:   ['With friends — fun.', 'Oh, nice.', 'Sounds like a good time.'],
+      // Time
+      morning:   ['A morning person.', 'Bright and early.', 'Oh, in the morning.'],
+      night:     ['A night owl.', 'Oh, at night. Cozy.', 'Late vibes.'],
+      early:     ['Bright and early.', 'Oh, early. Nice.', 'You\'re up early.'],
+      late:      ['Oh, a bit late.', 'Late — fair enough.', 'Night owl.'],
+      // Frequency / habits
+      everyday:  ['Every day — dedication.', 'Oh, daily. Nice habit.', 'That\'s impressive.'],
+      always:    ['Always — wow.', 'Oh, always. Respect.', 'That\'s consistent.'],
+      usually:   ['Usually — nice rhythm.', 'Oh, usually. Good habit.', 'Makes sense.'],
+      sometimes: ['Sometimes — fair enough.', 'Oh, when you feel like it.', 'That\'s flexible.'],
+      often:     ['Often — nice.', 'Oh, quite a lot.', 'Sounds regular.'],
+      never:     ['Never? Interesting.', 'Oh, never. Okay.', 'Hmm, really?'],
+      rarely:    ['Rarely — okay.', 'Oh, not so much.', 'Fair enough.'],
+      maybe:     ['Maybe — fair.', 'Oh, depends. Got it.', 'Flexible.'],
+      depends:   ['Oh, it depends.', 'Flexible — makes sense.', 'Fair enough.'],
+      // Feeling
+      tired:     ['Oh, tired. Hang in there.', 'Tired — I get that.', 'Rest well later.'],
+      happy:     ['Happy — love that.', 'Oh, happy. Great.', 'That\'s wonderful.'],
+      bored:     ['Oh, bored. Let\'s fix that.', 'Bored — let\'s chat.', 'Ha, let\'s make it fun.'],
+      fun:       ['Sounds fun.', 'Oh, fun. Nice.', 'Love that.'],
+      hard:      ['That\'s tough.', 'Oh, hard. I get it.', 'Hang in there.'],
+      easy:      ['Oh, easy. Nice.', 'Easy — lucky you.', 'That\'s great.'],
     }
     const pool = MICRO[v]
     if (pool) reaction = pool[turnIndex % pool.length]
