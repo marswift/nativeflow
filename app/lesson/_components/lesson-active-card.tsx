@@ -1360,6 +1360,9 @@ function AiConversationPlayer({
 
   // Advance to the next turn — uses dynamic AI reply
   const advanceToNextTurn = useCallback(() => {
+    // Guard: prevent double-close if called after allDone
+    if (allDone) return
+
     // Score this turn silently (not shown during conversation)
     const turnScore = scoreTurn(turnEvalDetail, transcript, history.map((h) => h.userReply))
 
@@ -1429,7 +1432,7 @@ function AiConversationPlayer({
       setTurnEvalDetail(null)
       playAiMessage(nextMsg)
     }
-  }, [history, currentAiMessage, turn, transcript, turnHint, turnNextPrompt, turnEvalDetail, onInputChange, playAiMessage])
+  }, [history, currentAiMessage, turn, transcript, turnHint, turnNextPrompt, turnEvalDetail, onInputChange, playAiMessage, allDone])
 
   // Retry the current turn (reset recording state so user can try again)
   const handleRetryTurn = useCallback(() => {
@@ -1616,12 +1619,12 @@ function AiConversationPlayer({
                         )}
                       </div>
                     ))}
-                    {!aiThinking && !aiSpeaking && (
+                    {!aiThinking && !aiSpeaking && !turnAnswered && (
                       <div className="flex justify-start">
                         <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#1a1a2e]">{currentAiMessage}</div>
                       </div>
                     )}
-                    {aiSpeaking && (
+                    {(aiSpeaking || turnAnswered) && !aiThinking && (
                       <div className="flex justify-start">
                         <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-[#F0F4FF] px-3 py-1.5 text-sm text-[#7b7b94] animate-pulse">🔊 {uiText.aiConvSpeaking}</div>
                       </div>
