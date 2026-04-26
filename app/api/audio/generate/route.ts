@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
 
     const text = normalizeText(body.text ?? "")
     const locale = body.locale?.trim() || "en-US"
-    const voice = body.voice?.trim() || "alloy"
+    const voice = body.voice?.trim() || "nova"
     const speed = typeof body.speed === "number" ? body.speed : 1
 
     if (!text) {

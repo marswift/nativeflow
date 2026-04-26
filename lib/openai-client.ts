@@ -80,7 +80,7 @@ export async function generateSpeech(
   const client = getOpenAIClient()
 
   const model = args.model ?? 'gpt-4o-mini-tts'
-  const voice = args.voice ?? 'alloy'
+  const voice = args.voice ?? 'nova'
   const responseFormat = args.responseFormat ?? 'mp3'
   const speed = args.speed ?? 1
 
