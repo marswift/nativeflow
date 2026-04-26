@@ -433,6 +433,7 @@ export function assembleReplyV25(
   lessonPhrase?: string | null,
   engineDimension?: string | null,
   userMessage?: string | null,
+  rank?: number | null,
 ): string {
   // Resolve scene slotSchema for slot validation
   const scene = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
@@ -529,6 +530,7 @@ export function assembleReplyV25(
     engineQuestion,
     engineDimension: engineDimension ?? null,
     scene,
+    rank: rank ?? null,
   })
 }
 
@@ -545,6 +547,8 @@ export type V25AssemblyContext = {
   engineDimension?: string | null
   /** Raw user message for reciprocal detection. */
   userMessage?: string | null
+  /** Numeric rank for level-aware composition. */
+  rank?: number | null
 }
 
 export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContext): AiConversationResponse | null {
@@ -583,6 +587,7 @@ export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContex
         ctx?.lessonPhrase ?? null,
         ctx?.engineDimension ?? null,
         ctx?.userMessage ?? null,
+        ctx?.rank ?? null,
       )
     } else if (typeof parsed.aiReply === 'string') {
       // V1/V2 fallback: LLM returned old-style aiReply

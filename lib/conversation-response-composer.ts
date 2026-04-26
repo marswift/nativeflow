@@ -23,6 +23,8 @@ export type ComposeInput = {
   engineQuestion: string | null
   engineDimension: string | null
   scene: SceneQuestionSet | null
+  /** Numeric rank for level-aware composition. 0-19 ultra-beginner, 20-39 beginner, 40-69 intermediate, 70+ advanced. */
+  rank?: number | null
 }
 
 // ── Data tables ──
@@ -87,6 +89,32 @@ const MICRO: Record<string, string[]> = {
   easy:      ['Oh, easy. Nice.', 'Easy — lucky you.', 'That\'s great.'],
 }
 
+/** Beginner-friendly reactions — short, simple, one idea only */
+const REACTION_BEGINNER: Record<MeaningType, string[]> = {
+  yes:       ['Nice.', 'Good.', 'Great.', 'Okay.'],
+  no:        ['Okay.', 'Got it.', 'I see.', 'Fine.'],
+  object:    ['Nice.', 'Good.', 'Oh.', 'Okay.'],
+  person:    ['Nice.', 'Oh.', 'Good.', 'Okay.'],
+  time:      ['Okay.', 'I see.', 'Oh.', 'Nice.'],
+  frequency: ['Oh.', 'I see.', 'Nice.', 'Okay.'],
+  feeling:   ['I see.', 'Oh.', 'Okay.', 'Got it.'],
+  social:    ['', '', '', ''],
+  unclear:   ['', '', '', ''],
+}
+
+/** Advanced reactions — richer, more personality, varied rhythm */
+const REACTION_ADVANCED: Record<MeaningType, string[]> = {
+  yes:       ['Oh, nice — that\'s great to hear.', 'Awesome, love that.', 'Perfect, sounds solid.', 'That\'s really good.', 'Great, glad to hear it.'],
+  no:        ['Fair enough, no worries at all.', 'That\'s totally fine.', 'Got it, makes sense.', 'No problem, everyone\'s different.', 'Honestly, that\'s fair.'],
+  object:    ['Oh, interesting choice.', 'Ah, nice pick.', 'That\'s a solid one.', 'Classic — I like it.', 'Good taste.'],
+  person:    ['That sounds really nice.', 'Oh, that must be fun.', 'Lucky — sounds great.', 'That\'s sweet.', 'Aw, I love that.'],
+  time:      ['That\'s a good time for it.', 'Makes sense, smart timing.', 'Oh, around then — nice.', 'Solid routine.', 'That works well.'],
+  frequency: ['Oh, quite a lot — impressive.', 'That\'s a solid habit.', 'Interesting rhythm.', 'Ha, respect.', 'That takes dedication.'],
+  feeling:   ['I totally get that.', 'Yeah, that\'s real.', 'Honestly, same sometimes.', 'Makes total sense.', 'I hear you.'],
+  social:    ['', '', '', '', ''],
+  unclear:   ['', '', '', '', ''],
+}
+
 /** Dimension-to-meaning type alignment map for bridge template selection */
 const DIM_TYPE_MAP: Record<string, string> = {
   object: 'object',
@@ -105,30 +133,46 @@ const DIM_TYPE_MAP: Record<string, string> = {
  */
 export function composeNormalReply(input: ComposeInput): string {
   const { meaningType, meaningValue, turnIndex, engineQuestion, engineDimension, scene } = input
+  const rank = input.rank ?? 50 // default to intermediate if not provided
   const segments: string[] = []
 
-  // Ack: only on turn 2+
-  const ack = turnIndex >= 2 ? ACKS[turnIndex % ACKS.length] : null
+  // ── Level tiers ──
+  const isBeginner = rank < 40
+  const isAdvanced = rank >= 70
 
-  // Reaction: prefer value-aware bridge template, fall back to micro, then generic pool
+  // Ack: turn 2+ for intermediate/advanced, turn 3+ for beginners (less clutter)
+  const ackTurnThreshold = isBeginner ? 3 : 2
+  const ack = turnIndex >= ackTurnThreshold ? ACKS[turnIndex % ACKS.length] : null
+
+  // Reaction: prefer value-aware bridge template, fall back to micro, then level-aware pool
   let reaction: string | null = null
-  const dimForBridge = (engineDimension ?? meaningType) as Exclude<Dimension, 'action'>
-  const bridgeAligned = !engineDimension || DIM_TYPE_MAP[engineDimension] === meaningType
-  const bridgePool = bridgeAligned ? scene?.bridgeTemplates?.[dimForBridge] : undefined
-  if (bridgePool && bridgePool.length > 0 && meaningValue) {
-    const template = bridgePool[turnIndex % bridgePool.length]
-    reaction = template.replace(/\{value\}/g, meaningValue)
+
+  // Beginners skip bridge templates (too complex/long) — go straight to simple pool
+  if (!isBeginner) {
+    const dimForBridge = (engineDimension ?? meaningType) as Exclude<Dimension, 'action'>
+    const bridgeAligned = !engineDimension || DIM_TYPE_MAP[engineDimension] === meaningType
+    const bridgePool = bridgeAligned ? scene?.bridgeTemplates?.[dimForBridge] : undefined
+    if (bridgePool && bridgePool.length > 0 && meaningValue) {
+      const template = bridgePool[turnIndex % bridgePool.length]
+      reaction = template.replace(/\{value\}/g, meaningValue)
+    }
   }
 
-  // Value-keyword micro-reactions when bridge didn't fire
-  if (!reaction && meaningValue) {
+  // Value-keyword micro-reactions when bridge didn't fire (skip for beginners — too varied)
+  if (!reaction && meaningValue && !isBeginner) {
     const v = meaningValue.toLowerCase()
     const pool = MICRO[v]
     if (pool) reaction = pool[turnIndex % pool.length]
   }
+
+  // Generic reaction pool — level-appropriate
   if (!reaction) {
-    const reactionPool = REACTION_BY_MEANING[meaningType] ?? REACTION_BY_MEANING.yes
-    reaction = reactionPool[turnIndex % reactionPool.length] || null
+    const pool = isBeginner
+      ? (REACTION_BEGINNER[meaningType] ?? REACTION_BEGINNER.yes)
+      : isAdvanced
+        ? (REACTION_ADVANCED[meaningType] ?? REACTION_ADVANCED.yes)
+        : (REACTION_BY_MEANING[meaningType] ?? REACTION_BY_MEANING.yes)
+    reaction = pool[turnIndex % pool.length] || null
   }
 
   // Deduplicate: if reaction is also an ack-like phrase, keep only one
@@ -143,7 +187,8 @@ export function composeNormalReply(input: ComposeInput): string {
 
   // Comment-only turn: on turn 2, if we have a value-aware bridge reaction,
   // skip the question to let the reaction breathe.
-  const isCommentOnly = turnIndex === 2 && reaction && meaningValue &&
+  // Disabled for beginners (always ask the next question — keep it simple).
+  const isCommentOnly = !isBeginner && turnIndex === 2 && reaction && meaningValue &&
     (engineDimension === 'object' || engineDimension === 'people')
 
   // Question: from engine (single source of truth)

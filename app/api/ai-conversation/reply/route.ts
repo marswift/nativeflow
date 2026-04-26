@@ -91,6 +91,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       lessonPhrase: body.lessonPhrase,
       engineDimension: body.engineDimension ?? null,
       userMessage: body.userMessage,
+      rank,
     }
     const parsed = parseAiConversationResponse(text, assemblyCtx)
 
