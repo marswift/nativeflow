@@ -45,12 +45,16 @@ function isValidRequest(body: unknown): body is AiConversationRequest {
 }
 
 export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
+  const t0 = performance.now()
+
   const auth = await requireLessonEntitlement(req)
   if (auth instanceof NextResponse) return auth as NextResponse<ApiResponse>
+  const authMs = Math.round(performance.now() - t0)
 
-  const t0 = performance.now()
   try {
+    const tParse = performance.now()
     const body: unknown = await req.json()
+    const parseMs = Math.round(performance.now() - tParse)
 
     if (!isValidRequest(body)) {
       return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 })
@@ -102,7 +106,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
 
     const assemblyMs = Math.round(performance.now() - tAssembly)
     const totalMs = Math.round(performance.now() - t0)
-    console.log('[AI_LATENCY]', JSON.stringify({ turn: body.turnIndex, prompt_ms: promptMs, llm_ms: llmMs, assembly_ms: assemblyMs, total_ms: totalMs }))
+    console.log('[AI_CONVO_LATENCY]', JSON.stringify({ turn: body.turnIndex, auth_ms: authMs, parse_ms: parseMs, prompt_ms: promptMs, llm_ms: llmMs, assembly_ms: assemblyMs, total_ms: totalMs }))
     console.log('[AI_CONV_API]', JSON.stringify({ turn: body.turnIndex, llmMs, totalMs, ok: true, eval: parsed.evaluation }))
 
     return NextResponse.json({ ok: true, ...parsed })

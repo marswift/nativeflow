@@ -1320,6 +1320,7 @@ function AiConversationPlayer({
           totalMs: Math.round(t6 - t0),
           sttMs: Math.round(t3 - t2),
         }
+        console.log('[AI_CONVO_LATENCY] client', JSON.stringify({ turn, stt_ms: Math.round(t3 - t2), api_ms: Math.round(t5 - t4), total_ms: Math.round(t6 - t0), fallback: !replied }))
         console.log('[AI_CONV]', JSON.stringify(turnMetrics))
         trackEvent('conversation_turn', {
           turn,
