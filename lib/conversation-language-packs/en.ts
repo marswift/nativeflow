@@ -64,13 +64,13 @@ export const englishConversationLanguagePack: ConversationLanguagePack = {
 
   // Reaction pools — warm, varied, beginner-friendly
   reactions: {
-    yes:       ["That's good.", "Good to hear.", "Great.", "Sounds like it.", "Oh, nice.", "Good.", "Cool."],
-    no:        ["No problem.", "Fair enough.", "That's fine.", "No worries.", "All good.", "That's okay.", "Got it, no worries."],
-    object:    ["Sounds good.", "Interesting.", "Good to know.", "Oh, nice.", "That helps.", "Ah, got it.", "Cool."],
-    person:    ["That's nice.", "Sounds fun.", "Good to know.", "Oh, with them.", "That's sweet.", "Nice.", "All by yourself?"],
-    time:      ["Good to know.", "Oh, around then.", "That helps.", "Not bad.", "Sounds about right.", "Makes sense.", "Early bird."],
-    frequency: ["That often?", "Sounds about right.", "Good to know.", "Wow.", "Interesting.", "Oh, really?", "That's consistent."],
-    feeling:   ["I get that.", "Makes sense.", "Thanks for sharing.", "I understand.", "That's fair."],
+    yes:       ["Oh, nice.", "Good to hear.", "Great.", "That's good.", "Perfect.", "Wonderful.", "Love that."],
+    no:        ["No problem.", "Fair enough.", "That's fine.", "No worries.", "All good.", "That's okay.", "Totally fine."],
+    object:    ["Sounds good.", "Interesting.", "Oh, that one.", "Ah, I know.", "That's a good pick.", "Classic.", "Love it."],
+    person:    ["That's nice.", "Sounds fun.", "Lucky.", "Oh, with them.", "That's sweet.", "Aw, nice.", "All by yourself?"],
+    time:      ["Oh, around then.", "Not too bad.", "That works.", "Solid timing.", "Sounds about right.", "Smart.", "Early bird."],
+    frequency: ["That often?", "Oh, really?", "Consistent.", "Wow.", "Impressive.", "Ha, nice.", "Every single time?"],
+    feeling:   ["I feel you.", "Makes sense.", "Yeah, same.", "Totally.", "That's real.", "Relatable.", "For real."],
   },
 
   // Soft prompt for comment-only turns
