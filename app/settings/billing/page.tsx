@@ -346,7 +346,8 @@ export default function BillingSettingsPage() {
             <p className="text-xs font-bold tracking-wide text-blue-700">ご利用ポリシー</p>
             <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-blue-800/80">
               <li>・解約しても、お支払い済みの期間が終了するまでレッスンをご利用いただけます。</li>
-              <li>・プラン変更は、現在のお支払い期間の終了後に適用されます。</li>
+              <li>・月額→年額へのアップグレードは即時適用されます（差額は日割り計算）。</li>
+              <li>・年額→月額へのダウングレードは、現在の年額期間の終了後に適用されます。</li>
               <li>・有効期間中にアクセスが停止されることはありません。</li>
             </ul>
           </div>

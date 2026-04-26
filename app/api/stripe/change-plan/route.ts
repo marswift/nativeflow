@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getStripe, getPriceIdByPlan } from '@/lib/stripe'
+import { getStripe, getPriceIdByPlan, getYearlyPriceId } from '@/lib/stripe'
 
 export async function POST(req: Request) {
   try {
@@ -56,26 +56,35 @@ export async function POST(req: Request) {
     const itemId = item.id
 
     const priceId = getPriceIdByPlan(plan)
+    const currentPriceId = item.price?.id ?? ''
+    const isDowngrade = currentPriceId === getYearlyPriceId() && plan === 'monthly'
 
-    await stripe.subscriptions.update(subscription.id, {
-      items: [
-        {
-          id: itemId,
-          price: priceId,
-        },
-      ],
-      proration_behavior: 'create_prorations',
-    })
+    if (isDowngrade) {
+      // Yearly → Monthly: defer to next billing period
+      await stripe.subscriptions.update(subscription.id, {
+        items: [{ id: itemId, price: priceId }],
+        proration_behavior: 'none',
+        billing_cycle_anchor: 'unchanged',
+      })
+    } else {
+      // Monthly → Yearly: apply immediately with proration
+      await stripe.subscriptions.update(subscription.id, {
+        items: [{ id: itemId, price: priceId }],
+        proration_behavior: 'create_prorations',
+      })
+    }
 
-  // DBも更新
-  const { error: updateError } = await supabase
-  .from('user_profiles')
-  .update({ planned_plan_code: plan })
-  .eq('id', user.id)
-  
-  if (updateError) {
-    console.error(updateError)
-  }
+    const { error: updateError } = await supabase
+      .from('user_profiles')
+      .update(isDowngrade
+        ? { next_plan_code: plan }
+        : { planned_plan_code: plan, next_plan_code: null }
+      )
+      .eq('id', user.id)
+
+    if (updateError) {
+      console.error(updateError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
