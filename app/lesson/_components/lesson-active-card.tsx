@@ -17,7 +17,6 @@ import { createInitialState, classifyUserInput, selectNextIntent, advanceState, 
 import { getRegionContext } from '../../../lib/daily-timeline'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
 import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
-import LpIcon from '@/components/lp-icon'
 import { buildScenarioLabel } from '../../../lib/lesson-blueprint-service'
 
 // ── Auth helper for API calls ──
@@ -3185,7 +3184,7 @@ function AiQuestionListenStage({
   item,
   uiText,
   onInputChange,
-  ctaLabel,
+  ctaLabel: _ctaLabel,
 }: {
   item: LessonBlockItem
   uiText: LessonCopy['activeCard']
