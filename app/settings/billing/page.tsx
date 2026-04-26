@@ -49,11 +49,32 @@ function formatPlanLabel(plan: BillingProfile['planned_plan_code']): string {
 
 function formatSubscriptionStatus(
   status: BillingProfile['subscription_status'],
-  cancelAtPeriodEnd: BillingProfile['subscription_cancel_at_period_end']
+  cancelAtPeriodEnd: BillingProfile['subscription_cancel_at_period_end'],
+  periodEnd: BillingProfile['subscription_current_period_end'],
 ): string {
   if (!status) return '未設定'
+  if (cancelAtPeriodEnd && periodEnd) {
+    const end = new Date(periodEnd)
+    const now = new Date()
+    if (end > now) {
+      const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      const dateStr = new Intl.DateTimeFormat('ja-JP', { month: 'long', day: 'numeric' }).format(end)
+      return `解約予定（${dateStr}まで利用可・残り${days}日）`
+    }
+    return '解約済み（利用期間終了）'
+  }
   if (cancelAtPeriodEnd) return '期間終了後に解約予定'
-  if (status === 'trialing') return '無料トライアル中'
+  if (status === 'trialing') {
+    if (periodEnd) {
+      const end = new Date(periodEnd)
+      const now = new Date()
+      if (end > now) {
+        const days = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+        return `無料トライアル中（残り${days}日）`
+      }
+    }
+    return '無料トライアル中'
+  }
   if (status === 'active') return '有効'
   if (status === 'past_due') return 'お支払い確認中'
   if (status === 'unpaid') return 'お支払い未完了'
@@ -293,7 +314,8 @@ export default function BillingSettingsPage() {
   const planLabel = formatPlanLabel(profile?.planned_plan_code ?? null)
   const statusLabel = formatSubscriptionStatus(
     profile?.subscription_status ?? null,
-    profile?.subscription_cancel_at_period_end ?? null
+    profile?.subscription_cancel_at_period_end ?? null,
+    profile?.subscription_current_period_end ?? null,
   )
   const nextRenewalLabel = formatPeriodEnd(profile?.subscription_current_period_end ?? null)
   const canResumeSubscription =

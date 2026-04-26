@@ -86,7 +86,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    console.log('WEBHOOK EVENT TYPE:', event.type)
+    console.log('[BILLING_WEBHOOK]', JSON.stringify({
+      type: event.type,
+      id: event.id,
+      created: event.created,
+      livemode: event.livemode,
+    }))
 
     switch (event.type) {
       case 'checkout.session.completed': {

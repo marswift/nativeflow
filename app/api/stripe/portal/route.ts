@@ -52,12 +52,14 @@ export async function POST(req: NextRequest) {
     )
 
     if (!session.url) {
+      console.error('[BILLING_PORTAL] session created but URL missing', { userId: user.id, stripeCustomerId })
       return NextResponse.json(
         { message: 'Stripe portal URL was not created' },
         { status: 500 }
       )
     }
 
+    console.log('[BILLING_PORTAL] session created', { userId: user.id, stripeCustomerId })
     return NextResponse.json({ url: session.url })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Portal creation failed'
