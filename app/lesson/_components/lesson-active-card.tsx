@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { getEmmaHint, type EmmaHintStage } from '../../../lib/lesson-copy'
 import { trackEvent } from '../../../lib/analytics'
 import { logLessonEvent } from '../../../lib/content-pipeline/lesson-events'
@@ -14,6 +14,7 @@ import type { LessonStageId } from '../../../lib/lesson-runtime'
 import type { CurrentLevel } from '../../../lib/constants'
 import { buildFallbackEvaluation, buildEngineFallbackReply, incrementAiCallCount } from '../../../lib/ai-conversation-fallback'
 import { createInitialState, classifyUserInput, selectNextIntent, advanceState, serializeState, type ConversationState } from '../../../lib/ai-conversation-state'
+import { createConvState, convTransition, canRecord, canAdvance, isAiProcessing, isAiSpeaking, isConvDone, isReadyToSpeak } from '../../../lib/conversation-fsm'
 import { getRegionContext } from '../../../lib/daily-timeline'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
 import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
@@ -959,20 +960,23 @@ function AiConversationPlayer({
 
   const [turn, setTurn] = useState(0)
   const [started, setStarted] = useState(false)
-  const [allDone, setAllDone] = useState(false)
+  // ── FSM: single source of truth for conversation phase ──
+  const [conv, dispatch] = useReducer(convTransition, undefined, createConvState)
+  const allDone = isConvDone(conv.phase)
+  const aiSpeaking = isAiSpeaking(conv.phase)
+  const aiThinking = isAiProcessing(conv.phase)
+  const turnAnswered = isReadyToSpeak(conv.phase) || canAdvance(conv.phase)
+  // ── End FSM derived ──
   const [soundGameDone, setSoundGameDone] = useState(false)
   const [quickResponseDone, setQuickResponseDone] = useState(false)
   const [_recallDone, setRecallDone] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isRecognizing, setIsRecognizing] = useState(false)
   const [transcript, setTranscript] = useState('')
-  const [turnAnswered, setTurnAnswered] = useState(false)
   const [turnHint, setTurnHint] = useState<string | null>(null)
   const [turnNextPrompt, setTurnNextPrompt] = useState<string | null>(null)
   const [turnEvalDetail, setTurnEvalDetail] = useState<ConvEvalDetail | null>(null)
   const [history, setHistory] = useState<ConvTurn[]>([])
-  const [aiSpeaking, setAiSpeaking] = useState(false)
-  const [aiThinking, setAiThinking] = useState(false)
   const [showPaywall, setShowPaywall] = useState(false)
   const paywallShownRef = useRef(false)
   const [streakCount, setStreakCount] = useState(0)
@@ -985,7 +989,6 @@ function AiConversationPlayer({
   const streamRef = useRef<MediaStream | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const nextAiReplyRef = useRef<string | null>(null)
 
   // ── Engine state — single source of truth for conversation progression ──
   const engineStateRef = useRef<ConversationState>(createInitialState(currentAnswer))
@@ -1070,7 +1073,7 @@ function AiConversationPlayer({
   /** Play audio for an AI message — non-blocking, plays as soon as URL is ready */
   const playAiMessage = useCallback((text: string) => {
     const ttsStart = performance.now()
-    setAiSpeaking(true)
+    // Note: caller must dispatch START/ADVANCE to set speaking phase BEFORE calling this
 
     // Stop previous audio cleanly
     if (aiAudioRef.current) {
@@ -1087,11 +1090,11 @@ function AiConversationPlayer({
     const playUrl = (url: string) => {
       const audio = aiAudioRef.current!
       console.log(`[AI_LATENCY] segment=tts_to_playback duration=${Math.round(performance.now() - ttsStart)}ms cached=${url === aiAudioCacheRef.current.get(normalizeAudioKey(text))}`)
-      audio.onended = () => setAiSpeaking(false)
-      audio.onerror = () => setAiSpeaking(false)
+      audio.onended = () => dispatch({ type: 'AUDIO_ENDED' })
+      audio.onerror = () => dispatch({ type: 'AUDIO_ERROR' })
       audio.src = url
       audio.currentTime = 0
-      audio.play().catch(() => setAiSpeaking(false))
+      audio.play().catch(() => dispatch({ type: 'AUDIO_ERROR' }))
     }
 
     // Check cache first for instant playback
@@ -1113,7 +1116,7 @@ function AiConversationPlayer({
             aiAudioCacheRef.current.set(key, retryUrl)
             playUrl(retryUrl)
           } else {
-            setAiSpeaking(false)
+            dispatch({ type: 'AUDIO_ERROR' })
           }
         })
       }
@@ -1128,6 +1131,7 @@ function AiConversationPlayer({
 
   const handleStart = () => {
     setStarted(true)
+    dispatch({ type: 'START' })
     playAiMessage(openerMessage)
   }
 
@@ -1138,12 +1142,12 @@ function AiConversationPlayer({
   }
 
   const handleStartRecording = async () => {
-    if (isRecording) return
+    if (isRecording || !canRecord(conv.phase)) return
     try {
       stopStream()
       chunksRef.current = []
       setTranscript('')
-      setTurnAnswered(false)
+      dispatch({ type: 'RECORD_START' })
       setShowConvSilent(false)
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -1166,6 +1170,7 @@ function AiConversationPlayer({
       recorder.onstop = async () => {
         const t0 = performance.now() // [1] recording stop
         setIsRecording(false)
+        dispatch({ type: 'RECORD_STOP' })
         if (recordingTimerRef.current) {
           clearTimeout(recordingTimerRef.current)
           recordingTimerRef.current = null
@@ -1177,12 +1182,10 @@ function AiConversationPlayer({
         console.log(`[AI_LATENCY] turn=${turn} segment=blob_ready duration=${Math.round(t1 - t0)}ms`)
 
         if (blob.size === 0) {
+          dispatch({ type: 'STT_EMPTY' })
           setShowConvSilent(true)
           return
         }
-
-        // --- Immediate feedback: show thinking state right away ---
-        setAiThinking(true)
 
         // --- Phase 1: STT ---
         setIsRecognizing(true)
@@ -1207,22 +1210,22 @@ function AiConversationPlayer({
         setIsRecognizing(false)
 
         if (!recognized) {
-          setAiThinking(false)
+          dispatch({ type: 'STT_EMPTY' })
           setShowConvSilent(true)
           return
         }
+
+        dispatch({ type: 'STT_RESULT', transcript: recognized })
 
         // --- Final turn: generate a closing AI reply so conversation never ends on user message ---
         if (turn >= MAX_TURNS - 1 || isClosingAssistantMessage(currentAiMessage)) {
           const wraps = engineStateRef.current.plan.wrapPrompts
           const closingReply = wraps[turn % wraps.length] ?? 'Nice chatting with you. See you next time!'
-          nextAiReplyRef.current = closingReply
           ensureAiAudioUrl(closingReply)
           setTurnEvalDetail(null)
           setTurnHint(null)
           setTurnNextPrompt(null)
-          setAiThinking(false)
-          setTurnAnswered(true)
+          dispatch({ type: 'REPLY_READY', reply: closingReply, isFinal: true })
           return
         }
 
@@ -1243,6 +1246,7 @@ function AiConversationPlayer({
         apiHistory.push({ ai: currentAiMessage, user: recognized })
 
         let replied = false
+        let replyText = engineFallbackReply
         const t4 = performance.now() // [5] AI request start
         try {
           const controller = new AbortController()
@@ -1276,7 +1280,7 @@ function AiConversationPlayer({
             if (apiData.ok && apiData.aiReply) {
               incrementAiCallCount()
               replied = true
-              nextAiReplyRef.current = apiData.aiReply
+              replyText = apiData.aiReply
               ensureAiAudioUrl(apiData.aiReply)
               setTurnEvalDetail(apiData.evaluationDetail ?? null)
               if (apiData.evaluation === 'retry') {
@@ -1295,8 +1299,6 @@ function AiConversationPlayer({
 
         // --- Fallback if API didn't produce a reply ---
         if (!replied) {
-          // Engine-driven fallback is sole reply source; legacy provides evaluation data only
-          nextAiReplyRef.current = engineFallbackReply
           setTurnEvalDetail(fallbackEval.evaluationDetail)
           setTurnHint(null)
           setTurnNextPrompt(null)
@@ -1342,8 +1344,7 @@ function AiConversationPlayer({
           metadata: turnMetrics as Record<string, string | number | boolean | null>,
         })
 
-        setAiThinking(false)
-        setTurnAnswered(true)
+        dispatch({ type: 'REPLY_READY', reply: replyText, isFinal: false })
       }
       recorder.start(250)
     } catch {
@@ -1361,7 +1362,8 @@ function AiConversationPlayer({
   // Advance to the next turn — uses dynamic AI reply
   const advanceToNextTurn = useCallback(() => {
     // Guard: prevent double-close if called after allDone
-    if (allDone) return
+    // FSM guard: only advance from ready_to_speak
+    if (!canAdvance(conv.phase)) return
 
     // Score this turn silently (not shown during conversation)
     const turnScore = scoreTurn(turnEvalDetail, transcript, history.map((h) => h.userReply))
@@ -1377,17 +1379,17 @@ function AiConversationPlayer({
     setHistory(newHistory)
 
     const next = turn + 1
-    if (next >= MAX_TURNS || isClosingAssistantMessage(currentAiMessage)) {
+    if (conv.isFinalTurn || next >= MAX_TURNS || isClosingAssistantMessage(currentAiMessage)) {
       // Add closing AI message so conversation never ends on user message
-      const closingMsg = nextAiReplyRef.current
+      const closingMsg = conv.nextReply
       if (closingMsg) {
         newHistory.push({ aiMessage: closingMsg, userReply: '', hint: null, nextPrompt: null, reaction: '', eval: null })
         setHistory(newHistory)
+        dispatch({ type: 'ADVANCE' }) // wrapping phase — audio plays
         playAiMessage(closingMsg)
+      } else {
+        dispatch({ type: 'ADVANCE' })
       }
-      nextAiReplyRef.current = null
-      // Conversation complete
-      setAllDone(true)
       onInputChange('[conversation done]')
       const engineState = engineStateRef.current
       trackEvent('conversation_complete', {
@@ -1409,13 +1411,12 @@ function AiConversationPlayer({
       })
     } else {
       // Use the AI-generated reply for the next turn
-      let nextMsg = nextAiReplyRef.current ?? (() => {
+      let nextMsg = conv.nextReply ?? (() => {
         // Engine-driven fallback for missing reply
         const inp = classifyUserInput(transcript, engineStateRef.current.plan.anchorAction, engineStateRef.current.plan)
         const intent = selectNextIntent(engineStateRef.current, inp)
         return buildEngineFallbackReply(intent, transcript, turn)
       })()
-      nextAiReplyRef.current = null
       // If API repeats the same reply, regenerate via engine
       if (nextMsg === currentAiMessage && !isClosingAssistantMessage(nextMsg)) {
         const inp = classifyUserInput(transcript, engineStateRef.current.plan.anchorAction, engineStateRef.current.plan)
@@ -1426,18 +1427,18 @@ function AiConversationPlayer({
       setCurrentAiMessage(nextMsg)
       setTurn(next)
       setTranscript('')
-      setTurnAnswered(false)
+      dispatch({ type: 'ADVANCE' }) // speaking phase — audio plays
       setTurnHint(null)
       setTurnNextPrompt(null)
       setTurnEvalDetail(null)
       playAiMessage(nextMsg)
     }
-  }, [history, currentAiMessage, turn, transcript, turnHint, turnNextPrompt, turnEvalDetail, onInputChange, playAiMessage, allDone])
+  }, [history, currentAiMessage, turn, transcript, turnHint, turnNextPrompt, turnEvalDetail, onInputChange, playAiMessage, conv])
 
   // Retry the current turn (reset recording state so user can try again)
   const handleRetryTurn = useCallback(() => {
     setTranscript('')
-    setTurnAnswered(false)
+    dispatch({ type: 'RETRY' })
     setTurnHint(null)
     setTurnNextPrompt(null)
     setTurnEvalDetail(null)
@@ -1450,19 +1451,15 @@ function AiConversationPlayer({
   const handleRetryAll = () => {
     setTurn(0)
     setStarted(false)
-    setAllDone(false)
+    dispatch({ type: 'RESET' })
     setShowReviewScreen(false)
     setShowChallengeComplete(false)
     setShowConvSilent(false)
     setTranscript('')
-    setTurnAnswered(false)
     setTurnHint(null)
     setTurnNextPrompt(null)
     setTurnEvalDetail(null)
-    setAiSpeaking(false)
-    setAiThinking(false)
     setCurrentAiMessage(openerMessage)
-    nextAiReplyRef.current = null
     aiAudioInflightRef.current.clear()
     setHistory([])
     onInputChange('')
@@ -1474,13 +1471,13 @@ function AiConversationPlayer({
   // Auto-advance: after user answers and feedback is shown, advance to next turn automatically
   // Must be ABOVE early returns to maintain stable hook order.
   useEffect(() => {
-    if (!started || !turnAnswered || turnHint || allDone) return
+    if (!started || !canAdvance(conv.phase) || turnHint) return
     const timer = setTimeout(() => {
       advanceToNextTurn()
     }, 400)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, turnAnswered, turnHint, allDone])
+  }, [started, conv.phase, turnHint])
 
   if (!started) {
     return (
