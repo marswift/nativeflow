@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createLanguageBundle, getAvailableRegions, AVAILABLE_AGE_GROUPS } from '@/lib/content-pipeline/language-expansion'
 import type { AgeGroup } from '@/lib/daily-timeline'
-import { verifyAdminRequest } from '@/lib/admin-api-guard'
+import { verifyAdminRequest, logAdminAction } from '@/lib/admin-api-guard'
 
 export const runtime = 'nodejs'
 
@@ -50,6 +50,12 @@ export async function POST(request: NextRequest) {
       targetLanguage: body.targetLanguage,
       region: body.region,
       ageGroups,
+    })
+
+    logAdminAction(adminUserId, 'language_create', {
+      targetLanguage: body.targetLanguage,
+      region: body.region,
+      bundleCount: result.bundles.length,
     })
 
     return NextResponse.json({

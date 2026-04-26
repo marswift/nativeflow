@@ -108,3 +108,33 @@ export async function verifyAdminRequest(request: NextRequest): Promise<string |
     return null
   }
 }
+
+/**
+ * Fire-and-forget audit log for admin write operations.
+ * Call after a successful mutation (publish, rollback, create, regenerate, etc.).
+ * Non-blocking — never throws.
+ */
+export function logAdminAction(
+  adminUserId: string,
+  action: string,
+  metadata?: Record<string, unknown>,
+): void {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceKey) return
+
+  fetch(`${supabaseUrl}/rest/v1/admin_audit_log`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      actor_user_id: adminUserId,
+      event_type: `admin_${action}`,
+      metadata: metadata ?? null,
+    }),
+  }).catch(() => { /* non-blocking */ })
+}

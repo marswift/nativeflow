@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { publish, getBundleInfo } from '@/lib/content-pipeline/lifecycle'
-import { verifyAdminRequest } from '@/lib/admin-api-guard'
+import { verifyAdminRequest, logAdminAction } from '@/lib/admin-api-guard'
 
 export const runtime = 'nodejs'
 
@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
     if (!success) {
       return NextResponse.json({ error: 'Publish failed' }, { status: 500 })
     }
+
+    logAdminAction(adminUserId, 'language_publish', {
+      bundleId: body.bundleId,
+      versionNumber: body.versionNumber,
+      previousVersion: bundle.publishedVersion,
+    })
 
     return NextResponse.json({
       success: true,

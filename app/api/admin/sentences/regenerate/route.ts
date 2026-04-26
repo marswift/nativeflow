@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '../../../../../lib/supabase-server'
 import { generateChatCompletion } from '../../../../../lib/openai-client'
 import { type RegenerationInput, type RegenerationOutput } from '../../../../../lib/admin/sentence-workbench'
-import { verifyAdminRequest } from '@/lib/admin-api-guard'
+import { verifyAdminRequest, logAdminAction } from '@/lib/admin-api-guard'
 import { getLanguageLabel, getRegionLabel } from '../../../../../lib/language-config'
 
 export async function POST(req: NextRequest) {
@@ -100,6 +100,12 @@ export async function POST(req: NextRequest) {
       naturalnessScore: typeof parsed.naturalnessScore === 'number' ? parsed.naturalnessScore : null,
       candidates: Array.isArray(parsed.candidates) ? parsed.candidates : [],
     }
+
+    logAdminAction(adminUserId, 'sentence_regenerate', {
+      sentenceMasterId,
+      targetLanguageCode,
+      targetRegionCode: targetRegionCode ?? null,
+    })
 
     return NextResponse.json({ ok: true, ...output })
   } catch (err) {

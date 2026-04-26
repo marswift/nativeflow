@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { rollbackToVersion, getBundleInfo } from '@/lib/content-pipeline/lifecycle'
-import { verifyAdminRequest } from '@/lib/admin-api-guard'
+import { verifyAdminRequest, logAdminAction } from '@/lib/admin-api-guard'
 
 export const runtime = 'nodejs'
 
@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
     if (!success) {
       return NextResponse.json({ error: 'Rollback failed' }, { status: 500 })
     }
+
+    logAdminAction(adminUserId, 'language_rollback', {
+      bundleId: body.bundleId,
+      rolledBackTo: body.targetVersion,
+      previousPublished: bundle.publishedVersion,
+    })
 
     return NextResponse.json({
       success: true,
