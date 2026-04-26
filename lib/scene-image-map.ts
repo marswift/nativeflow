@@ -31,6 +31,26 @@ const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
     mobilePath: '/images/backgrounds/wake_up_01_p.webp',
     status: 'exists',
   },
+  wash_face: {
+    path: '/images/scenes/daily-flow/scene-04-wash-face/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  brush_teeth: {
+    path: '/images/scenes/daily-flow/scene-05-brush-teeth/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  get_dressed: {
+    path: '/images/scenes/daily-flow/scene-06-get-dressed/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  eat_breakfast: {
+    path: '/images/scenes/daily-flow/scene-07-eat-breakfast/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
   make_breakfast: {
     path: '/images/backgrounds/make_breakfast_01.webp',
     mobilePath: '/images/backgrounds/make_breakfast_01_p.webp',
@@ -49,20 +69,25 @@ const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
     status: 'exists',
   },
   greet_coworkers: {
-    path: '/images/backgrounds/greet_coworkers_01.webp',
-    mobilePath: '/images/backgrounds/greet_coworkers_01_p.webp',
+    path: '/images/scenes/social/greet/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   go_to_a_convenience_store: {
-    path: '/images/backgrounds/go_to_a_convenience_store_01.webp',
-    mobilePath: '/images/backgrounds/go_to_a_convenience_store_01_p.webp',
+    path: '/images/scenes/shopping/shop/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  take_the_train: {
+    path: '/images/scenes/travel/train/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
 
   // ── Lunch ────────────────────────────────────────────────
   order_at_a_restaurant: {
-    path: '/images/backgrounds/order_at_a_restaurant_01.webp',
-    mobilePath: '/images/backgrounds/order_at_a_restaurant_01_p.webp',
+    path: '/images/scenes/shopping/order_food/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
   lunch_break: {
@@ -107,6 +132,28 @@ const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
   go_to_bed: {
     path: '/images/backgrounds/go_to_bed_01.webp',
     mobilePath: '/images/backgrounds/go_to_bed_01_p.webp',
+    status: 'exists',
+  },
+
+  // ── Social / Travel / Leisure (reused existing assets) ──
+  date_at_a_cafe: {
+    path: '/images/scenes/social/cafe/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  go_to_a_movie: {
+    path: '/images/scenes/leisure/movie/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  hotel_checkin: {
+    path: '/images/scenes/travel/hotel/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  airport_checkin: {
+    path: '/images/scenes/travel/airport/base/base.webp',
+    mobilePath: null,
     status: 'exists',
   },
 }
