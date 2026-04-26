@@ -273,7 +273,10 @@ export default function LessonRunner({
       if (cancelled || !user) return
       userIdRef.current = user.id
       const runId = await createLessonRun(supabase, user.id, sceneId, level)
-      if (!cancelled) lessonRunIdRef.current = runId
+      if (!cancelled) {
+        lessonRunIdRef.current = runId
+        console.log('[LESSON_START]', { runId, sceneId, level, userId: user.id })
+      }
       await fetchDueReviewItems(user.id)
     }
     init()
@@ -453,6 +456,10 @@ export default function LessonRunner({
 
   const handleNext = async () => {
     if (isLastStage) return
+
+    // Safety: stop any playing audio and active recording before transitioning
+    stopAudio(audioRef)
+    stopRecording()
 
     // Review mode: when completing typing stage with a review item active
     if (stage === 'typing' && isInReviewQueue && activeReviewItem) {
@@ -842,13 +849,23 @@ export default function LessonRunner({
         ],
         message: 'おつかれさまでした！',
         onFinish: () => {
+          // Guard: prevent double completion on rapid taps
+          const runId = lessonRunIdRef.current
+          if (!runId) return
+          // Clear ref immediately so second tap is a no-op
+          lessonRunIdRef.current = null
+
           // Complete lesson run (async, non-blocking)
-          if (lessonRunIdRef.current) {
-            completeLessonRun(supabase, lessonRunIdRef.current)
-          }
+          completeLessonRun(supabase, runId)
           if (userIdRef.current) {
             incrementDailyStats(userIdRef.current)
           }
+
+          // Stop any lingering audio/recording
+          stopAudio(audioRef)
+          stopRecording()
+
+          console.log('[LESSON_COMPLETE]', { runId, sceneId, level })
           setCurrentStageIndex(0)
         },
       }}
