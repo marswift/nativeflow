@@ -56,9 +56,11 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 })
     }
 
+    const tPrompt = performance.now()
     const messages = buildChatMessages(body)
     const rank = typeof body.rank === 'number' ? body.rank : 100
     const maxTokens = rank < 40 ? 150 : rank < 60 ? 200 : 300
+    const promptMs = Math.round(performance.now() - tPrompt)
 
     const tLlm = performance.now()
     const { text } = await generateChatCompletion({
@@ -75,6 +77,7 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       return NextResponse.json({ ok: false, error: 'Empty AI response' }, { status: 502 })
     }
 
+    const tAssembly = performance.now()
     const assemblyCtx: V25AssemblyContext = {
       turnIndex: body.turnIndex,
       engineQuestion: body.engineSuggestedQuestion ?? null,
@@ -97,7 +100,9 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
     // Runtime anti-echo guard: strip copied user phrases from AI reply
     parsed.aiReply = sanitizeEchoFromReply(parsed.aiReply, body.userMessage)
 
+    const assemblyMs = Math.round(performance.now() - tAssembly)
     const totalMs = Math.round(performance.now() - t0)
+    console.log('[AI_LATENCY]', JSON.stringify({ turn: body.turnIndex, prompt_ms: promptMs, llm_ms: llmMs, assembly_ms: assemblyMs, total_ms: totalMs }))
     console.log('[AI_CONV_API]', JSON.stringify({ turn: body.turnIndex, llmMs, totalMs, ok: true, eval: parsed.evaluation }))
 
     return NextResponse.json({ ok: true, ...parsed })
