@@ -1213,9 +1213,12 @@ function AiConversationPlayer({
           return
         }
 
-        // --- Final turn/closing guard: skip AI reply generation and go to completion ---
+        // --- Final turn: generate a closing AI reply so conversation never ends on user message ---
         if (turn >= MAX_TURNS - 1 || isClosingAssistantMessage(currentAiMessage)) {
-          nextAiReplyRef.current = null
+          const wraps = engineStateRef.current.plan.wrapPrompts
+          const closingReply = wraps[turn % wraps.length] ?? 'Nice chatting with you. See you next time!'
+          nextAiReplyRef.current = closingReply
+          ensureAiAudioUrl(closingReply)
           setTurnEvalDetail(null)
           setTurnHint(null)
           setTurnNextPrompt(null)
@@ -1373,6 +1376,14 @@ function AiConversationPlayer({
 
     const next = turn + 1
     if (next >= MAX_TURNS || isClosingAssistantMessage(currentAiMessage)) {
+      // Add closing AI message so conversation never ends on user message
+      const closingMsg = nextAiReplyRef.current
+      if (closingMsg) {
+        newHistory.push({ aiMessage: closingMsg, userReply: '', hint: null, nextPrompt: null, reaction: '', eval: null })
+        setHistory(newHistory)
+        playAiMessage(closingMsg)
+      }
+      nextAiReplyRef.current = null
       // Conversation complete
       setAllDone(true)
       onInputChange('[conversation done]')
