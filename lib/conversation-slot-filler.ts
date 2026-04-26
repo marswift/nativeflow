@@ -31,6 +31,34 @@ const DOMAIN_KEYWORDS: Record<string, Set<string>> = {
 /** Common filler words excluded from domain matching */
 const SLOT_COMMON = new Set(['i', 'my', 'the', 'a', 'it', 'do', 'is', 'yes', 'no', 'not', 'and', 'or', 'but', 'so', 'very', 'really', 'just', 'like', 'think', 'usually', 'too', 'also'])
 
+// ── Context mismatch detection ──
+
+/**
+ * Past-tense / biography patterns that indicate the user is NOT answering
+ * about their current daily routine, even if the phrase contains a valid keyword.
+ * E.g. "I grew up alone" has "alone" but is biographical, not a routine answer.
+ */
+const PAST_CONTEXT_PATTERNS = [
+  /\b(grew up|grown up)\b/i,
+  /\b(lived|used to live)\b/i,
+  /\b(was born)\b/i,
+  /\b(used to be)\b/i,
+  /\bi was\b/i,
+  /\b(moved|came from|left)\b.*\b(ago|before|when)\b/i,
+]
+
+/**
+ * Detect if the full user phrase contains past-tense / biographical context
+ * that makes a keyword match unreliable for a present-routine question.
+ * Only triggers on multi-word phrases (bare keywords like "alone" pass through).
+ */
+export function hasPastContextMismatch(fullPhrase: string): boolean {
+  const trimmed = fullPhrase.trim()
+  // Bare keyword answers (1-2 words) are fine — no context to mismatch
+  if (trimmed.split(/\s+/).length <= 2) return false
+  return PAST_CONTEXT_PATTERNS.some(p => p.test(trimmed))
+}
+
 // ── Validation ──
 
 /**
@@ -60,6 +88,9 @@ export function validateSlot(
 
     const contentWords = tokens.filter(w => w.length > 2 && !SLOT_COMMON.has(w))
     if (contentWords.length === 0) return { valid: true, reason: 'ok' }
+
+    // Reject keyword matches with past-tense/biography context
+    if (hasPastContextMismatch(value)) return { valid: false, reason: 'mismatch' }
 
     const hasRelevant = contentWords.some(w => slotDef.accept.has(w))
     if (hasRelevant) return { valid: true, reason: 'ok' }
@@ -95,6 +126,9 @@ export function validateSlot(
 
   const contentWords = words.filter(w => w.length > 2 && !SLOT_COMMON.has(w))
   if (contentWords.length === 0) return { valid: true, reason: 'ok' } // only filler — accept
+
+  // Reject keyword matches with past-tense/biography context
+  if (hasPastContextMismatch(value)) return { valid: false, reason: 'mismatch' }
 
   const hasRelevant = contentWords.some(w => expectedDomain!.has(w))
   if (hasRelevant) return { valid: true, reason: 'ok' }
