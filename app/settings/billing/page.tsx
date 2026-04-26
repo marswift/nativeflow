@@ -341,6 +341,16 @@ export default function BillingSettingsPage() {
             </div>
           </section>
 
+          {/* Policy info box */}
+          <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/50 px-5 py-4">
+            <p className="text-xs font-bold tracking-wide text-blue-700">ご利用ポリシー</p>
+            <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-blue-800/80">
+              <li>・解約しても、お支払い済みの期間が終了するまでレッスンをご利用いただけます。</li>
+              <li>・プラン変更は、現在のお支払い期間の終了後に適用されます。</li>
+              <li>・有効期間中にアクセスが停止されることはありません。</li>
+            </ul>
+          </div>
+
           <div className="mt-8 space-y-6 md:space-y-8">
             <section className={`${CARD_BASE} px-6 py-6 sm:px-7 sm:py-6`} aria-label="次回決済日">
               <div className="mb-5 border-b border-[#F0ECE6] pb-4">
