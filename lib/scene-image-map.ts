@@ -135,6 +135,28 @@ const DAILY_FLOW_SCENE_IMAGES: Record<string, SceneImageEntry> = {
     status: 'exists',
   },
 
+  // ── Aliases (share image with a related scene) ──
+  eat_dinner: {
+    path: '/images/backgrounds/make_dinner_01.webp',
+    mobilePath: '/images/backgrounds/make_dinner_01_p.webp',
+    status: 'exists',
+  },
+  clean_up_after_breakfast: {
+    path: '/images/scenes/daily-flow/scene-07-eat-breakfast/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  take_a_shower: {
+    path: '/images/scenes/daily-flow/scene-17-take-shower/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+  commute_by_car: {
+    path: '/images/scenes/daily-flow/scene-09-commute/base/base.webp',
+    mobilePath: null,
+    status: 'exists',
+  },
+
   // ── Social / Travel / Leisure (reused existing assets) ──
   date_at_a_cafe: {
     path: '/images/scenes/social/cafe/base/base.webp',
