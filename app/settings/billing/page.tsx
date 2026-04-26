@@ -242,8 +242,14 @@ export default function BillingSettingsPage() {
   
     checkSession()
     trackEvent('billing_page_viewed')
+
+    // Auto-refresh billing data when user returns from Stripe Portal
+    const handleFocus = () => { checkSession() }
+    window.addEventListener('focus', handleFocus)
+
     return () => {
       isActive = false
+      window.removeEventListener('focus', handleFocus)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -454,7 +460,7 @@ export default function BillingSettingsPage() {
                     disabled={billingActionLoading}
                     className="inline-flex items-center justify-center rounded-[14px] bg-[#F5A623] px-5 py-3 text-sm font-black text-white shadow-[0_10px_24px_rgba(245,166,35,0.28)] transition hover:-translate-y-px hover:bg-[#D4881A] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
-                    月額プランで再開
+                    {billingActionLoading ? '読み込み中...' : '月額プランで再開'}
                   </button>
 
                   <button
@@ -463,7 +469,7 @@ export default function BillingSettingsPage() {
                     disabled={billingActionLoading}
                     className="inline-flex items-center justify-center rounded-[14px] border border-amber-300 bg-white px-5 py-3 text-sm font-black text-amber-700 transition hover:-translate-y-px hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
-                    年額プランで再開
+                    {billingActionLoading ? '読み込み中...' : '年額プランで再開'}
                   </button>
                 </div>
               </section>
@@ -493,7 +499,7 @@ export default function BillingSettingsPage() {
                     disabled={billingActionLoading}
                     className="inline-flex items-center justify-center rounded-[14px] bg-[#F5A623] px-5 py-3 text-sm font-black text-white shadow-[0_10px_24px_rgba(245,166,35,0.28)] transition hover:-translate-y-px hover:bg-[#D4881A] focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
-                    月額プラン（{PLAN_PRICES.monthly.labelJa}）
+                    {billingActionLoading ? '読み込み中...' : `月額プラン（${PLAN_PRICES.monthly.labelJa}）`}
                   </button>
 
                   <button
@@ -502,7 +508,7 @@ export default function BillingSettingsPage() {
                     disabled={billingActionLoading}
                     className="inline-flex items-center justify-center rounded-[14px] border border-amber-300 bg-white px-5 py-3 text-sm font-black text-amber-700 transition hover:-translate-y-px hover:bg-amber-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 disabled:opacity-70 cursor-pointer"
                   >
-                    年額プラン（{PLAN_PRICES.yearly.labelJa}・{PLAN_PRICES.yearly.discountLabel}）
+                    {billingActionLoading ? '読み込み中...' : `年額プラン（${PLAN_PRICES.yearly.labelJa}・${PLAN_PRICES.yearly.discountLabel}）`}
                   </button>
                 </div>
               </section>
