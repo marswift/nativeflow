@@ -876,7 +876,7 @@ export const LESSON_COPY_JA = {
     aiConvRecordButton: '話す',
     aiConvShowHint: 'ヒントを見る',
     aiConvStopButton: '■ 録音停止',
-    aiConvRecognizing: '音���を確認しています',
+    aiConvRecognizing: '音声を確認しています',
     aiConvYourReply: 'あなたの返答',
     aiConvNextTurn: '次の会話へ',
     aiConvRetryAll: 'もう一度会話する',
