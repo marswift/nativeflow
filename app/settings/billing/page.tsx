@@ -57,6 +57,7 @@ function formatSubscriptionStatus(
   if (status === 'past_due') return 'お支払い確認中'
   if (status === 'unpaid') return 'お支払い未完了'
   if (status === 'canceled') return '解約済み'
+  if (status === 'incomplete') return 'お支払い処理中'
   return status
 }
 
