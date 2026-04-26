@@ -148,6 +148,11 @@ export function buildConversationPlan(lessonPhrase: string): ConversationPlan {
         'Nice talking with you. See you later!',
         'Sounds good. Have a good day!',
         'Alright, see you next time!',
+        'Great chat. Talk to you soon!',
+        'It was fun talking. See you!',
+        'Thanks for chatting. Take care!',
+        'Really nice talking with you. Bye!',
+        'Hope you have a great day!',
       ],
     }
   }

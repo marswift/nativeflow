@@ -941,6 +941,253 @@ const SCENE_LIBRARIES: SceneQuestionSet[] = [
       frequency: ['{value}? That\'s regular.', 'Oh, {value}. Makes sense.', '{value} — I see.'],
     },
   },
+
+  // ── dinner: Making / eating dinner ──
+  {
+    id: 'dinner',
+    patterns: [
+      /make dinner|cook dinner|eat dinner|have dinner|dinner/,
+      /evening meal|supper/,
+    ],
+    anchorQuestion: 'What do you usually have for dinner?',
+    dimensions: {
+      object: [
+        'What do you usually cook?',
+        'Do you have rice with dinner?',
+      ],
+      people: [
+        'Do you eat with your family?',
+        'Who cooks dinner at your home?',
+      ],
+      time: [
+        'What time do you eat dinner?',
+        'Is it early or late?',
+      ],
+      frequency: [
+        'Do you cook every day?',
+        'Do you ever eat out?',
+      ],
+      feeling: [
+        'Do you enjoy cooking?',
+        'What\'s your favorite dinner?',
+      ],
+    },
+    dimensionOrder: ['object', 'people', 'time', 'feeling', 'frequency'],
+    clarificationPrompts: {
+      fragment: ['Rice?', 'With family?'],
+      confusion: ['No problem. What do you usually eat for dinner?'],
+      garbled: ['I\'m not sure I understood. Do you cook at home?'],
+    },
+    slotSchema: {
+      object: {
+        accept: new Set(['rice', 'pasta', 'noodle', 'noodles', 'soup', 'curry', 'stew', 'salad', 'meat', 'fish', 'chicken', 'beef', 'pork', 'vegetable', 'vegetables', 'pizza', 'sushi', 'ramen', 'stir', 'fry']),
+        repairTemplates: ['What do you usually cook?', 'Like rice, pasta, or something else?'],
+        acceptYesNo: false,
+      },
+      people: {
+        accept: new Set(['alone', 'myself', 'family', 'mom', 'mother', 'dad', 'father', 'husband', 'wife', 'partner', 'kids', 'children', 'together', 'someone', 'nobody', 'everyone']),
+        repairTemplates: ['Do you eat with your family?', 'Who do you eat dinner with?'],
+        acceptYesNo: true,
+      },
+      time: {
+        accept: new Set(['early', 'late', 'six', 'seven', 'eight', 'nine', 'evening', 'night', 'after', 'before', 'oclock']),
+        repairTemplates: ['What time do you eat dinner?', 'Is it early or late?'],
+        acceptYesNo: true,
+      },
+      feeling: {
+        accept: new Set(['enjoy', 'like', 'love', 'hate', 'boring', 'fun', 'favorite', 'good', 'nice', 'delicious', 'tired', 'relaxing']),
+        repairTemplates: ['Do you enjoy cooking?', 'What\'s your favorite dinner?'],
+        acceptYesNo: true,
+      },
+    },
+    bridgeTemplates: {
+      object: ['{value} — sounds delicious.', 'Oh, {value}. Yummy.', '{value} — nice choice.'],
+      people: ['With {value} — that\'s nice.', 'Oh, {value}. Sounds warm.', '{value} — that\'s good.'],
+      time: ['{value} — that\'s a good time.', 'Oh, {value}. Not too late.', '{value} — got it.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Me too.', '{value} — nice.'],
+    },
+  },
+
+  // ── bath: Taking a bath / shower ──
+  {
+    id: 'bath',
+    patterns: [
+      /take a bath|take a shower|bath time|have a bath|bathe/,
+      /shower|soak in the tub/,
+    ],
+    anchorQuestion: 'Do you take a bath or a shower?',
+    dimensions: {
+      object: [
+        'Bath or shower?',
+        'Do you use any special soap?',
+      ],
+      time: [
+        'Do you shower in the morning or at night?',
+        'How long does it take?',
+      ],
+      feeling: [
+        'Is it relaxing?',
+        'Do you enjoy bath time?',
+      ],
+      frequency: [
+        'Do you take a bath every day?',
+        'How often do you soak in the tub?',
+      ],
+      people: [
+        'Do you take a bath alone?',
+      ],
+    },
+    dimensionOrder: ['object', 'time', 'feeling', 'frequency', 'people'],
+    clarificationPrompts: {
+      fragment: ['A bath?', 'In the evening?'],
+      confusion: ['No problem. Do you take a bath or a shower?'],
+      garbled: ['I\'m not sure I understood. Bath or shower?'],
+    },
+    slotSchema: {
+      object: {
+        accept: new Set(['bath', 'shower', 'tub', 'soap', 'shampoo', 'hot', 'warm', 'cold', 'water', 'towel']),
+        repairTemplates: ['Bath or shower?', 'Do you soak in the tub or just shower?'],
+        acceptYesNo: true,
+      },
+      time: {
+        accept: new Set(['morning', 'evening', 'night', 'before', 'after', 'minutes', 'hour', 'long', 'short', 'quick', 'fast']),
+        repairTemplates: ['Morning or night?', 'How long does it take?'],
+        acceptYesNo: true,
+      },
+      feeling: {
+        accept: new Set(['relaxing', 'nice', 'good', 'love', 'like', 'enjoy', 'warm', 'refreshing', 'tired', 'sleepy', 'calm']),
+        repairTemplates: ['Is it relaxing?', 'Do you enjoy it?'],
+        acceptYesNo: true,
+      },
+    },
+    bridgeTemplates: {
+      object: ['{value} — nice.', 'Oh, {value}. Sounds good.', '{value} — got it.'],
+      time: ['{value} — good timing.', 'Oh, {value}. Makes sense.', '{value} — I see.'],
+      feeling: ['{value} — sounds lovely.', 'Oh, {value}. That\'s nice.', '{value} — I get that.'],
+    },
+  },
+
+  // ── go_home: Coming home / returning home ──
+  {
+    id: 'go_home',
+    patterns: [
+      /come home|get home|go home|return home|heading home|back home/,
+      /arrive home|finally home/,
+    ],
+    anchorQuestion: 'What time do you usually get home?',
+    dimensions: {
+      time: [
+        'What time do you usually get home?',
+        'Is it early or late?',
+      ],
+      feeling: [
+        'Are you tired when you get home?',
+        'How do you feel when you get home?',
+      ],
+      object: [
+        'What\'s the first thing you do when you get home?',
+        'Do you change clothes?',
+      ],
+      people: [
+        'Is someone home when you arrive?',
+        'Does anyone greet you?',
+      ],
+    },
+    dimensionOrder: ['time', 'feeling', 'object', 'people'],
+    clarificationPrompts: {
+      fragment: ['After work?', 'By train?'],
+      confusion: ['No problem. What time do you usually get home?'],
+      garbled: ['I\'m not sure I understood. When do you get home?'],
+    },
+    slotSchema: {
+      time: {
+        accept: new Set(['early', 'late', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'evening', 'night', 'afternoon', 'before', 'after', 'oclock']),
+        repairTemplates: ['What time do you get home?', 'Is it early or late?'],
+        acceptYesNo: true,
+      },
+      feeling: {
+        accept: new Set(['tired', 'exhausted', 'happy', 'relieved', 'hungry', 'relaxed', 'good', 'fine', 'okay', 'sleepy', 'stressed']),
+        repairTemplates: ['Are you tired when you get home?', 'How do you feel?'],
+        acceptYesNo: true,
+      },
+      object: {
+        accept: new Set(['clothes', 'change', 'shower', 'bath', 'tv', 'phone', 'cook', 'eat', 'rest', 'sit', 'relax', 'coffee', 'tea', 'water', 'snack']),
+        repairTemplates: ['What do you do first when you get home?'],
+        acceptYesNo: true,
+      },
+    },
+    bridgeTemplates: {
+      time: ['{value} — not too bad.', 'Oh, {value}. Got it.', '{value} — I see.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Hang in there.', '{value} — makes sense.'],
+      object: ['{value} first — nice.', 'Oh, {value}. Sounds good.', '{value} — got it.'],
+    },
+  },
+
+  // ── arrive_work: Arriving at work / office ──
+  {
+    id: 'arrive_work',
+    patterns: [
+      /arrive at work|get to work|arrive at the office|get to the office/,
+      /arrive at school|start work|clock in/,
+    ],
+    anchorQuestion: 'What do you do first when you arrive at work?',
+    dimensions: {
+      object: [
+        'What do you do first at work?',
+        'Do you check your email first?',
+      ],
+      time: [
+        'What time do you start?',
+        'Do you arrive early?',
+      ],
+      people: [
+        'Do you greet your coworkers?',
+        'Who do you talk to first?',
+      ],
+      feeling: [
+        'How do you feel in the morning at work?',
+        'Is the start of work stressful?',
+      ],
+      frequency: [
+        'Is your schedule the same every day?',
+        'Do you have morning meetings?',
+      ],
+    },
+    dimensionOrder: ['object', 'time', 'people', 'feeling', 'frequency'],
+    clarificationPrompts: {
+      fragment: ['Email?', 'Coffee first?'],
+      confusion: ['No problem. What do you usually do first at work?'],
+      garbled: ['I\'m not sure I understood. What time do you start work?'],
+    },
+    slotSchema: {
+      object: {
+        accept: new Set(['email', 'computer', 'coffee', 'tea', 'meeting', 'desk', 'phone', 'task', 'tasks', 'check', 'review', 'report', 'schedule']),
+        repairTemplates: ['What do you do first at work?', 'Like checking email or having coffee?'],
+        acceptYesNo: true,
+      },
+      time: {
+        accept: new Set(['early', 'late', 'eight', 'nine', 'seven', 'ten', 'morning', 'before', 'after', 'oclock']),
+        repairTemplates: ['What time do you start?', 'Is it early?'],
+        acceptYesNo: true,
+      },
+      people: {
+        accept: new Set(['coworker', 'coworkers', 'boss', 'manager', 'colleague', 'colleagues', 'team', 'alone', 'nobody', 'everyone', 'someone']),
+        repairTemplates: ['Do you greet your coworkers?', 'Who do you talk to first?'],
+        acceptYesNo: true,
+      },
+      feeling: {
+        accept: new Set(['tired', 'stressed', 'busy', 'happy', 'fine', 'okay', 'good', 'motivated', 'sleepy', 'energized', 'calm']),
+        repairTemplates: ['How do you feel in the morning at work?'],
+        acceptYesNo: true,
+      },
+    },
+    bridgeTemplates: {
+      object: ['{value} first — makes sense.', 'Oh, {value}. Good start.', '{value} — that\'s typical.'],
+      time: ['{value} — not bad.', 'Oh, {value}. Got it.', '{value} — I see.'],
+      people: ['{value} — nice.', 'Oh, {value}. Sounds friendly.', '{value} — good to know.'],
+      feeling: ['{value} — I get that.', 'Oh, {value}. Hang in there.', '{value} — fair enough.'],
+    },
+  },
 ]
 
 // ── Scene matching ──

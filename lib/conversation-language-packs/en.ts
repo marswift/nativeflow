@@ -48,7 +48,7 @@ export const englishConversationLanguagePack: ConversationLanguagePack = {
     "Go ahead.",
   ],
 
-  // Acknowledgment pool — 10 items, warmer options first for early turns
+  // Acknowledgment pool — 15 items for daily session variety
   acks: [
     'Oh.',
     'I see.',
@@ -58,8 +58,13 @@ export const englishConversationLanguagePack: ConversationLanguagePack = {
     'Nice.',
     'Alright.',
     'Got it.',
-    'Oh.',
+    'Oh, okay.',
     'Mm-hm.',
+    'Ah, I see.',
+    'Sure.',
+    'Oh, right.',
+    'Okay, okay.',
+    'Hmm.',
   ],
 
   // Reaction pools — warm, varied, beginner-friendly
@@ -81,5 +86,10 @@ export const englishConversationLanguagePack: ConversationLanguagePack = {
     'Nice talking with you. See you later!',
     'Sounds good. Have a good day!',
     'Alright, see you next time!',
+    'Great chat. Talk to you soon!',
+    'It was fun talking. See you!',
+    'Thanks for chatting. Take care!',
+    'Really nice talking with you. Bye!',
+    'Hope you have a great day!',
   ],
 }
