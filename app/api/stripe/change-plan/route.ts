@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { getStripe } from '@/lib/stripe'
+import { getStripe, getPriceIdByPlan } from '@/lib/stripe'
 
 export async function POST(req: Request) {
   try {
@@ -55,11 +55,7 @@ export async function POST(req: Request) {
     
     const itemId = item.id
 
-    // 🔥 price ID（ここはあなたのStripeに合わせる）
-    const priceId =
-      plan === 'monthly'
-        ? process.env.STRIPE_MONTHLY_PRICE_ID!
-        : process.env.STRIPE_YEARLY_PRICE_ID!
+    const priceId = getPriceIdByPlan(plan)
 
     await stripe.subscriptions.update(subscription.id, {
       items: [
