@@ -438,13 +438,21 @@ export function assembleReplyV25(
   // Resolve scene slotSchema for slot validation
   const scene = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
   const slotSchema: SceneSlotSchema | null = scene?.slotSchema ?? null
-  // Closing
-  if (llm.intent === 'closing' || (engineAction === 'wrap' && turnIndex >= MIN_CLOSE_TURN)) {
+  // Closing — only allowed on turn MIN_CLOSE_TURN+ to prevent premature goodbye
+  // on early turns (e.g. "I'm fine, thank you" misclassified as closing).
+  if (turnIndex >= MIN_CLOSE_TURN &&
+      (llm.intent === 'closing' || engineAction === 'wrap')) {
     const wrap = wrapPrompts[turnIndex % wrapPrompts.length] ?? 'Nice talking with you. See you next time!'
-    // If student said goodbye, just mirror. If engine wrapped, add ack.
     if (llm.intent === 'closing') return wrap
     const ack = ACKS[turnIndex % ACKS.length]
     return `${ack} ${wrap}`
+  }
+
+  // Early-turn closing misclassification: treat as social answer, continue conversation
+  if (turnIndex < MIN_CLOSE_TURN && llm.intent === 'closing') {
+    const greeting = llm.answerToAi?.trim() || "Thanks!"
+    if (engineQuestion) return `${greeting} ${engineQuestion}`
+    return greeting
   }
 
   // Unclear / low confidence → clarification from plan templates
