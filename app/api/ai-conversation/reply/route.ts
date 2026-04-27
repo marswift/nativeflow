@@ -9,6 +9,10 @@ import {
   type AiConversationResponse,
   type V25AssemblyContext,
 } from '@/lib/ai-conversation-prompt'
+import { hasScript, advanceScript, type ScriptClassification } from '@/lib/scripted-conversation-engine'
+import { ALL_SCRIPTS } from '@/lib/scripted-conversation-scripts'
+import { matchSceneQuestions } from '@/lib/ai-conversation-scene-questions'
+import { classifyMeaningLocal } from '@/lib/scripted-conversation-classifier'
 
 export const runtime = 'nodejs'
 
@@ -60,9 +64,44 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       return NextResponse.json({ ok: false, error: 'Invalid request' }, { status: 400 })
     }
 
+    const rank = typeof body.rank === 'number' ? body.rank : 100
+
+    // ── Script-path fast return: skip LLM entirely when a script matches ──
+    const levelStr = rank < 40 ? 'beginner' : rank < 70 ? 'intermediate' : 'advanced'
+    const sceneMatch = matchSceneQuestions(body.lessonPhrase)
+    const activeScript = hasScript(ALL_SCRIPTS, body.lessonPhrase, levelStr)
+      ?? (sceneMatch ? hasScript(ALL_SCRIPTS, sceneMatch.id, levelStr) : null)
+
+    if (activeScript) {
+      const classification = classifyMeaningLocal(body.userMessage)
+      const scriptState = {
+        scriptId: activeScript.id,
+        currentTurnIndex: Math.min(body.turnIndex, activeScript.turns.length - 1),
+        totalTurns: activeScript.turns.length,
+        repairCount: 0,
+        completed: body.turnIndex >= activeScript.turns.length,
+      }
+      const result = advanceScript(activeScript, scriptState, classification, body.userMessage)
+      const totalMs = Math.round(performance.now() - t0)
+      // eslint-disable-next-line no-console
+      console.log('[SCRIPT_PATH]', JSON.stringify({
+        turn: body.turnIndex, scriptId: activeScript.id,
+        meaning: classification.meaningType, isClosing: result.isClosing,
+        totalMs,
+      }))
+      return NextResponse.json({
+        ok: true,
+        aiReply: result.reply,
+        evaluation: 'good' as const,
+        evaluationDetail: { isRelevant: true, isNatural: true, isComplete: true, score: 80, feedback: '', correction: null, naturalAlternative: null, followUp: null },
+        hint: null,
+        nextPrompt: null,
+      })
+    }
+
+    // ── Legacy LLM path for scenes without scripts ──
     const tPrompt = performance.now()
     const messages = buildChatMessages(body)
-    const rank = typeof body.rank === 'number' ? body.rank : 100
     const maxTokens = rank < 40 ? 150 : rank < 60 ? 200 : 300
     const promptMs = Math.round(performance.now() - tPrompt)
 

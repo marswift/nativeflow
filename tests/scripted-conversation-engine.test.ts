@@ -238,4 +238,95 @@ describe('scripted-conversation-engine', () => {
     // Reaction should be from person pool
     expect(result.reply).toMatch(/^(Nice\.|Oh\.|Got it\.|I see\.)/)
   })
+
+  // ── Past-context mismatch guard ──
+
+  it('"I grew up alone" on people turn triggers repair, not advance', () => {
+    const state = advanceN(3) // at turn index 3 (people)
+    const personClassification: ScriptClassification = { meaningType: 'person', meaningValue: 'alone', confidence: 0.8 }
+    const result = advanceScript(script, state, personClassification, 'I grew up alone.')
+    expect(result.isClosing).toBe(false)
+    expect(result.state.currentTurnIndex).toBe(3) // stayed on same turn
+    expect(result.reply).toBe('By yourself, or does someone help?')
+  })
+
+  it('"I lived alone before" triggers repair', () => {
+    const state = advanceN(3)
+    const classification: ScriptClassification = { meaningType: 'person', meaningValue: 'alone', confidence: 0.8 }
+    const result = advanceScript(script, state, classification, 'I lived alone before.')
+    expect(result.state.currentTurnIndex).toBe(3)
+    expect(result.reply).toBe('By yourself, or does someone help?')
+  })
+
+  it('"I clean up alone" (present tense) advances normally', () => {
+    const state = advanceN(3)
+    const classification: ScriptClassification = { meaningType: 'person', meaningValue: 'alone', confidence: 0.8 }
+    const result = advanceScript(script, state, classification, 'I clean up alone.')
+    expect(result.state.currentTurnIndex).toBe(4) // advanced
+    expect(result.reply).toContain('Do you clean up right after eating?')
+  })
+
+  it('past-context repair exhausted → advances on second attempt', () => {
+    const state = advanceN(3)
+    const classification: ScriptClassification = { meaningType: 'person', meaningValue: 'alone', confidence: 0.8 }
+    // First: repair
+    const r1 = advanceScript(script, state, classification, 'I grew up alone.')
+    expect(r1.state.repairCount).toBe(1)
+    // Second: even with past context, repair exhausted → advance
+    const r2 = advanceScript(script, r1.state, classification, 'I was alone before.')
+    expect(r2.state.currentTurnIndex).toBe(4) // advanced despite past context
+  })
+
+  // ── Script closing not overridden ──
+
+  it('final turn closing uses script closingLine exactly', () => {
+    const state = advanceN(4) // at final turn (index 4)
+    const result = advanceScript(script, state, YES)
+    expect(result.isClosing).toBe(true)
+    expect(result.reply).toContain('Nice work today. See you next time!')
+  })
+})
+
+// ── Local classifier tests ──
+
+import { classifyMeaningLocal } from '../lib/scripted-conversation-classifier'
+
+describe('classifyMeaningLocal', () => {
+  it('classifies "yes" answers', () => {
+    expect(classifyMeaningLocal('Yes, I do').meaningType).toBe('yes')
+    expect(classifyMeaningLocal('Of course').meaningType).toBe('yes')
+    expect(classifyMeaningLocal('Yeah').meaningType).toBe('yes')
+  })
+
+  it('classifies "no" answers', () => {
+    expect(classifyMeaningLocal('No').meaningType).toBe('no')
+    expect(classifyMeaningLocal('Not really').meaningType).toBe('no')
+    expect(classifyMeaningLocal('Never').meaningType).toBe('no')
+  })
+
+  it('classifies person answers', () => {
+    expect(classifyMeaningLocal('With my mom').meaningType).toBe('person')
+    expect(classifyMeaningLocal('Alone').meaningType).toBe('person')
+    expect(classifyMeaningLocal('My family').meaningType).toBe('person')
+  })
+
+  it('classifies social/greeting answers', () => {
+    expect(classifyMeaningLocal("I'm fine, thank you").meaningType).toBe('social')
+    expect(classifyMeaningLocal('Good, thanks').meaningType).toBe('social')
+  })
+
+  it('returns unclear for empty input', () => {
+    expect(classifyMeaningLocal('').meaningType).toBe('unclear')
+    expect(classifyMeaningLocal(' ').meaningType).toBe('unclear')
+  })
+
+  it('classifies frequency answers', () => {
+    expect(classifyMeaningLocal('Always').meaningType).toBe('frequency')
+    expect(classifyMeaningLocal('Sometimes I do').meaningType).toBe('frequency')
+  })
+
+  it('non-script scenes still use legacy path (hasScript returns null)', () => {
+    expect(hasScript(ALL_SCRIPTS, 'wake_up', 'beginner')).toBeNull()
+    expect(hasScript(ALL_SCRIPTS, 'I just woke up', 'beginner')).toBeNull()
+  })
 })

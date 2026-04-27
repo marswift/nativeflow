@@ -16,6 +16,9 @@ import { buildFallbackEvaluation, buildEngineFallbackReply, incrementAiCallCount
 import { createInitialState, classifyUserInput, selectNextIntent, advanceState, serializeState, type ConversationState } from '../../../lib/ai-conversation-state'
 import { createConvState, convTransition, canRecord, canAdvance, isAiProcessing, isAiSpeaking, isConvDone, isReadyToSpeak } from '../../../lib/conversation-fsm'
 import { getRegionContext } from '../../../lib/daily-timeline'
+import { hasScript, getOpener } from '../../../lib/scripted-conversation-engine'
+import { ALL_SCRIPTS } from '../../../lib/scripted-conversation-scripts'
+import { matchSceneQuestions } from '../../../lib/ai-conversation-scene-questions'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
 import { getLessonContentRepository } from '../../../lib/lesson-content-repository'
 import { buildScenarioLabel } from '../../../lib/lesson-blueprint-service'
@@ -943,8 +946,15 @@ function AiConversationPlayer({
     return { personSlot, personAlt, timeSlot, timeAlt }
   }, [currentAnswer])
 
-  // ── Dynamic conversation — opener from engine, rest from AI API ──
+  // ── Dynamic conversation — opener from script or fallback ──
   const [openerMessage] = useState(() => {
+    // Use script opener if a script matches this scene + level
+    const scriptLevel = level === 'beginner' ? 'beginner' : level === 'intermediate' ? 'intermediate' : level === 'advanced' ? 'advanced' : 'beginner'
+    const sceneHit = matchSceneQuestions(currentAnswer)
+    const script = hasScript(ALL_SCRIPTS, currentAnswer, scriptLevel)
+      ?? (sceneHit ? hasScript(ALL_SCRIPTS, sceneHit.id, scriptLevel) : null)
+    if (script) return getOpener(script)
+
     const greetings = [
       'Hi! How are you today?',
       'Hey! How\'s your day going?',
@@ -1218,7 +1228,14 @@ function AiConversationPlayer({
         dispatch({ type: 'STT_RESULT', transcript: recognized })
 
         // --- Final turn: generate a closing AI reply so conversation never ends on user message ---
-        if (turn >= MAX_TURNS - 1 || isClosingAssistantMessage(currentAiMessage)) {
+        // When a script is active, skip this early-return — the API script path
+        // returns the script's own closing line with correct timing.
+        const scriptLevel = level === 'beginner' ? 'beginner' : level === 'intermediate' ? 'intermediate' : level === 'advanced' ? 'advanced' : 'beginner'
+        const sceneHitForClose = matchSceneQuestions(currentAnswer)
+        const hasActiveScript = hasScript(ALL_SCRIPTS, currentAnswer, scriptLevel)
+          ?? (sceneHitForClose ? hasScript(ALL_SCRIPTS, sceneHitForClose.id, scriptLevel) : null)
+
+        if (!hasActiveScript && (turn >= MAX_TURNS - 1 || isClosingAssistantMessage(currentAiMessage))) {
           const wraps = engineStateRef.current.plan.wrapPrompts
           const closingReply = wraps[turn % wraps.length] ?? 'Nice chatting with you. See you next time!'
           ensureAiAudioUrl(closingReply)
@@ -1344,7 +1361,9 @@ function AiConversationPlayer({
           metadata: turnMetrics as Record<string, string | number | boolean | null>,
         })
 
-        dispatch({ type: 'REPLY_READY', reply: replyText, isFinal: false })
+        // Detect if the reply is a closing message (script engine or legacy wrap)
+        const replyIsFinal = isClosingAssistantMessage(replyText)
+        dispatch({ type: 'REPLY_READY', reply: replyText, isFinal: replyIsFinal })
       }
       recorder.start(250)
     } catch {

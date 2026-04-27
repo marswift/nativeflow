@@ -10,6 +10,7 @@
  */
 
 import type { ConversationScript } from './scripted-conversation-scripts'
+import { hasPastContextMismatch } from './conversation-slot-filler'
 
 // ── Types ──
 
@@ -105,6 +106,7 @@ export function advanceScript(
   script: ConversationScript,
   state: ScriptState,
   classification: ScriptClassification,
+  userMessage?: string | null,
 ): ScriptAdvanceResult {
   // Already completed — return closing (idempotent)
   if (state.completed) {
@@ -122,6 +124,17 @@ export function advanceScript(
       reply: script.closingLine,
       isClosing: true,
       state: { ...state, completed: true },
+    }
+  }
+
+  // ── Past-context mismatch → repair (e.g. "I grew up alone" on a present-routine question) ──
+  if (userMessage && hasPastContextMismatch(userMessage)) {
+    if (state.repairCount < MAX_REPAIRS_PER_TURN) {
+      return {
+        reply: turn.repairPrompt,
+        isClosing: false,
+        state: { ...state, repairCount: state.repairCount + 1 },
+      }
     }
   }
 
