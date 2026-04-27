@@ -109,13 +109,16 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    const tTtsStart = performance.now()
     const audioBuffer = await generateSpeech({
       text,
       voice,
       responseFormat: 'mp3',
       speed,
     })
-    
+    // eslint-disable-next-line no-console
+    console.log(`[TTS_TIMING] total_ms=${Math.round(performance.now() - tTtsStart)} text="${text.slice(0, 40)}"`)
+
     if (!audioBuffer) {
       return NextResponse.json<GenerateAudioResponse>(
         {

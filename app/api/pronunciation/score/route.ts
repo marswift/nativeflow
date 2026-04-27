@@ -165,11 +165,14 @@ Do not fix grammar.
 If the audio is silent, unclear, or no speech is detected, return an empty transcript.
 Output only the spoken words.`
 
+    const tSttStart = performance.now()
     const transcription = await transcribeAudio({
       file,
       language,
       prompt: transcriptionPrompt.trim(),
     })
+    // eslint-disable-next-line no-console
+    console.log(`[STT_TIMING] total_ms=${Math.round(performance.now() - tSttStart)}`)
 
     const rawTranscript = typeof transcription.text === 'string' ? transcription.text.trim() : ''
     const normalizedTranscript = normalizeTranscriptForGuard(rawTranscript)

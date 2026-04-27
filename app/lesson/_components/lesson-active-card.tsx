@@ -1083,6 +1083,7 @@ function AiConversationPlayer({
   /** Play audio for an AI message — non-blocking, plays as soon as URL is ready */
   const playAiMessage = useCallback((text: string) => {
     const ttsStart = performance.now()
+    console.log(`[AI_LATENCY] playAiMessage_start text="${text.slice(0, 40)}"`)
     // Note: caller must dispatch START/ADVANCE to set speaking phase BEFORE calling this
 
     // Stop previous audio cleanly
@@ -1099,7 +1100,7 @@ function AiConversationPlayer({
 
     const playUrl = (url: string) => {
       const audio = aiAudioRef.current!
-      console.log(`[AI_LATENCY] segment=tts_to_playback duration=${Math.round(performance.now() - ttsStart)}ms cached=${url === aiAudioCacheRef.current.get(normalizeAudioKey(text))}`)
+      console.log(`[AI_LATENCY] audio_play_start tts_to_play_ms=${Math.round(performance.now() - ttsStart)} cached=${url === aiAudioCacheRef.current.get(normalizeAudioKey(text))}`)
       audio.onended = () => dispatch({ type: 'AUDIO_ENDED' })
       audio.onerror = () => dispatch({ type: 'AUDIO_ERROR' })
       audio.src = url
@@ -1178,6 +1179,8 @@ function AiConversationPlayer({
         }, CONV_RECORDING_MAX_MS)
       }
       recorder.onstop = async () => {
+        const tStop = performance.now()
+        console.log(`[AI_LATENCY] turn=${turn} recording_stop`)
         const t0 = performance.now() // [1] recording stop
         setIsRecording(false)
         dispatch({ type: 'RECORD_STOP' })
@@ -1200,12 +1203,15 @@ function AiConversationPlayer({
         // --- Phase 1: STT ---
         setIsRecognizing(true)
         let recognized = ''
+        const tAuthStart = performance.now()
+        const authHdrs = await getAuthHeaders()
+        console.log(`[AI_LATENCY] turn=${turn} stt_auth_ms=${Math.round(performance.now() - tAuthStart)}`)
         const t2 = performance.now() // [3] STT request start
+        console.log(`[AI_LATENCY] turn=${turn} stt_start`)
         try {
           const formData = new FormData()
           formData.append('file', blob, 'recording.webm')
           formData.append('expectedText', currentAnswer)
-          const authHdrs = await getAuthHeaders()
           const res = await fetch('/api/pronunciation/score', { method: 'POST', body: formData, headers: authHdrs })
           if (res.ok) {
             const data = await res.json()
@@ -1215,7 +1221,7 @@ function AiConversationPlayer({
           // STT failed
         }
         const t3 = performance.now() // [4] STT response received
-        console.log(`[AI_LATENCY] turn=${turn} segment=stt duration=${Math.round(t3 - t2)}ms`)
+        console.log(`[AI_LATENCY] turn=${turn} stt_done stt_ms=${Math.round(t3 - t2)} from_stop_ms=${Math.round(t3 - tStop)}`)
         setTranscript(recognized)
         setIsRecognizing(false)
 
@@ -1265,6 +1271,7 @@ function AiConversationPlayer({
         let replied = false
         let replyText = engineFallbackReply
         const t4 = performance.now() // [5] AI request start
+        console.log(`[AI_LATENCY] turn=${turn} reply_api_start from_stop_ms=${Math.round(t4 - tStop)}`)
         try {
           const controller = new AbortController()
           const timeoutId = setTimeout(() => controller.abort(), 4_000)
@@ -1313,6 +1320,7 @@ function AiConversationPlayer({
           // API timeout or failure — use fallback
         }
         const t5 = performance.now()
+        console.log(`[AI_LATENCY] turn=${turn} reply_api_done api_ms=${Math.round(t5 - t4)} from_stop_ms=${Math.round(t5 - tStop)} replyText="${replyText?.slice(0, 40)}"`)
 
         // --- Fallback if API didn't produce a reply ---
         if (!replied) {
@@ -1363,6 +1371,7 @@ function AiConversationPlayer({
 
         // Detect if the reply is a closing message (script engine or legacy wrap)
         const replyIsFinal = isClosingAssistantMessage(replyText)
+        console.log(`[AI_LATENCY] turn=${turn} reply_ready from_stop_ms=${Math.round(performance.now() - tStop)} isFinal=${replyIsFinal}`)
         dispatch({ type: 'REPLY_READY', reply: replyText, isFinal: replyIsFinal })
       }
       recorder.start(250)
