@@ -531,6 +531,7 @@ export function assembleReplyV25(
     engineDimension: engineDimension ?? null,
     scene,
     rank: rank ?? null,
+    userMessage: userMessage ?? null,
   })
 }
 

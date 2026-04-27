@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { composeNormalReply } from '../lib/conversation-response-composer'
+import { composeNormalReply, detectEmphatic } from '../lib/conversation-response-composer'
 
 const base = {
   meaningType: 'yes' as const,
@@ -142,5 +142,169 @@ describe('composeNormalReply — level-aware composition', () => {
       expect(withNull).toBe(with50)
       expect(withUndefined).toBe(with50)
     })
+  })
+})
+
+// ── Humanization tests ──
+
+describe('detectEmphatic', () => {
+  it('detects strong yes', () => {
+    expect(detectEmphatic('Of course I do')).toBe('strong_yes')
+    expect(detectEmphatic('Definitely')).toBe('strong_yes')
+    expect(detectEmphatic('I always do that')).toBe('strong_yes')
+  })
+
+  it('detects strong no', () => {
+    expect(detectEmphatic('Not really')).toBe('strong_no')
+    expect(detectEmphatic('Never')).toBe('strong_no')
+    expect(detectEmphatic('Nah not at all')).toBe('strong_no')
+  })
+
+  it('detects uncertainty', () => {
+    expect(detectEmphatic('Maybe sometimes')).toBe('uncertain')
+    expect(detectEmphatic('It depends')).toBe('uncertain')
+    expect(detectEmphatic('I guess so')).toBe('uncertain')
+  })
+
+  it('returns null for plain answers', () => {
+    expect(detectEmphatic('Yes')).toBeNull()
+    expect(detectEmphatic('Rice')).toBeNull()
+    expect(detectEmphatic(null)).toBeNull()
+  })
+})
+
+describe('composeNormalReply — emphatic reactions', () => {
+  it('"Of course I do" gets intensity-matched reaction (intermediate)', () => {
+    const reply = composeNormalReply({
+      ...base,
+      turnIndex: 0,
+      rank: 50,
+      userMessage: 'Of course I do',
+    })
+    // Should use EMPHATIC_REACTIONS.strong_yes instead of generic yes pool
+    expect(reply).toMatch(/consistent|dedication|discipline|habit|impressive/i)
+  })
+
+  it('"Not really" gets strong_no reaction', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'no',
+      turnIndex: 0,
+      rank: 50,
+      userMessage: 'Not really',
+    })
+    expect(reply).toMatch(/fair|honest|wrong|real|judgment/i)
+  })
+
+  it('"Maybe sometimes" gets uncertain reaction', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'yes',
+      turnIndex: 0,
+      rank: 50,
+      userMessage: 'Maybe sometimes I do',
+    })
+    expect(reply).toMatch(/depends|flexible|fixed|sense|life/i)
+  })
+
+  it('beginner ignores emphatic detection', () => {
+    const reply = composeNormalReply({
+      ...base,
+      turnIndex: 0,
+      rank: 15,
+      userMessage: 'Of course I do',
+    })
+    // Beginner should use simple pool, not emphatic
+    expect(reply).toMatch(/^(Nice\.|Good\.|Great\.|Okay\.)/)
+  })
+})
+
+describe('composeNormalReply — consecutive yes/no variety', () => {
+  it('repeated yes type uses variety pool (intermediate)', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'yes',
+      turnIndex: 1,
+      rank: 50,
+      prevMeaningType: 'yes',
+    })
+    // REPEAT_VARIETY.yes: "Cool.", "Sounds good.", "Alright.", "Nice one."
+    expect(reply).toMatch(/Cool|Sounds good|Alright|Nice one/)
+  })
+
+  it('repeated no type uses variety pool', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'no',
+      turnIndex: 1,
+      rank: 50,
+      prevMeaningType: 'no',
+    })
+    expect(reply).toMatch(/Got it|Understood|Alright|hear you/)
+  })
+
+  it('non-repeated type uses normal pool', () => {
+    const normal = composeNormalReply({ ...base, meaningType: 'yes', turnIndex: 0, rank: 50 })
+    const withPrev = composeNormalReply({ ...base, meaningType: 'yes', turnIndex: 0, rank: 50, prevMeaningType: 'no' })
+    // Different prevMeaningType should NOT trigger variety
+    expect(normal).toBe(withPrev)
+  })
+})
+
+describe('composeNormalReply — reciprocity (advanced, turn 3)', () => {
+  it('advanced turn 3 includes self-disclosure', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'yes',
+      turnIndex: 3,
+      rank: 85,
+    })
+    // Should contain reciprocity snippet: "Same here, actually." or "Me too."
+    expect(reply).toMatch(/same|too|me/i)
+  })
+
+  it('intermediate turn 3 does NOT include reciprocity', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'yes',
+      turnIndex: 3,
+      rank: 50,
+    })
+    // Should NOT contain reciprocity phrases
+    expect(reply).not.toMatch(/Same here, actually|Me too/)
+  })
+
+  it('advanced turn 1 does NOT include reciprocity', () => {
+    const reply = composeNormalReply({
+      ...base,
+      meaningType: 'yes',
+      turnIndex: 1,
+      rank: 85,
+    })
+    expect(reply).not.toMatch(/Same here, actually|Me too/)
+  })
+})
+
+describe('composeNormalReply — micro-comments', () => {
+  const sceneBase = {
+    ...base,
+    rank: 50,
+    scene: { id: 'wake_up', patterns: [], anchorQuestion: '', dimensions: {}, dimensionOrder: [] as never[], clarificationPrompts: { fragment: [], confusion: [], garbled: [] } },
+  }
+
+  it('intermediate turn 1 with scene gets micro-comment', () => {
+    const reply = composeNormalReply({ ...sceneBase, turnIndex: 1 })
+    // SCENE_MICRO_COMMENTS.wake_up: "Mornings are everything.", "The start of the day!", "A fresh start."
+    expect(reply).toMatch(/morning|start|fresh/i)
+  })
+
+  it('beginner turn 1 with scene does NOT get micro-comment', () => {
+    const reply = composeNormalReply({ ...sceneBase, turnIndex: 1, rank: 15 })
+    expect(reply).not.toMatch(/morning|start|fresh/i)
+  })
+
+  it('turn 0 does NOT get micro-comment', () => {
+    const reply = composeNormalReply({ ...sceneBase, turnIndex: 0 })
+    expect(reply).not.toMatch(/morning|start|fresh/i)
   })
 })

@@ -25,6 +25,10 @@ export type ComposeInput = {
   scene: SceneQuestionSet | null
   /** Numeric rank for level-aware composition. 0-19 ultra-beginner, 20-39 beginner, 40-69 intermediate, 70+ advanced. */
   rank?: number | null
+  /** The meaning type of the previous turn — used to detect repetitive yes/no loops. */
+  prevMeaningType?: MeaningType | null
+  /** The raw user message for emphatic detection. */
+  userMessage?: string | null
 }
 
 // ── Data tables ──
@@ -125,6 +129,70 @@ const DIM_TYPE_MAP: Record<string, string> = {
   place: 'place',
 }
 
+// ── Emphatic detection ──
+
+/** Detect emphatic/strong phrasing in user message for intensity-matched reactions. */
+export function detectEmphatic(msg: string | null | undefined): 'strong_yes' | 'strong_no' | 'uncertain' | null {
+  if (!msg) return null
+  const lower = msg.toLowerCase().trim()
+  if (/\b(of course|definitely|absolutely|always do|every single|for sure|obviously)\b/.test(lower)) return 'strong_yes'
+  if (/\b(not really|not at all|never|nah|nope|hardly ever|no way)\b/.test(lower)) return 'strong_no'
+  if (/\b(maybe|sometimes|it depends|not sure|kind of|sort of|i guess)\b/.test(lower)) return 'uncertain'
+  return null
+}
+
+/** Emphatic reaction pools — more intense/specific than generic yes/no */
+const EMPHATIC_REACTIONS: Record<string, string[]> = {
+  strong_yes:  ['Wow, very consistent.', 'Love the dedication.', 'Nice discipline.', 'Sounds like a habit.', 'That\'s impressive.'],
+  strong_no:   ['Totally fair.', 'Honest answer.', 'Nothing wrong with that.', 'That\'s real.', 'No judgment.'],
+  uncertain:   ['Hmm, depends on the day?', 'Fair — not everything is fixed.', 'Flexible, got it.', 'That makes sense.', 'Yeah, life\'s like that.'],
+}
+
+// ── Micro-comments (scene color) ──
+
+/** Short scene-context comments inserted between reaction and question on select turns.
+ *  Keyed by scene ID. Only fires for intermediate+ on turn 1 or 3.
+ */
+const SCENE_MICRO_COMMENTS: Record<string, string[]> = {
+  wake_up:           ['Mornings are everything.', 'The start of the day!', 'A fresh start.'],
+  breakfast:         ['Breakfast is the best.', 'Good fuel for the day.', 'Morning energy!'],
+  breakfast_cleanup: ['Got to keep it clean.', 'Part of the routine.'],
+  commute:           ['The daily commute.', 'On the move.', 'Travel time.'],
+  dinner:            ['Dinner time is the best.', 'Evening fuel.', 'A nice way to end the day.'],
+  bath:              ['So relaxing.', 'Best part of the night.', 'A daily reset.'],
+  go_home:           ['Home sweet home.', 'Finally back.', 'End of the day.'],
+  arrive_work:       ['Time to get going.', 'A new work day.', 'Ready to start.'],
+  sleep:             ['Sleep is so important.', 'Rest well.', 'Sweet dreams.'],
+  meet_friend:       ['Friends make everything better.', 'Social time!'],
+  restaurant:        ['Eating out is fun.', 'Good food, good mood.'],
+  shopping:          ['Shopping time.', 'Getting supplies.'],
+  office:            ['Work mode on.', 'Busy day ahead.'],
+  school:            ['School life.', 'Study hard.'],
+}
+
+// ── Reciprocity snippets ──
+
+/** Tiny self-disclosure lines. Fire at low frequency (turn 3, advanced only). */
+const RECIPROCITY: Record<MeaningType, string[]> = {
+  yes:       ['Same here, actually.', 'Me too.'],
+  no:        ['I get that — same sometimes.', 'Fair, I\'m like that too.'],
+  object:    ['Good choice — I like that one too.'],
+  person:    ['That\'s nice — sounds like me.'],
+  time:      ['Similar for me.', 'About the same here.'],
+  frequency: ['I should do that more.', 'Ha, same.'],
+  feeling:   ['Yeah, I feel that way too.', 'Relatable.'],
+  social:    [],
+  unclear:   [],
+}
+
+// ── Consecutive-repeat variety ──
+
+/** Alternative reactions when the same meaningType appears twice in a row (avoids monotone). */
+const REPEAT_VARIETY: Record<string, string[]> = {
+  yes: ['Cool.', 'Sounds good.', 'Alright.', 'Nice one.'],
+  no:  ['Got it.', 'Understood.', 'Alright.', 'I hear you.'],
+}
+
 // ── Composer ──
 
 /**
@@ -139,16 +207,32 @@ export function composeNormalReply(input: ComposeInput): string {
   // ── Level tiers ──
   const isBeginner = rank < 40
   const isAdvanced = rank >= 70
+  const isRepeatedType = input.prevMeaningType === meaningType && (meaningType === 'yes' || meaningType === 'no')
+
+  // ── Emphatic detection (intensity-matched reaction override) ──
+  const emphatic = !isBeginner ? detectEmphatic(input.userMessage) : null
 
   // Ack: turn 2+ for intermediate/advanced, turn 3+ for beginners (less clutter)
   const ackTurnThreshold = isBeginner ? 3 : 2
   const ack = turnIndex >= ackTurnThreshold ? ACKS[turnIndex % ACKS.length] : null
 
-  // Reaction: prefer value-aware bridge template, fall back to micro, then level-aware pool
+  // ── Reaction selection (priority cascade) ──
   let reaction: string | null = null
 
-  // Beginners skip bridge templates (too complex/long) — go straight to simple pool
-  if (!isBeginner) {
+  // Priority 1: Emphatic override (intermediate+ only)
+  if (!reaction && emphatic) {
+    const pool = EMPHATIC_REACTIONS[emphatic]
+    if (pool) reaction = pool[turnIndex % pool.length]
+  }
+
+  // Priority 2: Consecutive-repeat variety (break yes/no monotone)
+  if (!reaction && isRepeatedType && !isBeginner) {
+    const pool = REPEAT_VARIETY[meaningType]
+    if (pool) reaction = pool[turnIndex % pool.length]
+  }
+
+  // Priority 3: Bridge templates (intermediate+ only)
+  if (!reaction && !isBeginner) {
     const dimForBridge = (engineDimension ?? meaningType) as Exclude<Dimension, 'action'>
     const bridgeAligned = !engineDimension || DIM_TYPE_MAP[engineDimension] === meaningType
     const bridgePool = bridgeAligned ? scene?.bridgeTemplates?.[dimForBridge] : undefined
@@ -158,14 +242,14 @@ export function composeNormalReply(input: ComposeInput): string {
     }
   }
 
-  // Value-keyword micro-reactions when bridge didn't fire (skip for beginners — too varied)
+  // Priority 4: Value-keyword micro-reactions (intermediate+ only)
   if (!reaction && meaningValue && !isBeginner) {
     const v = meaningValue.toLowerCase()
     const pool = MICRO[v]
     if (pool) reaction = pool[turnIndex % pool.length]
   }
 
-  // Generic reaction pool — level-appropriate
+  // Priority 5: Generic reaction pool — level-appropriate
   if (!reaction) {
     const pool = isBeginner
       ? (REACTION_BEGINNER[meaningType] ?? REACTION_BEGINNER.yes)
@@ -183,6 +267,23 @@ export function composeNormalReply(input: ComposeInput): string {
   } else {
     if (ack) segments.push(ack)
     if (reaction) segments.push(reaction)
+  }
+
+  // ── Micro-comment: scene color on select turns (intermediate+ only) ──
+  const sceneId = scene?.id
+  if (!isBeginner && sceneId && (turnIndex === 1 || turnIndex === 3)) {
+    const commentPool = SCENE_MICRO_COMMENTS[sceneId]
+    if (commentPool && commentPool.length > 0) {
+      segments.push(commentPool[turnIndex % commentPool.length])
+    }
+  }
+
+  // ── Reciprocity: tiny self-disclosure on turn 3 for advanced only ──
+  if (isAdvanced && turnIndex === 3 && !isRepeatedType) {
+    const recipPool = RECIPROCITY[meaningType]
+    if (recipPool && recipPool.length > 0) {
+      segments.push(recipPool[turnIndex % recipPool.length])
+    }
   }
 
   // Comment-only turn: on turn 2, if we have a value-aware bridge reaction,
