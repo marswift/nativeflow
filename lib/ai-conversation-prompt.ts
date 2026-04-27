@@ -449,14 +449,11 @@ export function assembleReplyV25(
   const activeScript = matchedScript ?? scriptBySceneId
 
   if (activeScript) {
-    // Build script state from turnIndex (stateless reconstruction — the script
-    // is deterministic so we can reconstruct position from turn count)
     const scriptClassification: ScriptClassification = {
       meaningType: llm.meaning.type as ScriptClassification['meaningType'],
       meaningValue: llm.meaning.value,
       confidence: llm.meaning.confidence,
     }
-    // Reconstruct script state: turnIndex 0 = answering turn 0 of script
     const scriptState: import('./scripted-conversation-engine').ScriptState = {
       scriptId: activeScript.id,
       currentTurnIndex: Math.min(turnIndex, activeScript.turns.length - 1),
@@ -465,8 +462,25 @@ export function assembleReplyV25(
       completed: turnIndex >= activeScript.turns.length,
     }
     const scriptResult = advanceScript(activeScript, scriptState, scriptClassification)
+    // eslint-disable-next-line no-console
+    console.log('[SCRIPT_ENGINE_MATCH]', JSON.stringify({
+      scriptId: activeScript.id,
+      turnIndex,
+      meaningType: llm.meaning.type,
+      meaningValue: llm.meaning.value,
+      reply: scriptResult.reply.slice(0, 60),
+      isClosing: scriptResult.isClosing,
+    }))
     return scriptResult.reply
   }
+
+  // eslint-disable-next-line no-console
+  console.log('[SCRIPT_ENGINE_MISS]', JSON.stringify({
+    lessonPhrase: lessonPhrase?.slice(0, 40) ?? null,
+    sceneId: sceneForScript?.id ?? null,
+    levelStr,
+    scriptCount: ALL_SCRIPTS.length,
+  }))
 
   // ── Legacy LLM-driven path (scenes without scripts) ──
 

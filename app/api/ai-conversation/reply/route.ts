@@ -81,6 +81,14 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
       return NextResponse.json({ ok: false, error: 'Empty AI response' }, { status: 502 })
     }
 
+    // eslint-disable-next-line no-console
+    console.log('[AI_CONVERSATION_PATH]', JSON.stringify({
+      turn: body.turnIndex,
+      lessonPhrase: (body.lessonPhrase as string)?.slice(0, 50) ?? null,
+      rank,
+      llmMs,
+    }))
+
     const tAssembly = performance.now()
     const assemblyCtx: V25AssemblyContext = {
       turnIndex: body.turnIndex,
