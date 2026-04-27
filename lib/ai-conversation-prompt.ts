@@ -8,6 +8,8 @@ import { detectUniversalSocialIntent } from './universal-conversation-intents'
 import { composeNormalReply, ACKS } from './conversation-response-composer'
 import type { MeaningType } from './conversation-response-composer'
 import { validateAndRepair } from './conversation-slot-filler'
+import { advanceScript, createScriptState, hasScript, type ScriptClassification } from './scripted-conversation-engine'
+import { ALL_SCRIPTS } from './scripted-conversation-scripts'
 
 // ——— API contract ———
 
@@ -435,6 +437,39 @@ export function assembleReplyV25(
   userMessage?: string | null,
   rank?: number | null,
 ): string {
+  // ── Scripted conversation intercept ──
+  // When a script exists for this scene+level, it takes over completely.
+  // The LLM classification is mapped to ScriptClassification and the script
+  // engine determines the reply. No LLM intent can override the script.
+  const levelStr = rank != null ? (rank < 40 ? 'beginner' : rank < 70 ? 'intermediate' : 'advanced') : 'beginner'
+  const matchedScript = lessonPhrase ? hasScript(ALL_SCRIPTS, lessonPhrase, levelStr) : null
+  // Also try matching by scene ID from the scene question library
+  const sceneForScript = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
+  const scriptBySceneId = sceneForScript ? hasScript(ALL_SCRIPTS, sceneForScript.id, levelStr) : null
+  const activeScript = matchedScript ?? scriptBySceneId
+
+  if (activeScript) {
+    // Build script state from turnIndex (stateless reconstruction — the script
+    // is deterministic so we can reconstruct position from turn count)
+    const scriptClassification: ScriptClassification = {
+      meaningType: llm.meaning.type as ScriptClassification['meaningType'],
+      meaningValue: llm.meaning.value,
+      confidence: llm.meaning.confidence,
+    }
+    // Reconstruct script state: turnIndex 0 = answering turn 0 of script
+    const scriptState: import('./scripted-conversation-engine').ScriptState = {
+      scriptId: activeScript.id,
+      currentTurnIndex: Math.min(turnIndex, activeScript.turns.length - 1),
+      totalTurns: activeScript.turns.length,
+      repairCount: 0,
+      completed: turnIndex >= activeScript.turns.length,
+    }
+    const scriptResult = advanceScript(activeScript, scriptState, scriptClassification)
+    return scriptResult.reply
+  }
+
+  // ── Legacy LLM-driven path (scenes without scripts) ──
+
   // Resolve scene slotSchema for slot validation
   const scene = lessonPhrase ? matchSceneQuestions(lessonPhrase) : null
   const slotSchema: SceneSlotSchema | null = scene?.slotSchema ?? null
@@ -558,7 +593,13 @@ export type V25AssemblyContext = {
   userMessage?: string | null
   /** Numeric rank for level-aware composition. */
   rank?: number | null
+  /** Scripted conversation state — when present, script engine takes over. */
+  scriptState?: import('./scripted-conversation-engine').ScriptState | null
 }
+
+// Re-export for callers that need to manage script state
+export { createScriptState, getOpener, hasScript, advanceScript } from './scripted-conversation-engine'
+export { ALL_SCRIPTS } from './scripted-conversation-scripts'
 
 export function parseAiConversationResponse(raw: string, ctx?: V25AssemblyContext): AiConversationResponse | null {
   try {
