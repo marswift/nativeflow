@@ -186,6 +186,30 @@ export function hasScript(scripts: ConversationScript[], sceneId: string, level:
   return scripts.find((s) => s.sceneId === sceneId && s.level === level) ?? null
 }
 
+/**
+ * Get all unique text strings that will be spoken as TTS for this script.
+ * Used to prefetch audio on conversation start for instant playback.
+ */
+export function getScriptTtsTexts(script: ConversationScript): string[] {
+  const texts = new Set<string>()
+  texts.add(script.opener)
+  for (const turn of script.turns) {
+    texts.add(turn.aiQuestion)
+    texts.add(turn.repairPrompt)
+  }
+  texts.add(script.closingLine)
+  // Also add "reaction + question" combos for likely answers (yes/no/social)
+  for (let i = 0; i < script.turns.length; i++) {
+    const nextIdx = i + 1
+    const nextQ = nextIdx < script.turns.length ? script.turns[nextIdx].aiQuestion : script.closingLine
+    for (const pool of [SCRIPT_REACTIONS.yes, SCRIPT_REACTIONS.no, SCRIPT_REACTIONS.social]) {
+      const reaction = pool[i % pool.length]
+      if (reaction) texts.add(`${reaction} ${nextQ}`)
+    }
+  }
+  return Array.from(texts)
+}
+
 // ── Helpers ──
 
 function pickReaction(meaningType: ScriptMeaningType, turnIndex: number): string {

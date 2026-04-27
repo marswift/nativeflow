@@ -16,7 +16,7 @@ import { buildFallbackEvaluation, buildEngineFallbackReply, incrementAiCallCount
 import { createInitialState, classifyUserInput, selectNextIntent, advanceState, serializeState, type ConversationState } from '../../../lib/ai-conversation-state'
 import { createConvState, convTransition, canRecord, canAdvance, isAiProcessing, isAiSpeaking, isConvDone, isReadyToSpeak } from '../../../lib/conversation-fsm'
 import { getRegionContext } from '../../../lib/daily-timeline'
-import { hasScript, getOpener } from '../../../lib/scripted-conversation-engine'
+import { hasScript, getOpener, getScriptTtsTexts } from '../../../lib/scripted-conversation-engine'
 import { ALL_SCRIPTS } from '../../../lib/scripted-conversation-scripts'
 import { matchSceneQuestions } from '../../../lib/ai-conversation-scene-questions'
 import { resolveSceneImages, getStepImage, type StepType } from '../../../lib/scene-image-resolver'
@@ -1134,9 +1134,25 @@ function AiConversationPlayer({
     })
   }, [ensureAiAudioUrl])
 
-  // Preload opener audio on mount for faster start
+  // Detect active script once for this component instance
+  const activeScriptRef = useRef(() => {
+    const sl = level === 'beginner' ? 'beginner' : level === 'intermediate' ? 'intermediate' : level === 'advanced' ? 'advanced' : 'beginner'
+    const sh = matchSceneQuestions(currentAnswer)
+    return hasScript(ALL_SCRIPTS, currentAnswer, sl)
+      ?? (sh ? hasScript(ALL_SCRIPTS, sh.id, sl) : null)
+  })
+  const activeScript = useMemo(() => activeScriptRef.current(), [])
+
+  // Preload opener + all script TTS texts on mount for instant playback
   useEffect(() => {
     ensureAiAudioUrl(openerMessage)
+    if (activeScript) {
+      const texts = getScriptTtsTexts(activeScript)
+      console.log(`[SCRIPT_TTS_PREFETCH] prefetching ${texts.length} texts for ${activeScript.id}`)
+      for (const text of texts) {
+        ensureAiAudioUrl(text)
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1498,11 +1514,14 @@ function AiConversationPlayer({
 
   // Auto-advance: after user answers and feedback is shown, advance to next turn automatically
   // Must be ABOVE early returns to maintain stable hook order.
+  // Script mode: 50ms (TTS is pre-cached, no feedback to show)
+  // Legacy mode: 400ms (time for feedback/hint UI to render)
   useEffect(() => {
     if (!started || !canAdvance(conv.phase) || turnHint) return
+    const delayMs = activeScript ? 50 : 400
     const timer = setTimeout(() => {
       advanceToNextTurn()
-    }, 400)
+    }, delayMs)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [started, conv.phase, turnHint])
