@@ -1,12 +1,16 @@
 /**
- * Scripted Conversation Engine v1
+ * Scripted Conversation Engine v2
  *
- * Deterministic turn-by-turn conversation control.
+ * Deterministic turn-by-turn conversation control with slot-aware validation.
  * The app decides: turn order, next question, closing timing, retry.
- * The LLM only helps with: meaning classification, short reaction.
+ * The LLM only helps with: meaning classification.
  *
- * No LLM intent can override the script. Closing is only allowed after
- * the final scripted turn.
+ * Validation rules:
+ * - Each turn declares expectedTypes (which meaning types are valid answers)
+ * - If classification matches expectedTypes → accept and advance
+ * - If mismatch (wrong type, past-context, unclear) → repair prompt, stay
+ * - If repair exhausted (max 2 per turn) → weak-accept and advance
+ * - Closing only after final turn is accepted or repair-exhausted
  */
 
 import type { ConversationScript } from './scripted-conversation-scripts'
@@ -24,8 +28,10 @@ export type ScriptClassification = {
 
 export type ScriptState = {
   scriptId: string
+  /** Which scripted turn we're currently asking (0-based, independent of component turn counter) */
   currentTurnIndex: number
   totalTurns: number
+  /** Number of repair prompts issued for the current turn */
   repairCount: number
   /** true only after the final turn has been answered */
   completed: boolean
@@ -36,13 +42,16 @@ export type ScriptAdvanceResult = {
   reply: string
   /** Whether the conversation should close after this reply */
   isClosing: boolean
+  /** Whether this was a repair (stayed on same turn) */
+  isRepair: boolean
   /** Updated state */
   state: ScriptState
 }
 
 // ── Constants ──
 
-const MAX_REPAIRS_PER_TURN = 1
+/** Max repairs per turn. After this many, weak-accept and advance. */
+const MAX_REPAIRS_PER_TURN = 2
 
 /** Short reactions per meaning type — deterministic, no LLM involvement */
 const SCRIPT_REACTIONS: Record<ScriptMeaningType, string[]> = {
@@ -59,9 +68,6 @@ const SCRIPT_REACTIONS: Record<ScriptMeaningType, string[]> = {
 
 // ── Engine ──
 
-/**
- * Create initial state for a scripted conversation.
- */
 export function createScriptState(script: ConversationScript): ScriptState {
   return {
     scriptId: script.id,
@@ -72,19 +78,12 @@ export function createScriptState(script: ConversationScript): ScriptState {
   }
 }
 
-/**
- * Get the current turn's AI question text.
- * Returns the closing line if the conversation is completed.
- */
 export function getCurrentQuestion(script: ConversationScript, state: ScriptState): string {
   if (state.completed) return script.closingLine
   if (state.currentTurnIndex >= script.turns.length) return script.closingLine
   return script.turns[state.currentTurnIndex].aiQuestion
 }
 
-/**
- * Get the opening message for a scripted conversation.
- */
 export function getOpener(script: ConversationScript): string {
   return script.opener
 }
@@ -92,15 +91,14 @@ export function getOpener(script: ConversationScript): string {
 /**
  * Advance the script after a user answer.
  *
- * This is the core function. It:
- * 1. Classifies whether the answer is acceptable (any recognized meaning = ok)
- * 2. If unclear + repairs not exhausted → repair prompt (stay on same turn)
- * 3. If unclear + repairs exhausted → accept and move on (never block the user)
- * 4. If acceptable → reaction + next question
- * 5. If final turn answered → reaction + closing line
- *
- * The LLM classification is an INPUT — this function does not call any LLM.
- * No LLM intent (including "closing") can cause early termination.
+ * Validation cascade:
+ * 1. Already completed → return closing (idempotent)
+ * 2. Past-context mismatch → repair
+ * 3. Unclear / low confidence → repair
+ * 4. Meaning type not in turn's expectedTypes → repair
+ * 5. All repairs exhausted → weak-accept and advance
+ * 6. Valid answer → accept and advance
+ * 7. Final turn accepted → close
  */
 export function advanceScript(
   script: ConversationScript,
@@ -108,88 +106,71 @@ export function advanceScript(
   classification: ScriptClassification,
   userMessage?: string | null,
 ): ScriptAdvanceResult {
-  // Already completed — return closing (idempotent)
   if (state.completed) {
-    return {
-      reply: script.closingLine,
-      isClosing: true,
-      state,
-    }
+    return { reply: script.closingLine, isClosing: true, isRepair: false, state }
   }
 
   const turn = script.turns[state.currentTurnIndex]
   if (!turn) {
-    // Safety: beyond script bounds
     return {
       reply: script.closingLine,
       isClosing: true,
+      isRepair: false,
       state: { ...state, completed: true },
     }
   }
 
-  // ── Past-context mismatch → repair (e.g. "I grew up alone" on a present-routine question) ──
-  if (userMessage && hasPastContextMismatch(userMessage)) {
-    if (state.repairCount < MAX_REPAIRS_PER_TURN) {
-      return {
-        reply: turn.repairPrompt,
-        isClosing: false,
-        state: { ...state, repairCount: state.repairCount + 1 },
-      }
+  // ── Determine if answer is valid for this turn ──
+  const needsRepair = checkNeedsRepair(turn.expectedTypes, classification, userMessage)
+
+  if (needsRepair && state.repairCount < MAX_REPAIRS_PER_TURN) {
+    // Stay on same turn, issue repair prompt
+    return {
+      reply: turn.repairPrompt,
+      isClosing: false,
+      isRepair: true,
+      state: { ...state, repairCount: state.repairCount + 1 },
     }
   }
 
-  // ── Unclear / low confidence → repair (max once per turn) ──
-  if (classification.meaningType === 'unclear' || classification.confidence < 0.3) {
-    if (state.repairCount < MAX_REPAIRS_PER_TURN) {
-      return {
-        reply: turn.repairPrompt,
-        isClosing: false,
-        state: { ...state, repairCount: state.repairCount + 1 },
-      }
-    }
-    // Repairs exhausted — accept and move on (never block the user)
+  // ── Accept (valid answer or repair-exhausted weak-accept) → advance ──
+  if (needsRepair && state.repairCount >= MAX_REPAIRS_PER_TURN) {
+    console.log('[SCRIPT_WEAK_ACCEPT]', JSON.stringify({
+      turnId: turn.id,
+      meaningType: classification.meaningType,
+      expected: turn.expectedTypes,
+      repairCount: state.repairCount,
+    }))
   }
 
-  // ── Acceptable answer → reaction + advance ──
   const reaction = pickReaction(classification.meaningType, state.currentTurnIndex)
   const nextIndex = state.currentTurnIndex + 1
   const isFinalTurn = nextIndex >= script.turns.length
 
   if (isFinalTurn) {
-    // Final turn answered — close
-    const reply = reaction
-      ? `${reaction} ${script.closingLine}`
-      : script.closingLine
+    const reply = reaction ? `${reaction} ${script.closingLine}` : script.closingLine
     return {
       reply,
       isClosing: true,
+      isRepair: false,
       state: { ...state, currentTurnIndex: nextIndex, repairCount: 0, completed: true },
     }
   }
 
-  // More turns remain — reaction + next question
   const nextQuestion = script.turns[nextIndex].aiQuestion
-  const reply = reaction
-    ? `${reaction} ${nextQuestion}`
-    : nextQuestion
+  const reply = reaction ? `${reaction} ${nextQuestion}` : nextQuestion
   return {
     reply,
     isClosing: false,
+    isRepair: false,
     state: { ...state, currentTurnIndex: nextIndex, repairCount: 0 },
   }
 }
 
-/**
- * Check if a script exists for a given scene + level combination.
- */
 export function hasScript(scripts: ConversationScript[], sceneId: string, level: string): ConversationScript | null {
   return scripts.find((s) => s.sceneId === sceneId && s.level === level) ?? null
 }
 
-/**
- * Get all unique text strings that will be spoken as TTS for this script.
- * Used to prefetch audio on conversation start for instant playback.
- */
 export function getScriptTtsTexts(script: ConversationScript): string[] {
   const texts = new Set<string>()
   texts.add(script.opener)
@@ -198,11 +179,10 @@ export function getScriptTtsTexts(script: ConversationScript): string[] {
     texts.add(turn.repairPrompt)
   }
   texts.add(script.closingLine)
-  // Also add "reaction + question" combos for likely answers (yes/no/social)
   for (let i = 0; i < script.turns.length; i++) {
     const nextIdx = i + 1
     const nextQ = nextIdx < script.turns.length ? script.turns[nextIdx].aiQuestion : script.closingLine
-    for (const pool of [SCRIPT_REACTIONS.yes, SCRIPT_REACTIONS.no, SCRIPT_REACTIONS.social]) {
+    for (const pool of [SCRIPT_REACTIONS.yes, SCRIPT_REACTIONS.no, SCRIPT_REACTIONS.social, SCRIPT_REACTIONS.person]) {
       const reaction = pool[i % pool.length]
       if (reaction) texts.add(`${reaction} ${nextQ}`)
     }
@@ -210,7 +190,28 @@ export function getScriptTtsTexts(script: ConversationScript): string[] {
   return Array.from(texts)
 }
 
-// ── Helpers ──
+// ── Validation helpers ──
+
+/**
+ * Check if the user's answer needs repair for this turn.
+ * Returns true if answer is invalid (past context, unclear, or wrong type).
+ */
+function checkNeedsRepair(
+  expectedTypes: ScriptMeaningType[],
+  classification: ScriptClassification,
+  userMessage?: string | null,
+): boolean {
+  // Past-context mismatch (e.g. "I grew up alone")
+  if (userMessage && hasPastContextMismatch(userMessage)) return true
+
+  // Unclear / low confidence
+  if (classification.meaningType === 'unclear' || classification.confidence < 0.3) return true
+
+  // Type mismatch: classified meaning not in this turn's expected types
+  if (expectedTypes.length > 0 && !expectedTypes.includes(classification.meaningType)) return true
+
+  return false
+}
 
 function pickReaction(meaningType: ScriptMeaningType, turnIndex: number): string {
   const pool = SCRIPT_REACTIONS[meaningType] ?? SCRIPT_REACTIONS.yes

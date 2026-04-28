@@ -987,6 +987,9 @@ function AiConversationPlayer({
   const [turnNextPrompt, setTurnNextPrompt] = useState<string | null>(null)
   const [turnEvalDetail, setTurnEvalDetail] = useState<ConvEvalDetail | null>(null)
   const [history, setHistory] = useState<ConvTurn[]>([])
+  // Script state tracking (echoed to/from API for repair-aware turn progression)
+  const scriptTurnIndexRef = useRef(0)
+  const scriptRepairCountRef = useRef(0)
   const [showPaywall, setShowPaywall] = useState(false)
   const paywallShownRef = useRef(false)
   const [streakCount, setStreakCount] = useState(0)
@@ -1299,6 +1302,8 @@ function AiConversationPlayer({
               turnIndex: turn,
               userMessage: recognized,
               lessonPhrase: currentAnswer,
+              scriptTurnIndex: scriptTurnIndexRef.current,
+              scriptRepairCount: scriptRepairCountRef.current,
               conversationHistory: apiHistory,
               flavorContext: flavorContext ?? undefined,
               isClosingTurn: turn === 3,
@@ -1322,6 +1327,11 @@ function AiConversationPlayer({
               replied = true
               replyText = apiData.aiReply
               ensureAiAudioUrl(apiData.aiReply)
+              // Update script state from API response
+              if (typeof apiData.scriptTurnIndex === 'number') {
+                scriptTurnIndexRef.current = apiData.scriptTurnIndex
+                scriptRepairCountRef.current = apiData.scriptRepairCount ?? 0
+              }
               setTurnEvalDetail(apiData.evaluationDetail ?? null)
               if (apiData.evaluation === 'retry') {
                 setTurnHint(apiData.hint ?? 'Try answering using today\'s expression.')

@@ -74,19 +74,24 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
 
     if (activeScript) {
       const classification = classifyMeaningLocal(body.userMessage)
+      // Reconstruct script state from client-provided fields (repair-aware)
+      const reqBody = body as Record<string, unknown>
+      const scriptTurnIdx = typeof reqBody.scriptTurnIndex === 'number' ? reqBody.scriptTurnIndex : body.turnIndex
+      const scriptRepairs = typeof reqBody.scriptRepairCount === 'number' ? reqBody.scriptRepairCount : 0
       const scriptState = {
         scriptId: activeScript.id,
-        currentTurnIndex: Math.min(body.turnIndex, activeScript.turns.length - 1),
+        currentTurnIndex: Math.min(scriptTurnIdx, activeScript.turns.length - 1),
         totalTurns: activeScript.turns.length,
-        repairCount: 0,
-        completed: body.turnIndex >= activeScript.turns.length,
+        repairCount: scriptRepairs,
+        completed: scriptTurnIdx >= activeScript.turns.length,
       }
       const result = advanceScript(activeScript, scriptState, classification, body.userMessage)
       const totalMs = Math.round(performance.now() - t0)
       // eslint-disable-next-line no-console
       console.log('[SCRIPT_PATH]', JSON.stringify({
-        turn: body.turnIndex, scriptId: activeScript.id,
+        turn: body.turnIndex, scriptTurn: scriptTurnIdx, scriptId: activeScript.id,
         meaning: classification.meaningType, isClosing: result.isClosing,
+        isRepair: result.isRepair, repairCount: result.state.repairCount,
         totalMs,
       }))
       return NextResponse.json({
@@ -96,6 +101,10 @@ export async function POST(req: Request): Promise<NextResponse<ApiResponse>> {
         evaluationDetail: { isRelevant: true, isNatural: true, isComplete: true, score: 80, feedback: '', correction: null, naturalAlternative: null, followUp: null },
         hint: null,
         nextPrompt: null,
+        // Script state for client to echo back on next call
+        scriptTurnIndex: result.state.currentTurnIndex,
+        scriptRepairCount: result.state.repairCount,
+        scriptIsRepair: result.isRepair,
       })
     }
 
