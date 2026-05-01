@@ -83,6 +83,7 @@ export class SupabaseLessonContentRepository implements AsyncLessonContentReposi
       const variations = (variationsResult.data ?? []) as LessonPhraseVariationRow[]
       const chunks = (chunksResult.data ?? []) as LessonSemanticChunkRow[]
 
+      console.log(`[CONTENT_RESOLVE] phrase DB hit scene=${sceneKey} level=${level} version=${row.content_version}`)
       return mapPhraseRowToDTO(row, variations, chunks)
     } catch {
       return this.fallback.getScenePhrase(sceneKey, level)
@@ -130,6 +131,7 @@ export class SupabaseLessonContentRepository implements AsyncLessonContentReposi
       const coreChunks = (chunksResult.data ?? []) as LessonCoreChunkRow[]
       const relatedExpressions = (expressionsResult.data ?? []) as LessonRelatedExpressionRow[]
 
+      console.log(`[CONTENT_RESOLVE] enrichment DB hit scene=${sceneKey} region=${region} version=${row.content_version}`)
       return mapEnrichmentRowToDTO(row, coreChunks, relatedExpressions)
     } catch {
       return this.fallback.getConversationEnrichment(sceneKey, region, ageGroup, level)
