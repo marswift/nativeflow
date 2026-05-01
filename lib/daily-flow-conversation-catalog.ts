@@ -301,8 +301,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     },
   },
 
-  // leave_home — en_us_general — 30s — beginner
-  [makeKey('leave_home', 'en_us_general', '30s', 'beginner')]: {
+  // get_ready_to_leave — en_us_general — 30s — beginner
+  [makeKey('get_ready_to_leave', 'en_us_general', '30s', 'beginner')]: {
     aiQuestionText: 'Are you heading to work now?',
     aiQuestionChoices: [
       { label: '今から仕事に行くか聞いている', isCorrect: true },
@@ -330,8 +330,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     ],
   },
 
-  // leave_home — en_us_general — 40s — beginner
-  [makeKey('leave_home', 'en_us_general', '40s', 'beginner')]: {
+  // get_ready_to_leave — en_us_general — 40s — beginner
+  [makeKey('get_ready_to_leave', 'en_us_general', '40s', 'beginner')]: {
     aiQuestionText: 'Are you taking the kids out now?',
     aiQuestionChoices: [
       { label: '子どもを連れて出かけるか聞いている', isCorrect: true },
@@ -351,8 +351,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     ],
   },
 
-  // leave_home — en_us_general — 50plus — beginner
-  [makeKey('leave_home', 'en_us_general', '50plus', 'beginner')]: {
+  // get_ready_to_leave — en_us_general — 50plus — beginner
+  [makeKey('get_ready_to_leave', 'en_us_general', '50plus', 'beginner')]: {
     aiQuestionText: 'Where are you heading today?',
     aiQuestionChoices: [
       { label: '今日どこに行くか聞いている', isCorrect: true },
@@ -379,8 +379,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     },
   },
 
-  // leave_home — en_gb_general — 20s — beginner
-  [makeKey('leave_home', 'en_gb_general', '20s', 'beginner')]: {
+  // get_ready_to_leave — en_gb_general — 20s — beginner
+  [makeKey('get_ready_to_leave', 'en_gb_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you leave home?',
     aiQuestionChoices: [
       { label: '何時に家を出るか聞いている', isCorrect: true },
@@ -400,8 +400,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     ],
   },
 
-  // leave_home — en_au_general — 20s — beginner
-  [makeKey('leave_home', 'en_au_general', '20s', 'beginner')]: {
+  // get_ready_to_leave — en_au_general — 20s — beginner
+  [makeKey('get_ready_to_leave', 'en_au_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you head off in the morning?',
     aiQuestionChoices: [
       { label: '朝何時に出発するか聞いている', isCorrect: true },
@@ -428,8 +428,8 @@ export const DAILY_FLOW_CONVERSATION_CATALOG: Record<CatalogKey, ConversationVar
     },
   },
 
-  // leave_home — en_us_general — 20s — beginner
-  [makeKey('leave_home', 'en_us_general', '20s', 'beginner')]: {
+  // get_ready_to_leave — en_us_general — 20s — beginner
+  [makeKey('get_ready_to_leave', 'en_us_general', '20s', 'beginner')]: {
     aiQuestionText: 'What time do you leave home?',
     aiQuestionChoices: [
       { label: '何時に家を出るか聞いている', isCorrect: true },

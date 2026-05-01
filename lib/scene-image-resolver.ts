@@ -51,7 +51,6 @@ const DAILY_FLOW_FOLDERS: Record<string, string> = {
   brush_teeth:        'scene-05-brush-teeth',
   get_dressed:        'scene-06-get-dressed',
   eat_breakfast:      'scene-07-eat-breakfast',
-  leave_home:         'scene-08-leave-home',
   commute:            'scene-09-commute',
   arrive:             'scene-10-arrive',
   start_work:         'scene-11-start-work',

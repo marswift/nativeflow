@@ -17,7 +17,7 @@ import pLimit from 'p-limit'
 const limit = pLimit(3)
 
 /** Core scenes with DB-backed enrichments. Preloaded before lesson build. */
-const PRELOAD_SCENES = ['wake_up', 'eat_breakfast', 'leave_home', 'talk_with_friends', 'go_to_bed']
+const PRELOAD_SCENES = ['wake_up', 'eat_breakfast', 'get_ready_to_leave', 'talk_with_friends', 'go_to_bed']
 
 const supabase = getSupabaseBrowserClient()
 type HydratableLessonSession = NonNullable<LessonPageData['lesson']>

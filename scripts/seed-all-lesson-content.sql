@@ -18,7 +18,7 @@
 INSERT INTO lesson_scenes (scene_key, scene_category, label_ja, label_en) VALUES
   ('wake_up',           'daily-flow', '起床',           'Wake Up'),
   ('eat_breakfast',     'daily-flow', '朝食を食べる',   'Eat Breakfast'),
-  ('leave_home',        'daily-flow', '出発準備',       'Get Ready to Leave'),
+  ('get_ready_to_leave',        'daily-flow', '出発準備',       'Get Ready to Leave'),
   ('talk_with_friends', 'daily-flow', '友人との会話',   'Talk with Friends'),
   ('go_to_bed',         'daily-flow', '就寝',           'Go to Bed')
 ON CONFLICT (scene_key) DO NOTHING;
@@ -28,7 +28,7 @@ ON CONFLICT (scene_key) DO NOTHING;
 -- ═══════════════════════════════════════════════════════════════════════════
 
 UPDATE lesson_phrases SET is_active = false, updated_at = now()
-WHERE scene_key IN ('wake_up', 'eat_breakfast', 'leave_home', 'talk_with_friends', 'go_to_bed')
+WHERE scene_key IN ('wake_up', 'eat_breakfast', 'get_ready_to_leave', 'talk_with_friends', 'go_to_bed')
   AND level_band = 'beginner' AND language_code = 'en' AND is_active = true;
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -88,14 +88,14 @@ INSERT INTO lesson_phrases (scene_id, scene_key, level_band, language_code,
   conversation_answer, typing_answer, review_prompt, ai_conversation_prompt,
   native_hint, native_hint_tts, mix_hint, ai_question_text, tts_text,
   content_version, is_active)
-SELECT s.id, 'leave_home', 'beginner', 'en',
+SELECT s.id, 'get_ready_to_leave', 'beginner', 'en',
   'I grab my bag and head out.', 'I grab my bag and head out.',
   'Review a simple leaving-home phrase.',
   'Tell the AI what you do before leaving the house.',
   'カバン持って出かける。', NULL, 'I カバン持って head out.',
   'Are you ready to go?', NULL,
   'seed_v1', true
-FROM lesson_scenes s WHERE s.scene_key = 'leave_home'
+FROM lesson_scenes s WHERE s.scene_key = 'get_ready_to_leave'
 ON CONFLICT (scene_key, level_band, language_code) DO UPDATE SET
   conversation_answer = EXCLUDED.conversation_answer,
   typing_answer = EXCLUDED.typing_answer,
@@ -164,7 +164,7 @@ SELECT p.id, c.chunk, c.meaning, 'phrase', c.sort_order, true
 FROM (VALUES
   ('wake_up',           'just woke up',       '起きたばかり',     0),
   ('eat_breakfast',     'eat breakfast',       '朝食を食べる',     0),
-  ('leave_home',        'grab my bag',         'カバンを持つ',     0),
+  ('get_ready_to_leave',        'grab my bag',         'カバンを持つ',     0),
   ('talk_with_friends', 'talk with a friend',  '友達と話す',       0),
   ('go_to_bed',         'go to bed',           '寝る',             0)
 ) AS c(scene_key, chunk, meaning, sort_order)
@@ -178,7 +178,7 @@ ON CONFLICT DO NOTHING;
 -- ═══════════════════════════════════════════════════════════════════════════
 
 UPDATE lesson_conversation_enrichments SET is_active = false, updated_at = now()
-WHERE scene_key IN ('wake_up', 'eat_breakfast', 'leave_home', 'talk_with_friends', 'go_to_bed')
+WHERE scene_key IN ('wake_up', 'eat_breakfast', 'get_ready_to_leave', 'talk_with_friends', 'go_to_bed')
   AND region_slug = 'en_us_general' AND age_group = '20s' AND level_band = 'beginner'
   AND is_active = true;
 
@@ -217,12 +217,12 @@ ON CONFLICT (scene_key, region_slug, age_group, level_band) DO UPDATE SET
 -- leave_home
 INSERT INTO lesson_conversation_enrichments (scene_id, scene_key, region_slug, age_group, level_band,
   ai_question_text, ai_conversation_opener, typing_variations, flavor, content_version, is_active)
-SELECT s.id, 'leave_home', 'en_us_general', '20s', 'beginner',
+SELECT s.id, 'get_ready_to_leave', 'en_us_general', '20s', 'beginner',
   'Are you ready to go?', 'Time to head out! Got everything?',
   '["I grab my bag and head out.", "OK, I''m heading out.", "Time to go!"]'::jsonb,
   '{"setting":"entrance","topics":["commute","morning"]}'::jsonb,
   'seed_v1', true
-FROM lesson_scenes s WHERE s.scene_key = 'leave_home'
+FROM lesson_scenes s WHERE s.scene_key = 'get_ready_to_leave'
 ON CONFLICT (scene_key, region_slug, age_group, level_band) DO UPDATE SET
   ai_question_text = EXCLUDED.ai_question_text, ai_conversation_opener = EXCLUDED.ai_conversation_opener,
   typing_variations = EXCLUDED.typing_variations, flavor = EXCLUDED.flavor,
@@ -265,7 +265,7 @@ SELECT e.id, c.chunk, c.meaning, c.sort_order
 FROM (VALUES
   ('wake_up',           'just woke up',       '起きたばかり',   0),
   ('eat_breakfast',     'eat breakfast',       '朝食を食べる',   0),
-  ('leave_home',        'grab my bag',         'カバンを持つ',   0),
+  ('get_ready_to_leave',        'grab my bag',         'カバンを持つ',   0),
   ('talk_with_friends', 'talk with a friend',  '友達と話す',     0),
   ('go_to_bed',         'go to bed',           '寝る',           0)
 ) AS c(scene_key, chunk, meaning, sort_order)
