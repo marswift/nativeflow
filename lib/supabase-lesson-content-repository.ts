@@ -59,6 +59,7 @@ export class SupabaseLessonContentRepository implements AsyncLessonContentReposi
         .maybeSingle()
 
       if (phraseError || !phraseRow) {
+        console.log(`[CONTENT_RESOLVE] phrase fallback scene=${sceneKey} level=${level}`)
         return this.fallback.getScenePhrase(sceneKey, level)
       }
 
@@ -106,6 +107,7 @@ export class SupabaseLessonContentRepository implements AsyncLessonContentReposi
         .maybeSingle()
 
       if (error || !enrichmentRow) {
+        console.log(`[CONTENT_RESOLVE] enrichment fallback scene=${sceneKey} region=${region}`)
         return this.fallback.getConversationEnrichment(sceneKey, region, ageGroup, level)
       }
 

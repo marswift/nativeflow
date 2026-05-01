@@ -321,6 +321,7 @@ async function preloadDbContent(
     const cached = new CachedLessonContentRepository(asyncRepo)
     await cached.preload(PRELOAD_SCENES, level, region, ageGroup)
     setLessonContentRepository(cached)
+    console.log('[LESSON_CONTENT_SOURCE] DB-backed repo set (with catalog fallback)') // eslint-disable-line no-console
   } catch (e) {
     // Non-blocking: object catalog fallback remains active
     console.warn('[lesson-loader] DB content preload failed, using catalog fallback', e)
