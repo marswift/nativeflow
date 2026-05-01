@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const ageGroups = body.ageGroups ?? AVAILABLE_AGE_GROUPS
 
-    const result = createLanguageBundle({
+    const result = await createLanguageBundle({
       baseLanguage: body.baseLanguage ?? 'ja',
       targetLanguage: body.targetLanguage,
       region: body.region,

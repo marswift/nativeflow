@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Pre-check: target must exist and be rollback-safe
-    const bundle = getBundleInfo(body.bundleId)
+    const bundle = await getBundleInfo(body.bundleId)
     if (!bundle) {
       return NextResponse.json({ error: 'Bundle not found' }, { status: 404 })
     }
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
-    const success = rollbackToVersion(body.bundleId, body.targetVersion)
+    const success = await rollbackToVersion(body.bundleId, body.targetVersion)
 
     if (!success) {
       return NextResponse.json({ error: 'Rollback failed' }, { status: 500 })

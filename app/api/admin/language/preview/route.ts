@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'version must be a number' }, { status: 400 })
     }
 
-    const version = previewVersion(bundleId, versionNumber)
+    const version = await previewVersion(bundleId, versionNumber)
 
     if (!version) {
       return NextResponse.json({ error: 'Version not found' }, { status: 404 })

@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'versionNumber is required' }, { status: 400 })
     }
 
-    const result = validateDraft(body.bundleId, body.versionNumber)
+    const result = await validateDraft(body.bundleId, body.versionNumber)
 
     if (!result) {
       return NextResponse.json({

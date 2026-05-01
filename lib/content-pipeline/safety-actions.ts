@@ -78,8 +78,8 @@ function toContentFlags(anomalyFlags: AnomalyFlag[], regressionFlags: Regression
 
 // ── Find safe rollback target ──
 
-function findSafeRollbackTarget(bundleId: string, currentVersion: number): number | null {
-  const bundle = getBundleInfo(bundleId)
+async function findSafeRollbackTarget(bundleId: string, currentVersion: number): Promise<number | null> {
+  const bundle = await getBundleInfo(bundleId)
   if (!bundle) return null
 
   // Look for an archived (previously published) or validated version
@@ -97,13 +97,13 @@ function findSafeRollbackTarget(bundleId: string, currentVersion: number): numbe
 
 // ── Mark version flags in storage ──
 
-function attachFlagsToVersion(
+async function attachFlagsToVersion(
   bundleId: string,
   versionNumber: number,
   flags: ContentFlag[],
   isAtRisk: boolean,
-): void {
-  const bundle = getBundleInfo(bundleId)
+): Promise<void> {
+  const bundle = await getBundleInfo(bundleId)
   if (!bundle) return
 
   const version = bundle.versions.find((v) => v.version === versionNumber)
@@ -113,23 +113,16 @@ function attachFlagsToVersion(
   version.isAtRisk = isAtRisk
   version.lastHealthCheckAt = new Date().toISOString()
 
-  // Re-save via lifecycle's internal storage
-  // We access the same localStorage key pattern
-  try {
-    const key = `nativeflow:content-bundle:${bundleId}`
-    const value = JSON.stringify(bundle)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(key, value)
-    }
-  } catch { /* non-blocking */ }
+  // Flags attached in-memory via getBundleInfo cache.
+  // Supabase persistence is handled by lifecycle's saveVersion when bundle is next modified.
 }
 
 // ── Core: handle content health ──
 
-export function handleContentHealth(
+export async function handleContentHealth(
   input: ContentHealthInput,
   previousSnapshot?: ContentHealthSnapshot,
-): SafetyActionResult {
+): Promise<SafetyActionResult> {
   const now = new Date().toISOString()
 
   // Step 1 — evaluate health
@@ -165,7 +158,7 @@ export function handleContentHealth(
       action = 'log'
       reason += ' — rollback skipped (cooldown active, possible loop)'
     } else {
-      rollbackTarget = findSafeRollbackTarget(input.bundleId, input.versionNumber)
+      rollbackTarget = await findSafeRollbackTarget(input.bundleId, input.versionNumber)
       if (rollbackTarget === null) {
         action = 'log'
         reason += ' — rollback skipped (no safe previous version)'
@@ -178,7 +171,7 @@ export function handleContentHealth(
 
   // Step 5 — execute action
   // Always attach flags to version
-  attachFlagsToVersion(
+  await attachFlagsToVersion(
     input.bundleId,
     input.versionNumber,
     contentFlags,
@@ -194,7 +187,7 @@ export function handleContentHealth(
       reason,
     })
 
-    rollbackSuccess = rollbackToVersion(input.bundleId, rollbackTarget)
+    rollbackSuccess = await rollbackToVersion(input.bundleId, rollbackTarget)
     if (rollbackSuccess) {
       recordRollback(input.bundleId)
     } else {

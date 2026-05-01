@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'bundleId query param is required' }, { status: 400 })
     }
 
-    const bundle = getBundleInfo(bundleId)
+    const bundle = await getBundleInfo(bundleId)
     if (!bundle) {
       return NextResponse.json({ error: 'Bundle not found' }, { status: 404 })
     }
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = handleContentHealth(input)
+    const result = await handleContentHealth(input)
 
     return NextResponse.json({
       bundleId: result.bundleId,

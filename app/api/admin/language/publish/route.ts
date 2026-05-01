@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Pre-check: version must be validated
-    const bundle = getBundleInfo(body.bundleId)
+    const bundle = await getBundleInfo(body.bundleId)
     if (!bundle) {
       return NextResponse.json({ error: 'Bundle not found' }, { status: 404 })
     }
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
-    const success = publish(body.bundleId, body.versionNumber)
+    const success = await publish(body.bundleId, body.versionNumber)
 
     if (!success) {
       return NextResponse.json({ error: 'Publish failed' }, { status: 500 })

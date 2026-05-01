@@ -68,7 +68,7 @@ function generateSceneDescription(
  *
  * Returns draft bundles ready for validation → preview → publish.
  */
-export function createLanguageBundle(input: LanguageExpansionInput): LanguageExpansionResult {
+export async function createLanguageBundle(input: LanguageExpansionInput): Promise<LanguageExpansionResult> {
   const { targetLanguage, region, ageGroups } = input
   const bundles: ContentBundle[] = []
   const seed = Date.now()
@@ -102,7 +102,7 @@ export function createLanguageBundle(input: LanguageExpansionInput): LanguageExp
     }
 
     // Create draft via lifecycle
-    const bundle = createDraft(targetLanguage, region, payload)
+    const bundle = await createDraft(targetLanguage, region, payload)
 
     // Override bundleId to include ageGroup for multi-age support
     // The lifecycle uses `languageCode-regionSlug` by default,
